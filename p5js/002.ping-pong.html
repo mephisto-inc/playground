@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <title>p5js</title>
+    <meta charset="UTF-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+    <style>
+        body {
+            padding: 0;
+            margin: 0;
+            background-color: #1b1b1b;
+        }
+    </style>
+    <script src="./scripts/p5.js"></script>
+    <script>
+        let x_pos, y_pos, x_speed, y_speed, y_bar_pos;
+
+        function setup() {
+            createCanvas(800, 400);
+            x_pos = width / 2;
+            y_pos = height / 2;
+            x_speed = 10;
+            y_speed = 5;
+            y_bar_pos = height / 2;
+        }
+
+        function draw() {
+            background(250, 0, 100);
+            x_pos += x_speed;
+            y_pos += y_speed;
+            y_bar_pos = mouseY;
+            y_bar_pos = constrain(y_bar_pos, 50, height - 50);
+            if (y_pos > y_bar_pos - 50 && y_pos < y_bar_pos + 50) {
+                if (x_pos <= 10 || x_pos >= width - 10) {
+                    x_speed = x_speed * -1;
+                    y_speed = ((y_bar_pos - y_pos) / 10) * -1;
+                }
+            } else {
+                if (x_pos < 10 || x_pos > width - 10) {
+                    x_pos = constrain(x_pos, 10, width - 10);
+                    x_pos = width - x_pos;
+                }
+            }
+            if (y_pos <= 10) {
+                y_speed = y_speed * -1;
+            } else if (y_pos >= height - 10) {
+                y_speed = y_speed * -1;
+            }
+            circle(x_pos, y_pos, 20);
+            rect(0, y_bar_pos - 50, 10, 100);
+            rect(width - 10, y_bar_pos - 50, 10, 100);
+        }
+    </script>
+</head>
+
+<body></body>
+</html>

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <title>p5js</title>
+    <meta charset="UTF-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+    <style>
+        body {
+            padding: 0;
+            margin: 0;
+            background-color: #1b1b1b;
+        }
+    </style>
+    <script src="./scripts/p5.js"></script>
+    <script>
+        let x_pos, y_pos;
+
+        function setup() {
+            createCanvas(800, 800);
+            background(250, 0, 100);
+            x_pos = width / 2;
+            y_pos = height / 2;
+        }
+
+        function draw() {
+            x_pos += random(-10, 10);
+            y_pos += random(-10, 10);
+            // x_pos = random(0, width);
+            // y_pos = random(0, height);
+            x_pos = constrain(x_pos, 10, width - 10);
+            y_pos = constrain(y_pos, 10, height - 10);
+            fill(random(0, 255), random(0, 255), random(0, 255), 200);
+            noStroke();
+            circle(x_pos, y_pos, 20);
+        }
+    </script>
+</head>
+
+<body></body>
+</html>
