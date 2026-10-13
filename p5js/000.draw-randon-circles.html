@@ -24,8 +24,8 @@
         }
 
         function draw() {
-            x_pos += random(-10, 10);
-            y_pos += random(-10, 10);
+            x_pos += random(-10, 10, 20);
+            y_pos += random(-10, 10, 20);
             // x_pos = random(0, width);
             // y_pos = random(0, height);
             x_pos = constrain(x_pos, 10, width - 10);
