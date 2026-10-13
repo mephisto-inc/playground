@@ -1,0 +1,6 @@
+[submodule "pages/mephisto-inc.github.io"]
+	path = pages/mephisto-inc.github.io
+	url = https://github.com/mephisto-inc/mephisto-inc.github.io.git
+[submodule "backend/spring/petshop_api"]
+	path = backend/spring/petshop_api
+	url = https://github.com/mephisto-inc/petshop_api.git
