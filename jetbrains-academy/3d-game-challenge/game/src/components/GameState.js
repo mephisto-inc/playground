@@ -9,8 +9,8 @@ import { requestAttack, resetAttack } from './Attack.js';
 //
 // It is deliberately the *only* module that imports the others' reset functions — the direction
 // is one-way (GameState -> Player/Enemy/Score/Attack), so there is no import cycle. The contact
-// itself is *not* detected here: Enemy marks its own `touchingPlayer` flag while it checks its
-// movement, and this module just polls that flag (see Enemy.js / Collision.js).
+// itself is detected by the enemy system via an overlap test each frame (see Enemy.js) and this
+// module polls that flag (see Enemy.js / Collision.js).
 //
 // Priority note (spec: "Game Over handling has higher priority than collision handling"): the
 // main loop calls updateGameState() right after the enemies have moved and skips the rest of the

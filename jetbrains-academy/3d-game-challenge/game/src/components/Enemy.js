@@ -18,9 +18,10 @@ import { MAP_SIZE } from './Map.js';
 
 // Enemy component: loads the enemy model once, spawns clones just outside the camera view (or
 // clamped to the map wall when the player is near an edge), and each frame steers every live
-// enemy toward the player — stopping whenever that step would push it into the player, another
-// enemy, or a house. main.js adds this system to the scene and calls updateEnemies(delta) once
-// per animation frame.
+// enemy toward the player — stopping whenever that step would push it into a house or a wall.
+// Bees pass straight through each other and the player; contact with the hero is detected
+// separately by an overlap test (see wouldOverlap). main.js adds this system to the scene and
+// calls updateEnemies(delta) once per animation frame.
 
 // --- Tuning -----------------------------------------------------------------
 // Enemy speed and spawn delay are no longer fixed here: they are score-scaled by the difficulty
@@ -39,8 +40,7 @@ const SPAWN_RETRY_ATTEMPTS = 8;
 // direction.
 // NOTE (possible future bug): this is feel-based, not structural — if enemy.glb is replaced
 //   or its rig/orientation changes, facing breaks again. Quick fix: change this one constant
-//   (try -PI/2 or PI). TODO: fold model-orientation facts into the project docs, then this
-//   note can be removed.
+//   (try -PI/2 or PI).
 const ENEMY_YAW_OFFSET = Math.PI / 2;
 
 // --- Spawn placement --------------------------------------------------------
@@ -144,23 +144,24 @@ function spawnEnemy() {
   // the group wrapper.
   const enemy = new THREE.Group();
 
-  // Sample the screen edge until we find a free spot. Without this, two bees spawned on the
-  // same edge could land inside each other — and since movement never deepens an overlap,
-  // they would be stuck together for the rest of the game.
+  // Sample the screen edge until we find a free spot. The main goal is to avoid dropping a bee
+  // directly on top of the player; since characters pass through each other, two bees sharing a
+  // spot is only cosmetic and would not trap them.
   let spawnAt = pickSpawnPosition();
   for (let attempt = 0; attempt < SPAWN_RETRY_ATTEMPTS; attempt++) {
     if (isSpotFree(spawnAt.x, spawnAt.y, enemyShape.radius)) break;
     spawnAt = pickSpawnPosition();
   }
-  // TODO: if the screen edge is genuinely jammed the bee still spawns overlapping. Fine at
-  //       this scale (a dozen bees); later a proper fix is to push the pair apart or to hold
-  //       the spawn until the next timer tick.
+  // TODO: if the screen edge is genuinely jammed the bee still spawns overlapping. With
+  //       character movement collision removed, an overlapping spawn is cosmetic — the bees
+  //       can move independently, so it shouldn't get stuck; the retry is mainly to avoid
+  //       spawning a bee directly on top of the player.
   enemy.position.copy(spawnAt);
 
   enemy.userData.model = model;
   enemy.userData.collider = registerCollider(enemy, enemy.position, enemyShape.radius);
-  // Contact flag polled by GameState: true when this bee has closed to the player's stop
-  // boundary and can no longer advance. Set false until the movement pass proves otherwise.
+  // Contact flag polled by GameState: true when this bee overlaps the player. Recomputed each
+  // frame in updateEnemies; false until then.
   enemy.userData.touchingPlayer = false;
   enemy.add(model);
   spawnScene.add(enemy);
@@ -175,24 +176,27 @@ export function initEnemies(scene) {
 
   // TODO: async load — enemies only exist once this resolves. Later code that reads the
   //       `enemies` array immediately after initEnemies() sees it empty.
-  loader.load('/models/enemy.glb', (gltf) => {
-    template = gltf.scene;
+  return new Promise((resolve, reject) => {
+    loader.load(
+      '/models/enemy.glb',
+      (gltf) => {
+        template = gltf.scene;
 
-    // Every clone is identical, so the shape is measured once on a throwaway clone prepared
-    // exactly like a real spawn (never on the template itself — that transform would leak
-    // into the clones and get applied twice).
-    // TODO: the bee's geometry is not centred on its own origin (its footprint sits ~1.8
-    //       units toward +Y), so the circumscribing circle comes out ~12.8 wide where the
-    //       bee's half-width is only ~10.8 — a slightly generous hitbox. Centring the circle
-    //       on the footprint would tighten it, but then the centre would have to rotate with
-    //       the bee's yaw. Only worth doing if the extra gap is noticeable in play.
-    const probe = skeletonClone(template);
-    probe.rotation.x = Math.PI / 2;
-    probe.scale.setScalar(ENEMY_SCALE);
-    enemyShape = measureCollisionShape(probe);
+        const probe = skeletonClone(template);
+        probe.rotation.x = Math.PI / 2;
+        probe.scale.setScalar(ENEMY_SCALE);
+        enemyShape = measureCollisionShape(probe);
 
-    spawnTimer = 0;
-    spawnEnemy(); // one enemy at the start...
+        spawnTimer = 0;
+        spawnEnemy();
+        resolve();
+      },
+      undefined,
+      (error) => {
+        console.error('Failed to load enemy.glb', error);
+        reject(error);
+      },
+    );
   });
 }
 
@@ -229,49 +233,37 @@ export function updateEnemies(delta) {
       // (Rejecting the whole step was the old behaviour; since that step scales with difficulty,
       // it left a gap that grew with speed and made Game Over fire from visibly too far away.)
       //
-      // The first rejected sub-step decides contact: the bee only counts as touching the hero if
-      // the *player* is the one that stopped it (a bee wedged against another bee is not a
-      // touch). Since sub-steps are tiny, the bee is within MAX_MOVE_SUB_STEP of the boundary
-      // when that happens, so the Game Over fires at the same distance at any difficulty. The
-      // flag is recomputed each frame and stays true while the bee is pinned, which is what lets
-      // a stationary player still be caught.
-      //
-      // ALTERNATIVE (not used): an analytic clamp could jump straight to the contact point by
-      // solving where the ray enters each blocking circle. Sub-stepping was chosen because it
-      // needs no per-shape math and keeps isMoveFree as the single "is this position allowed?"
-      // rule. A distance threshold would also work now that the bee reaches the boundary, but it
-      // would have to add a margin and would still need getCollider() for the radii.
+      // Movement is blocked only by boxes (houses/walls); other characters are passable. The
+      // "touched the hero" check is done after the move by testing overlap with the player.
       const stepLength = speed * delta;
       const subSteps = Math.max(1, Math.ceil(stepLength / MAX_MOVE_SUB_STEP));
       const subX = (direction.x * stepLength) / subSteps;
       const subY = (direction.y * stepLength) / subSteps;
 
-      enemy.userData.touchingPlayer = false;
       const playerCollider = getCollider(player);
       for (let i = 0; i < subSteps; i++) {
         const nx = enemy.position.x + subX;
         const ny = enemy.position.y + subY;
         if (!isMoveFree(collider, nx, ny)) {
-          enemy.userData.touchingPlayer =
-            !!playerCollider && wouldOverlap(collider, nx, ny, playerCollider);
           break;
         }
         enemy.position.x = nx;
         enemy.position.y = ny;
       }
+
+      // Detection: is this bee overlapping the player?
+      enemy.userData.touchingPlayer = !!playerCollider &&
+        wouldOverlap(collider, enemy.position.x, enemy.position.y, playerCollider);
     }
 
-    // Facing updates either way, so a blocked bee still turns toward its target and is ready
-    // to move the moment the way clears.
+    // Facing updates either way, so a bee blocked by a wall still turns toward its target and is
+    // ready to move the moment the way clears.
     const model = enemy.userData.model;
     if (model) {
       // Facing uses the model's yaw; see ENEMY_YAW_OFFSET for why +90 deg is required.
       model.rotation.y = Math.atan2(direction.y, direction.x) + ENEMY_YAW_OFFSET;
     }
   }
-  // TODO (crowding): enough bees can form a ring that pins the player with no free cell to
-  //       step into. If that ever feels unfair, add a separation pass that shoves overlapping
-  //       bees apart after the movement loop.
 }
 
 // --- Removal API (used by the attack system) --------------------------------
@@ -298,7 +290,8 @@ export function removeEnemy(enemy) {
   enemies.splice(index, 1);
 
   // Critical: forget the collider. A collider left in the registry would keep its dead owner's
-  // position and go on invisibly blocking the player (and other bees) forever.
+  // position and still count for placement checks (isSpotFree) and for the contact test
+  // (wouldOverlap) — so a dead bee could go on triggering Game Over from beyond the grave.
   unregisterCollider(enemy);
 
   // Detach the whole group (mesh child included). dispose() is deliberately NOT called: every

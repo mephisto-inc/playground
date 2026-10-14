@@ -1,38 +1,44 @@
 import * as THREE from 'three';
 
-// Collision module: the shared "characters must not overlap" rules (spec: Collision detection),
-// extended for the game world (spec: Game world) to also cover static obstacles.
+// Collision module: the shared collision rules, split into two distinct jobs:
+//
+//   * MOVEMENT (isMoveFree) — decides whether a character may step to a new spot. Only static
+//     obstacles block movement now: the houses (House.js) and the map's boundary walls (Map.js).
+//     Characters deliberately pass straight through each other (see the note in isMoveFree).
+//
+//   * DETECTION (wouldOverlap) — the actual "did two characters touch?" test. It is no longer
+//     wired into movement; the enemy system polls it directly each frame to decide whether a bee
+//     has reached the hero (see Enemy.js / GameState.js).
 //
 // Two kinds of collider live in the registry:
 //   * circle — every moving character, reduced to a shape measured from its own geometry (not a
-//     raw bounding box, which is far too boxy for rounded characters). Two circles overlap when
-//     their centres are closer than radiusA + radiusB + COLLISION_DISTANCE.
-//   * box — static, axis-aligned obstacles: the houses (House.js) and the map's boundary walls
-//     (Map.js). A box carries halfWidth/halfDepth instead of a radius.
+//     raw bounding box, which is far too boxy for rounded characters). Two circles are in contact
+//     when their centres are closer than radiusA + radiusB + COLLISION_DISTANCE.
+//   * box — static, axis-aligned obstacles (houses, boundary walls), carrying halfWidth/halfDepth
+//     instead of a radius.
 //
-// Everything is 2D: height is ignored, so a bee blocks Tode whether he is standing or mid-hop,
+// Everything is 2D: height is ignored, so a bee touches Tode whether he is standing or mid-hop,
 // and a character is blocked by a house no matter how high the hop arc climbs.
-//
-// Every check happens in the position-update phase of the animation loop (updatePlayer /
-// updateEnemies), and a character only commits a move that came back free.
 
 // Padding added on top of the two circles, so the "hitbox" can be tuned without touching the
-// models. Raise it for a chunkier feel, lower it to let characters almost touch.
-// (The spec requires this to be its own constant.)
-export const COLLISION_DISTANCE = 2;
+// models. Raise it for a chunkier feel, lower it to let characters almost touch. Module-local:
+// it is only used by the penetration math below, so it is not exported.
+const COLLISION_DISTANCE = 2;
 
 // The largest world-space increment a character may move in a single collision check. Movement
 // is resolved by advancing in increments of at most this size and stopping at the first one that
-// would overlap (see the module note above isMoveFree). This exists because the old rule rejected
-// a whole frame's step, which left a resting gap that silently grew with (difficulty-scaled)
-// speed: the game-over "touch" then fired from too far away. Sub-stepping keeps the gap fixed
-// regardless of speed and also stops a fast character from skipping through another in one jump.
+// would overlap an obstacle (see isMoveFree). This exists because rejecting a whole frame's step
+// leaves a resting gap that silently grows with (difficulty-scaled) speed, and a fast character
+// could also skip through a thin obstacle in one jump. Sub-stepping keeps the gap fixed regardless
+// of speed.
 //
 // Expressed as a fraction of COLLISION_DISTANCE so the two scale together: the granularity stays
 // proportionally fine whether the padding is tight or chunky.
-//   TODO (tuning/perf): smaller = more accurate contact but more isMoveFree calls per frame;
-//     larger = cheaper but a bigger resting gap. Quarter of the padding is a good middle ground.
-const MOVE_SUB_STEP_FRACTION = 0.25;
+//
+// NOTE (tuning/perf): smaller = more accurate contact but more isMoveFree calls per frame; larger
+//   = cheaper but a bigger resting gap. 0.1 is the chosen balance; drop to 0.05 for even finer
+//   contact at twice the cost.
+const MOVE_SUB_STEP_FRACTION = 0.1;
 export const MAX_MOVE_SUB_STEP = COLLISION_DISTANCE * MOVE_SUB_STEP_FRACTION;
 
 // Tolerance for the "is it touching yet?" comparison, so a move that lands a hair inside from
@@ -48,12 +54,6 @@ const colliders = new Map();
 //       (obstacles), but it still assumes exactly one collider per owner. A boss will probably
 //       need several colliders (or a different shape again), so expect this to grow into a small
 //       list of shapes per owner. The callers below should not have to change much.
-//
-// TODO (hop-over, reversed): an earlier version also compared a vertical range [z, z + height]
-//       so an airborne Tode could clear a bee; it felt stiff, so height is deliberately out of
-//       the test now. To restore it: keep the measured height on the collider and have
-//       penetrationOf() return Math.min(horizontal, vertical), where vertical is the overlap
-//       of the two [z, z + height] ranges. The "no worse than before" rule stays as-is.
 
 // Registers a moving character's circular collider and returns it (callers keep the result and
 // hand it back to isMoveFree). Registering the same owner twice replaces its collider. `position`
@@ -111,31 +111,31 @@ function penetrationOf(x, y, radius, other) {
 }
 
 // True if placing `mover` at (x, y) would overlap `other` specifically. This is the targeted
-// cousin of isMoveFree: it ignores every other character and only asks about one opponent. The
-// game-over contact check needs exactly that — an enemy may be blocked by a *second* enemy at
-// the same time it is blocked by the player, and only the second test is what "the bee touched
-// the hero" means. Callers must pass a registered collider for both arguments; `mover` is always
-// a moving character (a circle), while `other` may be a circle or an obstacle box.
+// cousin of isMoveFree: it ignores every other collider and only asks about one opponent. The
+// game-over contact check needs exactly that — "has this bee reached the hero?" is about one
+// specific character, not about whether some step is blocked. Callers must pass a registered
+// collider for both arguments; `mover` is always a moving character (a circle), while `other`
+// may be a circle or an obstacle box.
 export function wouldOverlap(mover, x, y, other) {
   return penetrationOf(x, y, mover.radius, other) > EPSILON;
 }
 
-// True if moving `mover` to (x, y) is allowed: the step must land clear of every other
-// character (spec: "only update an object's coordinates if the intended next position is
-// validated as collision-free"). A character that is already clear of another one is NEVER
-// allowed to step into it — that is what keeps Tode from walking through a bee.
+// True if moving `mover` to (x, y) is allowed: the step must land clear of every static obstacle.
+// ONLY boxes block movement (houses and boundary walls); other circles are skipped, so characters
+// pass straight through one another and contact is detected separately by wouldOverlap above.
 //
 // Callers do not hand this a whole frame's step and stop when it returns false: they advance in
 // increments of at most MAX_MOVE_SUB_STEP and stop at the first rejection, so they come to rest
 // right at the boundary instead of a variable distance short of it (see MAX_MOVE_SUB_STEP above).
 //
-// The one deliberate exception: a character that is *already* overlapping another may take a
-// step that does not deepen that overlap, so it can always back out instead of being frozen
-// inside a shape. This only ever applies once an overlap exists (which the rule above makes
-// impossible in normal play); it is the safety hatch for odd states like a jammed spawn.
+// The one deliberate exception: a character that is *already* inside a box may take a step that
+// does not deepen the overlap, so it can always back out instead of being frozen inside a shape.
+// This only ever applies once an overlap exists (which the rule above makes impossible in normal
+// play); it is the safety hatch for odd states like a house placed on top of a character.
 export function isMoveFree(mover, x, y) {
   for (const other of colliders.values()) {
     if (other === mover) continue;
+    if (other.shape !== 'box') continue; // characters do not block movement
     const after = penetrationOf(x, y, mover.radius, other);
     if (after <= EPSILON) continue; // lands clear of this one
     const before = penetrationOf(mover.position.x, mover.position.y, mover.radius, other);
@@ -165,8 +165,8 @@ export function isSpotFree(x, y, radius) {
 //                 never let two characters visually overlap.
 //   groundOffset  lift to add to model.position.z so the lowest point rests on z = 0.
 //
-// TODO: a circle already beats a box for a rounded character, but an ellipse would hug the
-//       toad/bee silhouettes better. Only worth it if the resulting gap looks too big.
+// NOTE: a circle already beats a box for a rounded character; an ellipse would hug the
+//       toad/bee silhouettes better, but it's not worth the extra math for this game.
 export function measureCollisionShape(object) {
   // Refresh the world matrices BEFORE reading any vertex. SkeletonUtils.clone() leaves the
   // cloned skeleton's bone matrices stale, and measuring before they refresh is what threw

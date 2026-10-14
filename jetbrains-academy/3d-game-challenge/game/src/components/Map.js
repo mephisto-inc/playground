@@ -16,9 +16,9 @@ import { registerBoxCollider } from './Collision.js';
 
 // --- Tuning -----------------------------------------------------------------
 // Side length of the square floor, in world units. A compact 650 (13 checker repeats) keeps the
-// whole arena within roughly one screen of the origin — houses and enemies stay in the action
-// instead of being scattered across a huge empty field. Exported so the house and enemy systems
-// can keep their own placements inside these walls.
+// arena tight around the origin — houses and enemies stay in the action instead of being scattered
+// across a huge empty field. Exported so the house and enemy systems can keep their own placements
+// inside these walls.
 export const MAP_SIZE = 650;
 
 // Side length of one checkerboard square, in world units (spec: "make it more yours" allows this;

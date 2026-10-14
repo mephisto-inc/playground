@@ -46,8 +46,8 @@ const loader = new GLTFLoader();
 // retrying a bounded number of times and then keeping the last candidate. The map rect is treated
 // as an inscribed disc: the centre may not come nearer than its own `clearance` (footprint
 // circumscribing radius) plus HOUSE_EDGE_MARGIN to the walls, so the footprint always lands fully
-// on the floor. `clearance` also doubles as the packing radius, so houses keep the same "circles
-// must not touch" spacing the characters use.
+// on the floor. `clearance` also doubles as the packing radius, so houses keep a "circles must not
+// touch" spacing of each other.
 function pickHousePosition(clearance) {
   const placementRadius = Math.max(0, MAP_SIZE / 2 - clearance - HOUSE_EDGE_MARGIN);
   let fallback = new THREE.Vector3();
@@ -109,18 +109,20 @@ function addHouse(template, mapGroup) {
 // Loads the model once and places the houses. Called once from main.js, after initMap so the map
 // group and the boundary-wall colliders already exist.
 export function initHouses(mapGroup) {
-  loader.load(
-    '/models/small_house.glb',
-    (gltf) => {
-      const template = gltf.scene;
-      for (let i = 0; i < HOUSE_COUNT; i++) addHouse(template, mapGroup);
-    },
-    undefined,
-    (error) => {
-      // TODO: failing to load leaves the map with no obstacles and no error surfaced to the
-      //       player. If houses ever become optional, hide the failure; otherwise consider a
-      //       visible fallback (e.g. plain box meshes) so the game stays playable.
-      console.error('Failed to load small_house.glb', error);
-    },
-  );
+  return new Promise((resolve, reject) => {
+    loader.load(
+      '/models/small_house.glb',
+      (gltf) => {
+        const template = gltf.scene;
+        for (let i = 0; i < HOUSE_COUNT; i++) addHouse(template, mapGroup);
+        resolve();
+      },
+      undefined,
+      (error) => {
+        // The game can still run without houses; surface for debugging but don't block.
+        console.error('Failed to load small_house.glb', error);
+        resolve();
+      },
+    );
+  });
 }

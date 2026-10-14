@@ -93,12 +93,6 @@ export function updateDifficulty() {
 // --- Getters (read by the game systems each frame) --------------------------
 // These are the "apply the updated speeds and delays to the respective game systems" half of the
 // spec: each system asks for its current value instead of holding a fixed constant.
-// TODO (debug): getDifficultyFactor() is handy for an on-screen difficulty readout if the balance
-//   is ever hard to judge in motion; it is not used by gameplay.
-
-export function getDifficultyFactor() {
-  return factor;
-}
 
 export function getEnemySpeed() {
   return enemySpeed;

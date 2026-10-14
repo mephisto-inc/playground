@@ -18,16 +18,15 @@ import { getAttackCooldown, getAttackRadius } from './Difficulty.js';
 // (BASE_ATTACK_COOLDOWN / BASE_ATTACK_RADIUS and the matching weights); the getters below return
 // this frame's values.
 //
-// Radius note (why range matters at all): COLLISION_DISTANCE keeps a chasing bee about
-// playerRadius + enemyRadius + COLLISION_DISTANCE ≈ 10 + 12.8 + 2 ≈ 24.8 units from the player's
-// centre, so an enemy can never get closer than that. The hit test adds the enemy's own radius
-// (the "edge" test), so even the base 50 reaches a bee whose centre is up to ~62.8 away —
-// comfortably past that closest approach. The score-scaled growth only widens the margin.
+// Radius note: bees now reach the player (no character-to-character movement blocking), so the
+// bee's centre can be at or near the player. The hit test adds the enemy's own radius, and the
+// base 50 reaches a bee whose centre is up to ~62.8 away — easily covering the whole approach.
+// The score-scaled growth only widens the margin.
 
 // How long the ring stays up before it has faded away, in seconds. short = a snappy pop.
 // The spec allows "disappear or fade out"; this fades. Set to 0 for an instant flash.
 // TODO (polish): a scale-up "shockwave" tween, or a colour pulse, would add impact here.
-export const ATTACK_FLASH_DURATION = 0.25;
+const ATTACK_FLASH_DURATION = 0.25;
 
 // The ring sits just above the ground plane so it never z-fights the floor at z = 0 (spec: 0.25).
 const ATTACK_Z_OFFSET = 0.25;
@@ -141,7 +140,7 @@ function performAttack() {
     const distance = Math.hypot(enemy.position.x - x, enemy.position.y - y);
 
     // "Edge" hit test: the enemy's body counts, not just its centre, so the ring can reach a bee
-    // that has closed to the collision limit (see the radius note in the tuning block). Falls
+    // that has closed on the player (see the radius note in the tuning block). Falls
     // back to a centre test if the collider is somehow missing.
     const enemyRadius = enemy.userData.collider ? enemy.userData.collider.radius : 0;
     if (distance <= radius + enemyRadius) {

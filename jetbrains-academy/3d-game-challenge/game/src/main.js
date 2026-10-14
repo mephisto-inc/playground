@@ -1,16 +1,16 @@
 import * as THREE from 'three';
 import './style.css';
 
-import player, { updatePlayer } from './components/Player.js';
+import player, {playerReady, updatePlayer} from './components/Player.js';
 import camera from './components/Camera.js';
 import renderer from './components/Renderer.js';
-import { initMap, map } from './components/Map.js';
-import { initHouses } from './components/House.js';
-import { initEnemies, updateEnemies } from './components/Enemy.js';
-import { initAttack, updateAttack } from './components/Attack.js';
-import { initScore, updateScore } from './components/Score.js';
-import { initGameState, updateGameState, isGameOver } from './components/GameState.js';
-import { updateDifficulty } from './components/Difficulty.js';
+import {initMap, map} from './components/Map.js';
+import {initHouses} from './components/House.js';
+import {initEnemies, updateEnemies} from './components/Enemy.js';
+import {initAttack, updateAttack} from './components/Attack.js';
+import {initScore, updateScore} from './components/Score.js';
+import {initGameState, isGameOver, updateGameState} from './components/GameState.js';
+import {updateDifficulty} from './components/Difficulty.js';
 
 // Main entry point: assembles the scene from the component modules and drives the
 // update/render loop.
@@ -36,19 +36,16 @@ directionalLight.position.set(-100, -100, 200);
 scene.add(directionalLight);
 
 // --- Map & houses -----------------------------------------------------------
-// The map owns the checkerboard floor, the dark backdrop, and the invisible boundary walls (as
-// colliders). It is added to the scene first so its colliders exist before anything spawns, and
-// its group is what the houses are parented to. Houses then register their own box colliders.
 initMap(scene);
-initHouses(map);
+await initHouses(map);
 
 // --- Player & camera --------------------------------------------------------
 scene.add(player);
 player.add(camera); // camera rides along with the player group (follow-cam)
+await playerReady;
 
 // --- Enemies ----------------------------------------------------------------
-// The enemy system loads its own model and spawns into the scene; it is stepped each frame.
-initEnemies(scene);
+await initEnemies(scene);
 
 // --- Attack -----------------------------------------------------------------
 // The attack system builds its on-ground ring and listens for Space; it is stepped each frame.
@@ -79,16 +76,16 @@ initGameState();
 // the enemies and the attack so a defeat takes priority: once it flips, the attack and score are
 // skipped for that frame too.
 renderer.setAnimationLoop(() => {
-  const delta = Math.min(clock.getDelta(), MAX_FRAME_DELTA);
-  if (!isGameOver()) {
-    updateDifficulty();
-    updatePlayer(delta);
-    updateEnemies(delta);
-    updateGameState();
+    const delta = Math.min(clock.getDelta(), MAX_FRAME_DELTA);
     if (!isGameOver()) {
-      updateAttack(delta);
-      updateScore(delta);
+        updateDifficulty();
+        updatePlayer(delta);
+        updateEnemies(delta);
+        updateGameState();
+        if (!isGameOver()) {
+            updateAttack(delta);
+            updateScore();
+        }
     }
-  }
-  renderer.render(scene, camera);
+    renderer.render(scene, camera);
 });

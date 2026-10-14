@@ -51,8 +51,7 @@ let playerModel = null; // the loaded mesh, used for facing rotation once availa
 
 // Collision volume. Registered right away with a rough guess so enemies already respect the
 // hero while the model is still loading, then overwritten with a value measured from the real
-// geometry. TODO: the guess is only here to close that async gap; drop it if the models are
-// ever made synchronous.
+// geometry.
 const ESTIMATED_RADIUS = 12;
 let playerCollider = registerCollider(player, player.position, ESTIMATED_RADIUS);
 
@@ -70,25 +69,33 @@ const loader = new GLTFLoader();
 //   after scale 20: ~20.0 x 12.7 x 15.2 units; rotation.x = +PI/2 maps local +Y -> world +Z
 //                   (this is a Z-up scene) and local +Z -> world -Y.
 //
-// TODO: model loads asynchronously, so the group is returned empty and filled in
-//       the callback. If later code needs the model synchronously, wrap this in a Promise.
-loader.load('/models/tode.glb', (gltf) => {
-  const model = gltf.scene;
+// Loads the model asynchronously. The group is returned empty and filled in once the load
+// resolves; `playerReady` resolves with the loaded model so callers can wait for it if needed.
+export const playerReady = new Promise((resolve, reject) => {
+  loader.load(
+    '/models/tode.glb',
+    (gltf) => {
+      const model = gltf.scene;
 
-  model.rotation.x = Math.PI / 2; // lay the Y-up model onto our Z-up ground
-  model.scale.setScalar(20);
+      model.rotation.x = Math.PI / 2; // lay the Y-up model onto our Z-up ground
+      model.scale.setScalar(20);
 
-  // Measure the collision shape while the model is still unparented, so the numbers come out
-  // in the player's own frame (the frame `player.position` lives in).
-  // TODO: Z-offset spec is ambiguous. The measured groundOffset lifts the model so its lowest
-  //       point rests on z = 0. Confirm this matches "model height".
-  const shape = measureCollisionShape(model);
-  model.position.z += shape.groundOffset;
+      // Measure the collision shape while the model is still unparented, so the numbers come out
+      // in the player's own frame (the frame `player.position` lives in).
+      // TODO: Z-offset spec is ambiguous. The measured groundOffset lifts the model so its lowest
+      //       point rests on z = 0. Confirm this matches "model height".
+      const shape = measureCollisionShape(model);
+      model.position.z += shape.groundOffset;
 
-  playerCollider = registerCollider(player, player.position, shape.radius);
+      playerCollider = registerCollider(player, player.position, shape.radius);
 
-  playerModel = model;
-  player.add(model);
+      playerModel = model;
+      player.add(model);
+      resolve(model);
+    },
+    undefined,
+    reject,
+  );
 });
 
 // Arrow keys and WASD both map to the same four map-relative directions.
@@ -153,11 +160,12 @@ export function updatePlayer(delta) {
   }
 
   // Advance the hop and look at where it would put the player this frame. Only the ground
-  // position is tested — height is ignored, so a bee blocks Tode whether he is on the ground or
-  // mid-hop. The advance is resolved in sub-steps of at most MAX_MOVE_SUB_STEP world units so the
-  // hero comes to rest right at a bee's boundary rather than up to a whole frame's step short of
-  // it: the raw step scales with the (difficulty-scaled) hop speed, so the old whole-step rule
-  // left a gap that grew as the game sped up.
+  // position is tested — height is ignored, so a house or wall blocks Tode whether he is on the
+  // ground or mid-hop (bees are passable; contact with them is detected separately). The advance
+  // is resolved in sub-steps of at most MAX_MOVE_SUB_STEP world units so the hero comes to rest
+  // right at an obstacle's boundary rather than up to a whole frame's step short of it: the raw
+  // step scales with the (difficulty-scaled) hop speed, so the old whole-step rule left a gap that
+  // grew as the game sped up.
   if (move.progress < 1) {
     const targetProgress = Math.min(move.progress + delta * getPlayerMoveSpeed(), 1);
 
@@ -183,12 +191,11 @@ export function updatePlayer(delta) {
     }
 
     if (blocked) {
-      // Blocked by a character. Rather than snapping the hop to the floor (which teleports the
-      // hero down mid-air — the bug this replaced), freeze the ground path by collapsing start
-      // and target onto the current spot, then let `progress` run on to complete the frame's arc.
-      // The ground no longer moves, but the sine arc below finishes, so Tode lands under his own
-      // weight at the last clear position. Landing on a clear spot is also what stops him ever
-      // being found "inside" a bee afterwards.
+      // Blocked by an obstacle (a house or a wall). Rather than snapping the hop to the floor
+      // (which teleports the hero down mid-air — the bug this replaced), freeze the ground path by
+      // collapsing start and target onto the current spot, then let `progress` run on to complete
+      // the frame's arc. The ground no longer moves, but the sine arc below finishes, so Tode
+      // lands under his own weight at the last clear position.
       move.start.copy(player.position);
       move.target.copy(player.position);
       move.progress = targetProgress;

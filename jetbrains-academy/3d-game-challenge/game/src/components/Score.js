@@ -1,6 +1,6 @@
 // Score component: owns the running score, the on-screen readout, and the survival reward.
 // The attack system reports each defeat through addKillScore(); main.js calls initScore() once
-// and updateScore(delta) once per animation frame. Everything else (rounding, DOM writes) is
+// and updateScore() once per animation frame. Everything else (rounding, DOM writes) is
 // kept inside this module so nothing else has to know how the score is displayed.
 
 // --- Tuning -----------------------------------------------------------------
@@ -20,12 +20,12 @@ let lastShown = -1; // last integer we rendered; -1 forces the first paint even 
 let scoreElement = null; // the on-screen <div class="score">
 
 // --- Clock note -------------------------------------------------------------
-// The spec suggests a THREE.Clock. We do NOT use one here: main.js already owns a clock and
-// passes each frame's `delta` to every system, so updateScore(delta) reuses that same value and
-// stays consistent with the rest of the components (which all take `delta`).
-// TODO: if scoring ever needs its own independent time source (e.g. a bonus countdown that
-//       should keep running while the game clock is paused), give Score its own THREE.Clock
-//       and switch updateScore() to read clock.getDelta() itself.
+// Survival time is tracked with a THREE.Clock to keep the score source independent of
+// the main loop's passed delta. A local cap matches the frame cap (0.1s) so a tab
+// returning from background cannot dump a large chunk of time.
+import * as THREE from 'three';
+const clock = new THREE.Clock();
+const MAX_SCORE_STEP = 0.1;
 
 // Builds the readout element and drops it into the page. Called once from main.js.
 export function initScore() {
@@ -39,8 +39,9 @@ export function initScore() {
 }
 
 // Called every frame: bank the survival reward, then refresh the readout if the whole number
-// changed. `delta` is the seconds since the previous frame (from main.js's clock).
-export function updateScore(delta) {
+// changed. Uses its own clock (clamped to MAX_SCORE_STEP).
+export function updateScore() {
+  const delta = Math.min(clock.getDelta(), MAX_SCORE_STEP);
   score += delta * SCORE_PER_SECOND;
   renderScore();
 }
@@ -70,6 +71,8 @@ function renderScore() {
 export function resetScore() {
   score = 0;
   lastShown = -1;
+  // Flush any accumulated time so reset doesn't pick up a big jump.
+  clock.getDelta();
   renderScore();
 }
 
