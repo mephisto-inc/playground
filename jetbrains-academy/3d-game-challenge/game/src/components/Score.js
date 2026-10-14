@@ -87,7 +87,7 @@ export function getExactScore() {
   return score;
 }
 
-// TODO (game over / reset done): resetScore()/getScore() above now back the Game Over flow. The
-//       survival tick is stopped from the outside — main.js skips updateScore() entirely while
-//       the game is frozen — so the dead player does not keep accruing idle time. If the pause
-//       is ever modelled by a `delta`/`paused` flag inside Score instead, guard the tick here.
+// NOTE (game over / reset): resetScore()/getScore() above back the Game Over flow. The survival
+//       tick is stopped from the outside — main.js skips updateScore() entirely while the game is
+//       frozen — so the dead player does not keep accruing idle time. If the pause is ever
+//       modelled by a `delta`/`paused` flag inside Score instead, guard the tick here.

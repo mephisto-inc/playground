@@ -29,7 +29,7 @@ import { getAttackCooldown, getAttackRadius } from './Difficulty.js';
 // TODO (polish): a scale-up "shockwave" tween, or a colour pulse, would add impact here.
 export const ATTACK_FLASH_DURATION = 0.25;
 
-// The ring sits just above the ground plane so it never z-fights the grid at z = 0 (spec: 0.25).
+// The ring sits just above the ground plane so it never z-fights the floor at z = 0 (spec: 0.25).
 const ATTACK_Z_OFFSET = 0.25;
 
 const ATTACK_COLOR = 0xffff00; // yellow (spec)
@@ -49,9 +49,8 @@ let attackCircle = null;    // the reusable ring mesh
 // repositioned per strike rather than allocating a new circle each time.
 export function initAttack(scene) {
   // CircleGeometry is authored in the XY plane with its normal along +Z, which is exactly the
-  // Z-up ground plane this project uses — so unlike the GridHelper (built in XZ, rotated to
-  // lie flat) this needs NO rotation. It is a unit circle; performAttack() scales it to the live
-  // (difficulty-scaled) radius.
+  // Z-up ground plane this project uses, so it needs NO rotation to lie flat. It is a unit circle;
+  // performAttack() scales it to the live (difficulty-scaled) radius.
   const geometry = new THREE.CircleGeometry(ATTACK_CIRCLE_BASE_RADIUS, ATTACK_CIRCLE_SEGMENTS);
 
   // MeshBasicMaterial is unlit, so the ring reads as a flat, solid colour — the "UI" look the

@@ -124,9 +124,9 @@ window.addEventListener('keyup', (event) => {
 // Advances the player by one frame. `delta` is the elapsed time in seconds since the last
 // call. Called from the renderer's animation loop in main.js.
 //
-// TODO: movement is map-relative (Up = +Y). Camera is a child of the player group
-//       and doesn't move, so world axes should match the view. Revisit in the next
-//       implementation (camera follow); if not handled, adjust mapping manually.
+// Movement is map-relative (Up = +Y) and that matches the view: the camera rides on the player
+// group, and the group itself never rotates (only the model child yaws), so the camera keeps a
+// fixed world orientation and the world axes line up with the screen.
 export function updatePlayer(delta) {
   if (move.progress >= 1) {
     // Idle: start a new hop from the queue, or — if a key is still held — keep moving so

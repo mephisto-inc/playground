@@ -171,8 +171,8 @@ export function measureCollisionShape(object) {
   // Refresh the world matrices BEFORE reading any vertex. SkeletonUtils.clone() leaves the
   // cloned skeleton's bone matrices stale, and measuring before they refresh is what threw
   // the enemies 689 units off the map in an earlier bug (the box came out ~100x too large).
-  // With fresh matrices, this walk and Box3.setFromObject give identical results — verified
-  // against three.js's own precise path for both of our models.
+  // With fresh matrices, this walk's lowest point (groundOffset) agrees with Box3.setFromObject's
+  // min.z; the radius is the extra part this walk gives that a bounding box cannot.
   object.updateMatrixWorld(true);
 
   let radius = 0;

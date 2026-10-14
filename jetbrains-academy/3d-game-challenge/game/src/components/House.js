@@ -43,10 +43,11 @@ const loader = new GLTFLoader();
 
 // Picks a random spot spread across the map and confirms it is clear of everything already
 // registered (the player at the origin, the boundary walls, and any houses placed earlier),
-// retrying until one is found. The map rect is treated as an inscribed disc: the centre may not
-// come nearer than its own `clearance` (footprint circumscribing radius) plus HOUSE_EDGE_MARGIN to
-// the walls, so the footprint always lands fully on the floor. `clearance` also doubles as the
-// packing radius, so houses keep the same "circles must not touch" spacing the characters use.
+// retrying a bounded number of times and then keeping the last candidate. The map rect is treated
+// as an inscribed disc: the centre may not come nearer than its own `clearance` (footprint
+// circumscribing radius) plus HOUSE_EDGE_MARGIN to the walls, so the footprint always lands fully
+// on the floor. `clearance` also doubles as the packing radius, so houses keep the same "circles
+// must not touch" spacing the characters use.
 function pickHousePosition(clearance) {
   const placementRadius = Math.max(0, MAP_SIZE / 2 - clearance - HOUSE_EDGE_MARGIN);
   let fallback = new THREE.Vector3();

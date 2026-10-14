@@ -16,10 +16,11 @@ import {
 import { getEnemySpeed, getEnemySpawnDelay } from './Difficulty.js';
 import { MAP_SIZE } from './Map.js';
 
-// Enemy component: loads the enemy model once, spawns clones just outside the camera view,
-// and each frame steers every live enemy toward the player — stopping whenever that step
-// would push it into the player or another enemy. main.js adds this system to the scene and
-// calls updateEnemies(delta) once per animation frame.
+// Enemy component: loads the enemy model once, spawns clones just outside the camera view (or
+// clamped to the map wall when the player is near an edge), and each frame steers every live
+// enemy toward the player — stopping whenever that step would push it into the player, another
+// enemy, or a house. main.js adds this system to the scene and calls updateEnemies(delta) once
+// per animation frame.
 
 // --- Tuning -----------------------------------------------------------------
 // Enemy speed and spawn delay are no longer fixed here: they are score-scaled by the difficulty
@@ -49,6 +50,8 @@ const ENEMY_YAW_OFFSET = Math.PI / 2;
 // aspect ratio, so it is measured from the camera instead of hard-coded. `spawnCorners`
 // holds that area's four corners relative to the player (the camera follows the player, so
 // the shape is constant in the player's frame) and `SPAWN_MARGIN` pushes spawns just past it.
+// The point is then clamped back inside the map walls (see pickSpawnPosition), so near an edge a
+// spawn may land on-screen rather than just off it.
 const SPAWN_MARGIN = 1.1; // 1.0 = exactly on the screen edge, 1.1 = 10% beyond it
 // Extra clearance kept between a spawn and the wall's inner face, on top of the bee's own radius,
 // so a clamped spawn never starts tangent to (or overlapping) a wall.
@@ -70,7 +73,7 @@ let enemyShape = null; // measured collision shape, shared by every clone (they 
 //                is skinned, spawns must use SkeletonUtils.clone (a plain .clone() would
 //                share and corrupt the skeleton).
 //   meshes:      1 mesh, 7 primitives, attributes POSITION/NORMAL/JOINTS_0/WEIGHTS_0
-//   materials:   5 material slots (base colors only, no textures)
+//   materials:   7 material slots (base colors only, no textures)
 //   animations:  8 clips are bundled in the file but are NOT played yet (see below)
 //
 // Animations available in enemy.glb (all can drive an AnimationMixer per enemy):
