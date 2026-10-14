@@ -16,6 +16,20 @@ import * as THREE from 'three';
 // (The spec requires this to be its own constant.)
 export const COLLISION_DISTANCE = 2;
 
+// The largest world-space increment a character may move in a single collision check. Movement
+// is resolved by advancing in increments of at most this size and stopping at the first one that
+// would overlap (see the module note above isMoveFree). This exists because the old rule rejected
+// a whole frame's step, which left a resting gap that silently grew with (difficulty-scaled)
+// speed: the game-over "touch" then fired from too far away. Sub-stepping keeps the gap fixed
+// regardless of speed and also stops a fast character from skipping through another in one jump.
+//
+// Expressed as a fraction of COLLISION_DISTANCE so the two scale together: the granularity stays
+// proportionally fine whether the padding is tight or chunky.
+//   TODO (tuning/perf): smaller = more accurate contact but more isMoveFree calls per frame;
+//     larger = cheaper but a bigger resting gap. Quarter of the padding is a good middle ground.
+const MOVE_SUB_STEP_FRACTION = 0.25;
+export const MAX_MOVE_SUB_STEP = COLLISION_DISTANCE * MOVE_SUB_STEP_FRACTION;
+
 // Tolerance for the "is it touching yet?" comparison, so a move that lands a hair inside from
 // floating-point rounding is not treated as an overlap.
 const EPSILON = 1e-6;
@@ -80,6 +94,10 @@ export function wouldOverlap(mover, x, y, other) {
 // character (spec: "only update an object's coordinates if the intended next position is
 // validated as collision-free"). A character that is already clear of another one is NEVER
 // allowed to step into it — that is what keeps Tode from walking through a bee.
+//
+// Callers do not hand this a whole frame's step and stop when it returns false: they advance in
+// increments of at most MAX_MOVE_SUB_STEP and stop at the first rejection, so they come to rest
+// right at the boundary instead of a variable distance short of it (see MAX_MOVE_SUB_STEP above).
 //
 // The one deliberate exception: a character that is *already* overlapping another may take a
 // step that does not deepen that overlap, so it can always back out instead of being frozen

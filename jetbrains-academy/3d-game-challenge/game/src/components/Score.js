@@ -79,6 +79,14 @@ export function getScore() {
   return Math.floor(score);
 }
 
+// The current score as a raw float. Used by the difficulty system to scale continuously: the
+// survival reward ticks every frame (0.1/s), so the integer above would make difficulty step
+// once per 10 seconds instead of gliding. Kept separate from getScore() so the display stays a
+// clean whole number while the difficulty math stays smooth.
+export function getExactScore() {
+  return score;
+}
+
 // TODO (game over / reset done): resetScore()/getScore() above now back the Game Over flow. The
 //       survival tick is stopped from the outside — main.js skips updateScore() entirely while
 //       the game is frozen — so the dead player does not keep accruing idle time. If the pause

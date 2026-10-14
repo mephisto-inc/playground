@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import player, { isPlayerGrounded } from './Player.js';
 import { getEnemies, removeEnemy } from './Enemy.js';
 import { addKillScore } from './Score.js';
+import { getAttackCooldown, getAttackRadius } from './Difficulty.js';
 
 // Attack component: the player's close-range "blast". Space fires it, a cooldown limits how
 // often, a yellow ring flashes on the ground as feedback, and every enemy whose body reaches
@@ -12,26 +13,16 @@ import { addKillScore } from './Score.js';
 // listener only *requests* a strike, and updateAttack decides whether it actually happens.
 
 // --- Tuning -----------------------------------------------------------------
-// Cooldown between strikes, in seconds (spec: a constant, default 1). Raise it to make the
-// power a rare "get out of jail" button, lower it for a fast melee rhythm.
-// TODO (difficulty, per task.md): 1s is the required default; expose it in some options object
-//       if the game ever grows a difficulty/settings screen.
-export const ATTACK_COOLDOWN = 1;
-
-// Radius of the attack ring, in world units — the drawn circle's radius AND the base of the
-// hit test. Raised from the original 25 to 50, which quadruples the swept area (area scales with
-// the square of the radius) so the blast reliably clears a whole ring of bees rather than
-// clipping a single one.
+// The cooldown and the ring radius are no longer fixed here: the difficulty system scales both as
+// the score climbs, and it owns their base values. Tune them in Difficulty.js
+// (BASE_ATTACK_COOLDOWN / BASE_ATTACK_RADIUS and the matching weights); the getters below return
+// this frame's values.
 //
-// IMPORTANT design constraint: COLLISION_DISTANCE keeps a chasing bee about
-// playerRadius + enemyRadius + COLLISION_DISTANCE ≈ 10 + 12.8 + 2 ≈ 24.8 units away from the
-// centre of the player, so an enemy can never get closer than that. The hit test below adds the
-// enemy's own radius (the "edge" test): at 50 the ring reaches a bee whose centre is up to
-// 50 + ~12.8 ≈ 62.8 units away — comfortably past the ~24.8 closest approach, so it connects
-// even before a bee has closed all the way in.
-// TODO: tune this. Lower it toward ~24 for a knife-edge strike, raise it for an even wider
-//       shockwave that clears bees before they arrive. Changing it changes the ring visual too.
-export const ATTACK_RADIUS = 50;
+// Radius note (why range matters at all): COLLISION_DISTANCE keeps a chasing bee about
+// playerRadius + enemyRadius + COLLISION_DISTANCE ≈ 10 + 12.8 + 2 ≈ 24.8 units from the player's
+// centre, so an enemy can never get closer than that. The hit test adds the enemy's own radius
+// (the "edge" test), so even the base 50 reaches a bee whose centre is up to ~62.8 away —
+// comfortably past that closest approach. The score-scaled growth only widens the margin.
 
 // How long the ring stays up before it has faded away, in seconds. short = a snappy pop.
 // The spec allows "disappear or fade out"; this fades. Set to 0 for an instant flash.
@@ -44,6 +35,10 @@ const ATTACK_Z_OFFSET = 0.25;
 const ATTACK_COLOR = 0xffff00; // yellow (spec)
 const ATTACK_CIRCLE_SEGMENTS = 32; // smoothness of the ring; 32 is plenty at this radius
 
+// The ring is authored as a UNIT circle (radius 1) and scaled to the live radius on each strike,
+// so the visual can grow with the difficulty-scaled hit test without rebuilding geometry.
+const ATTACK_CIRCLE_BASE_RADIUS = 1;
+
 // --- State ------------------------------------------------------------------
 let cooldownRemaining = 0; // seconds until another strike is allowed (0 = ready)
 let flashRemaining = 0;    // seconds left in the ring's fade
@@ -55,8 +50,9 @@ let attackCircle = null;    // the reusable ring mesh
 export function initAttack(scene) {
   // CircleGeometry is authored in the XY plane with its normal along +Z, which is exactly the
   // Z-up ground plane this project uses — so unlike the GridHelper (built in XZ, rotated to
-  // lie flat) this needs NO rotation.
-  const geometry = new THREE.CircleGeometry(ATTACK_RADIUS, ATTACK_CIRCLE_SEGMENTS);
+  // lie flat) this needs NO rotation. It is a unit circle; performAttack() scales it to the live
+  // (difficulty-scaled) radius.
+  const geometry = new THREE.CircleGeometry(ATTACK_CIRCLE_BASE_RADIUS, ATTACK_CIRCLE_SEGMENTS);
 
   // MeshBasicMaterial is unlit, so the ring reads as a flat, solid colour — the "UI" look the
   // spec wants. transparent + opacity lets it fade; depthWrite is off so the fading disc does
@@ -117,13 +113,20 @@ export function updateAttack(delta) {
 
 // Runs one strike: restarts the cooldown, flashes the ring, and removes every enemy in range.
 function performAttack() {
-  cooldownRemaining = ATTACK_COOLDOWN;
+  // Read the difficulty-scaled values once, so the cooldown we start and the radius we test and
+  // draw are consistent for this strike.
+  const cooldown = getAttackCooldown();
+  const radius = getAttackRadius();
+
+  cooldownRemaining = cooldown;
 
   // Show the ring on the ground at the player's current spot. x/y only — the player group's z
   // is the hop height, and the ring must stay on the ground even if the player is moving.
   // NOTE: the ring does not follow the player during the fade; it marks where the blast landed.
   if (attackCircle) {
     attackCircle.position.set(player.position.x, player.position.y, ATTACK_Z_OFFSET);
+    // Unit geometry scaled to the live radius — the drawn ring always matches the hit test below.
+    attackCircle.scale.setScalar(radius);
     attackCircle.visible = true;
     attackCircle.material.opacity = 1;
     flashRemaining = ATTACK_FLASH_DURATION;
@@ -138,11 +141,11 @@ function performAttack() {
   for (const enemy of targets) {
     const distance = Math.hypot(enemy.position.x - x, enemy.position.y - y);
 
-    // "Edge" hit test: the enemy's body counts, not just its centre, so the small ring can
-    // still reach a bee that has closed to the collision limit (see ATTACK_RADIUS). Falls back
-    // to a centre test if the collider is somehow missing.
+    // "Edge" hit test: the enemy's body counts, not just its centre, so the ring can reach a bee
+    // that has closed to the collision limit (see the radius note in the tuning block). Falls
+    // back to a centre test if the collider is somehow missing.
     const enemyRadius = enemy.userData.collider ? enemy.userData.collider.radius : 0;
-    if (distance <= ATTACK_RADIUS + enemyRadius) {
+    if (distance <= radius + enemyRadius) {
       // Credit the kill only when the enemy was really removed (removeEnemy returns false for
       // one already gone), so a double-count can never inflate the score.
       if (removeEnemy(enemy)) addKillScore();

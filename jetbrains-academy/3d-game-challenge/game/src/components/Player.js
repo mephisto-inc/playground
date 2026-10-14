@@ -1,15 +1,18 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { registerCollider, isMoveFree, measureCollisionShape } from './Collision.js';
+import { registerCollider, isMoveFree, measureCollisionShape, MAX_MOVE_SUB_STEP } from './Collision.js';
+import { getPlayerMoveSpeed } from './Difficulty.js';
 
 // Player component: owns the player group, loads/reorients the Tode model, collects
 // keyboard input into a queue, and advances one "hop" at a time toward the requested
 // direction. main.js calls updatePlayer(delta) once per animation frame.
 
 // --- Movement tuning ---------------------------------------------------------
-// TODO: constants are placeholders — verify they are customizable later per task.md
+// Hop speed is score-scaled by the difficulty system (tune BASE_PLAYER_MOVE_SPEED and
+// PLAYER_MOVE_SPEED_WEIGHT in Difficulty.js); it is read fresh each frame. Raising the speed makes
+// each hop finish sooner, so Tode covers ground faster without changing the hop's size.
+// TODO (tuning): constants are placeholders — verify they are customizable later per task.md
 //       ("Customize it your way": jump speed/height/distance).
-const MOVE_SPEED = 2;     // progress units per second (a full hop takes 1/MOVE_SPEED = 0.5s)
 const JUMP_HEIGHT = 25;   // peak height (world Z) of the hop's sine arc
 const JUMP_DISTANCE = 50; // ground distance (world XY) covered per hop
 
@@ -141,29 +144,46 @@ export function updatePlayer(delta) {
     }
   }
 
-  // Advance the hop and look at where it would put the player this frame. Nothing is
-  // committed until that spot comes back collision-free (spec: check during the position
-  // update, only move when validated). Only the ground position is tested — height is
-  // ignored, so a bee blocks Tode whether he is on the ground or mid-hop.
+  // Advance the hop and look at where it would put the player this frame. Only the ground
+  // position is tested — height is ignored, so a bee blocks Tode whether he is on the ground or
+  // mid-hop. The advance is resolved in sub-steps of at most MAX_MOVE_SUB_STEP world units so the
+  // hero comes to rest right at a bee's boundary rather than up to a whole frame's step short of
+  // it: the raw step scales with the (difficulty-scaled) hop speed, so the old whole-step rule
+  // left a gap that grew as the game sped up.
   if (move.progress < 1) {
-    const nextProgress = Math.min(move.progress + delta * MOVE_SPEED, 1);
-    const nextX = THREE.MathUtils.lerp(move.start.x, move.target.x, nextProgress);
-    const nextY = THREE.MathUtils.lerp(move.start.y, move.target.y, nextProgress);
+    const targetProgress = Math.min(move.progress + delta * getPlayerMoveSpeed(), 1);
 
-    if (isMoveFree(playerCollider, nextX, nextY)) {
+    // World length of this hop, used to convert the fixed world sub-step into a progress step.
+    // It is 0 for a frozen hop (start == target), in which case the ground is not moving anyway.
+    const hopLength = move.start.distanceTo(move.target);
+    const subProgress =
+      hopLength > 0 ? Math.min(MAX_MOVE_SUB_STEP / hopLength, 1) : 1;
+
+    let blocked = false;
+    while (move.progress < targetProgress) {
+      const nextProgress = Math.min(move.progress + subProgress, targetProgress);
+      const nextX = THREE.MathUtils.lerp(move.start.x, move.target.x, nextProgress);
+      const nextY = THREE.MathUtils.lerp(move.start.y, move.target.y, nextProgress);
+
+      if (!isMoveFree(playerCollider, nextX, nextY)) {
+        blocked = true;
+        break;
+      }
       move.progress = nextProgress;
       player.position.x = nextX;
       player.position.y = nextY;
-    } else {
-      // The step is blocked by a character. Rather than snapping the hop to the floor (which
-      // teleports the hero down mid-air — the bug this replaced), freeze the hop where it
-      // stands by collapsing start and target onto the current spot, and keep advancing
-      // `progress`. The ground path no longer moves, but the sine arc below finishes, so Tode
-      // completes the jump and lands under his own weight at the last clear position. Landing
-      // on a clear spot is also what stops him ever being found "inside" a bee afterwards.
+    }
+
+    if (blocked) {
+      // Blocked by a character. Rather than snapping the hop to the floor (which teleports the
+      // hero down mid-air — the bug this replaced), freeze the ground path by collapsing start
+      // and target onto the current spot, then let `progress` run on to complete the frame's arc.
+      // The ground no longer moves, but the sine arc below finishes, so Tode lands under his own
+      // weight at the last clear position. Landing on a clear spot is also what stops him ever
+      // being found "inside" a bee afterwards.
       move.start.copy(player.position);
       move.target.copy(player.position);
-      move.progress = nextProgress;
+      move.progress = targetProgress;
     }
   }
 

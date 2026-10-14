@@ -11,7 +11,9 @@ import {
   getCollider,
   wouldOverlap,
   measureCollisionShape,
+  MAX_MOVE_SUB_STEP,
 } from './Collision.js';
+import { getEnemySpeed, getEnemySpawnDelay } from './Difficulty.js';
 
 // Enemy component: loads the enemy model once, spawns clones just outside the camera view,
 // and each frame steers every live enemy toward the player — stopping whenever that step
@@ -19,11 +21,11 @@ import {
 // calls updateEnemies(delta) once per animation frame.
 
 // --- Tuning -----------------------------------------------------------------
-// TODO (difficulty, per task.md): tweak ENEMY_SPEED / ENEMY_SPAWN_DELAY for "horde" (fast
-//       spawn, slow) vs "hunter" (slow spawn, fast) feels.
-export const ENEMY_SPEED = 30; // world units per second
-export const ENEMY_SPAWN_DELAY = 3; // seconds between spawns
-
+// Enemy speed and spawn delay are no longer fixed here: they are score-scaled by the difficulty
+// system, which owns their base values. Tune them in Difficulty.js (BASE_ENEMY_SPEED /
+// BASE_ENEMY_SPAWN_DELAY, and the matching weights). The values below are read fresh every frame.
+//
+// The model scalar is unrelated to difficulty and stays a local constant.
 const ENEMY_SCALE = 5; // model scalar (see the characteristics block below)
 
 // How many screen-edge samples to try before giving up and spawning anyway (see spawnEnemy).
@@ -177,12 +179,19 @@ export function initEnemies(scene) {
 export function updateEnemies(delta) {
   if (!template) return; // model not loaded yet
 
-  // ...then one more every ENEMY_SPAWN_DELAY seconds, at random points around the screen edge.
+  // The spawn delay shrinks as the score climbs (difficulty system), so read this frame's value
+  // once and use it for both the accumulate and the drain — otherwise a mid-loop change could
+  // make the two disagree. The timer accumulates real elapsed time (delta = clock.getDelta()).
+  const spawnDelay = getEnemySpawnDelay();
   spawnTimer += delta;
-  while (spawnTimer >= ENEMY_SPAWN_DELAY) {
-    spawnTimer -= ENEMY_SPAWN_DELAY;
+  while (spawnTimer >= spawnDelay) {
+    spawnTimer -= spawnDelay;
     spawnEnemy();
   }
+
+  // Speed is likewise score-scaled; capture it once so every bee in this frame moves at the same
+  // rate rather than a slightly different one if the factor updates mid-pass.
+  const speed = getEnemySpeed();
 
   for (const enemy of enemies) {
     // Vector from the enemy to the player, flattened to the ground plane.
@@ -193,32 +202,40 @@ export function updateEnemies(delta) {
 
     const collider = enemy.userData.collider;
     if (collider) {
-      const nextX = enemy.position.x + direction.x * ENEMY_SPEED * delta;
-      const nextY = enemy.position.y + direction.y * ENEMY_SPEED * delta;
+      // Advance toward the player in sub-steps of at most MAX_MOVE_SUB_STEP so the bee comes to
+      // rest right at the collision boundary instead of up to a whole frame's step short of it.
+      // (Rejecting the whole step was the old behaviour; since that step scales with difficulty,
+      // it left a gap that grew with speed and made Game Over fire from visibly too far away.)
+      //
+      // The first rejected sub-step decides contact: the bee only counts as touching the hero if
+      // the *player* is the one that stopped it (a bee wedged against another bee is not a
+      // touch). Since sub-steps are tiny, the bee is within MAX_MOVE_SUB_STEP of the boundary
+      // when that happens, so the Game Over fires at the same distance at any difficulty. The
+      // flag is recomputed each frame and stays true while the bee is pinned, which is what lets
+      // a stationary player still be caught.
+      //
+      // ALTERNATIVE (not used): an analytic clamp could jump straight to the contact point by
+      // solving where the ray enters each blocking circle. Sub-stepping was chosen because it
+      // needs no per-shape math and keeps isMoveFree as the single "is this position allowed?"
+      // rule. A distance threshold would also work now that the bee reaches the boundary, but it
+      // would have to add a margin and would still need getCollider() for the radii.
+      const stepLength = speed * delta;
+      const subSteps = Math.max(1, Math.ceil(stepLength / MAX_MOVE_SUB_STEP));
+      const subX = (direction.x * stepLength) / subSteps;
+      const subY = (direction.y * stepLength) / subSteps;
 
-      // Only commit the step if it does not push this bee deeper into the player or another
-      // bee. The check is ground-plane only — height is ignored (see Collision.js).
-      if (isMoveFree(collider, nextX, nextY)) {
-        enemy.position.x = nextX;
-        enemy.position.y = nextY;
-        enemy.userData.touchingPlayer = false; // moved freely, so not pinned to the player
-      } else {
-        // The step was blocked by *someone*. Ask specifically whether the player is the one it
-        // touched this time (rather than whichever collider isMoveFree happened to reject on
-        // first): a bee can be wedged against a second bee and still be pressed onto the hero,
-        // and that should still count as contact. This is the "intended next step reaches the
-        // player" rule — it stays true every frame the bee is pinned, so it triggers the Game
-        // Over even if the player never moves.
-        //
-        // ALTERNATIVE (not used): a pure distance threshold. GameState could instead poll
-        // `distance(player, enemy) <= playerRadius + enemyRadius + COLLISION_DISTANCE + margin`
-        // each frame — simpler and symmetric, but it has to guess a margin to cover how far a
-        // single frame's step can fall short of the boundary, and it would need getCollider()
-        // for the radii anyway. The intended-step test needs no margin.
-        const playerCollider = getCollider(player);
-        enemy.userData.touchingPlayer = playerCollider
-          ? wouldOverlap(collider, nextX, nextY, playerCollider)
-          : false;
+      enemy.userData.touchingPlayer = false;
+      const playerCollider = getCollider(player);
+      for (let i = 0; i < subSteps; i++) {
+        const nx = enemy.position.x + subX;
+        const ny = enemy.position.y + subY;
+        if (!isMoveFree(collider, nx, ny)) {
+          enemy.userData.touchingPlayer =
+            !!playerCollider && wouldOverlap(collider, nx, ny, playerCollider);
+          break;
+        }
+        enemy.position.x = nx;
+        enemy.position.y = ny;
       }
     }
 
