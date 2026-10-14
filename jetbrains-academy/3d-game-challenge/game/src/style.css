@@ -19,3 +19,44 @@ body {
   user-select: none; /* purely decorative; never selectable */
   pointer-events: none; /* never intercepts clicks/keyboard on the canvas */
 }
+
+/* Game Over overlay (div.game-over, built in GameState.js). A full-screen, centred stack over the
+   frozen scene. The translucent white wash dims the field without hiding it (the canvas is
+   transparent over a white page, so the text stays dark like the score). is-hidden is the
+   state class GameState toggles. */
+.game-over {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1a1a1a;
+  text-align: center;
+  user-select: none;
+  pointer-events: none; /* the overlay is informational; nothing here is clickable */
+}
+
+.game-over.is-hidden {
+  display: none;
+}
+
+.game-over__title {
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.game-over__score {
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.game-over__hint {
+  font-size: 20px;
+  opacity: 0.7;
+}

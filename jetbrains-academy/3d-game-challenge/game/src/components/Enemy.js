@@ -8,6 +8,8 @@ import {
   unregisterCollider,
   isMoveFree,
   isSpotFree,
+  getCollider,
+  wouldOverlap,
   measureCollisionShape,
 } from './Collision.js';
 
@@ -133,6 +135,9 @@ function spawnEnemy() {
 
   enemy.userData.model = model;
   enemy.userData.collider = registerCollider(enemy, enemy.position, enemyShape.radius);
+  // Contact flag polled by GameState: true when this bee has closed to the player's stop
+  // boundary and can no longer advance. Set false until the movement pass proves otherwise.
+  enemy.userData.touchingPlayer = false;
   enemy.add(model);
   spawnScene.add(enemy);
   enemies.push(enemy);
@@ -196,6 +201,24 @@ export function updateEnemies(delta) {
       if (isMoveFree(collider, nextX, nextY)) {
         enemy.position.x = nextX;
         enemy.position.y = nextY;
+        enemy.userData.touchingPlayer = false; // moved freely, so not pinned to the player
+      } else {
+        // The step was blocked by *someone*. Ask specifically whether the player is the one it
+        // touched this time (rather than whichever collider isMoveFree happened to reject on
+        // first): a bee can be wedged against a second bee and still be pressed onto the hero,
+        // and that should still count as contact. This is the "intended next step reaches the
+        // player" rule — it stays true every frame the bee is pinned, so it triggers the Game
+        // Over even if the player never moves.
+        //
+        // ALTERNATIVE (not used): a pure distance threshold. GameState could instead poll
+        // `distance(player, enemy) <= playerRadius + enemyRadius + COLLISION_DISTANCE + margin`
+        // each frame — simpler and symmetric, but it has to guess a margin to cover how far a
+        // single frame's step can fall short of the boundary, and it would need getCollider()
+        // for the radii anyway. The intended-step test needs no margin.
+        const playerCollider = getCollider(player);
+        enemy.userData.touchingPlayer = playerCollider
+          ? wouldOverlap(collider, nextX, nextY, playerCollider)
+          : false;
       }
     }
 
@@ -248,4 +271,25 @@ export function removeEnemy(enemy) {
   if (enemy.parent) enemy.parent.remove(enemy);
 
   return true;
+}
+
+// Wipes the board for a fresh run: removes every live enemy (through the same bookkeeping as a
+// kill, so colliders unregister and scene nodes detach correctly), resets the spawn timer, and
+// spawns the opening enemy again. Called by GameState.resetGame().
+//
+// Spec wording is "re-spawn them at the map corners"; this game deliberately spawns at the
+// adaptive screen edge instead (see the Spawn placement block above), and that is the canonical
+// method going forward — corners would drop the bees far off-camera and stall the action.
+// TODO (spawn count, per spec): the spec implies a crowd; we respawn a single enemy to match the
+//   game's initial state. If difficulty should ramp faster on restart, loop spawnEnemy() here.
+export function resetEnemies() {
+  // Snapshot first: removeEnemy() splices the live array, so iterating it directly would skip
+  // entries as they shift down (same reason the attack sweep copies the list).
+  for (const enemy of enemies.slice()) removeEnemy(enemy);
+
+  spawnTimer = 0; // a reset run starts the ramp over, just like the very first run
+
+  // Guard for the async-load window: before the model resolves there is no template/shape, so
+  // spawnEnemy() would no-op. initEnemies() will spawn the opener once the load lands anyway.
+  spawnEnemy();
 }

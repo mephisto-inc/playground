@@ -64,7 +64,22 @@ function renderScore() {
   if (scoreElement) scoreElement.textContent = `Score: ${shown}`;
 }
 
-// TODO (game over / reset): the upcoming game-over spec resets the score and pauses play, so it
-//       will need a resetScore() (zero `score`/`lastShown` and repaint) and likely a getScore()
-//       for the final readout. Also revisit the survival tick then: it should stop accruing once
-//       the player is dead rather than counting idle time.
+// Zeroes the run and repaints. Called by GameState.resetGame() so a new attempt starts from 0.
+// `lastShown = -1` is important: it is the sentinel that forces the next renderScore() to paint
+// even if the new value happens to equal the old one, so the readout can never stay stale.
+export function resetScore() {
+  score = 0;
+  lastShown = -1;
+  renderScore();
+}
+
+// The current score as a whole number. Used by GameState to show the final result on the Game
+// Over overlay. Floored so the overlay matches the on-screen readout exactly.
+export function getScore() {
+  return Math.floor(score);
+}
+
+// TODO (game over / reset done): resetScore()/getScore() above now back the Game Over flow. The
+//       survival tick is stopped from the outside — main.js skips updateScore() entirely while
+//       the game is frozen — so the dead player does not keep accruing idle time. If the pause
+//       is ever modelled by a `delta`/`paused` flag inside Score instead, guard the tick here.

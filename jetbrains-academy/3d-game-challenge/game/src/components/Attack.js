@@ -19,16 +19,19 @@ import { addKillScore } from './Score.js';
 export const ATTACK_COOLDOWN = 1;
 
 // Radius of the attack ring, in world units — the drawn circle's radius AND the base of the
-// hit test. Kept small ("a precise strike" rather than a shockwave, per task.md).
+// hit test. Raised from the original 25 to 50, which quadruples the swept area (area scales with
+// the square of the radius) so the blast reliably clears a whole ring of bees rather than
+// clipping a single one.
 //
 // IMPORTANT design constraint: COLLISION_DISTANCE keeps a chasing bee about
 // playerRadius + enemyRadius + COLLISION_DISTANCE ≈ 10 + 12.8 + 2 ≈ 24.8 units away from the
-// centre of the player, so an enemy can never get closer than that. That is why the hit test
-// below adds the enemy's own radius (the "edge" test): a ring of 25 reaches a bee whose body
-// is touching the ring (25 + ~12.8 ≈ 37.8 centre distance), so it can actually connect.
-// TODO: tune this. Lower it toward ~24 for a knife-edge strike, raise it toward ~60 for a
-//       shockwave that clears a whole ring of bees. Changing it changes the ring visual too.
-export const ATTACK_RADIUS = 25;
+// centre of the player, so an enemy can never get closer than that. The hit test below adds the
+// enemy's own radius (the "edge" test): at 50 the ring reaches a bee whose centre is up to
+// 50 + ~12.8 ≈ 62.8 units away — comfortably past the ~24.8 closest approach, so it connects
+// even before a bee has closed all the way in.
+// TODO: tune this. Lower it toward ~24 for a knife-edge strike, raise it for an even wider
+//       shockwave that clears bees before they arrive. Changing it changes the ring visual too.
+export const ATTACK_RADIUS = 50;
 
 // How long the ring stays up before it has faded away, in seconds. short = a snappy pop.
 // The spec allows "disappear or fade out"; this fades. Set to 0 for an instant flash.
@@ -71,15 +74,20 @@ export function initAttack(scene) {
   scene.add(attackCircle);
 }
 
-// Space requests a strike. The guards here reject presses we can never honour (OS key-repeat,
-// mid-air, still cooling down); everything else is deferred to updateAttack so the actual hit
-// detection runs in the normal update phase.
-window.addEventListener('keydown', (event) => {
-  if (event.code !== 'Space' || event.repeat) return; // only Space, and only real presses
+// Requests a strike. The guards here reject presses we can never honour (mid-air, still cooling
+// down); everything else is deferred to updateAttack so the actual hit detection runs in the
+// normal update phase.
+//
+// NOTE: this used to be a raw `window` keydown listener for Space. GameState now owns that
+// listener (Space doubles as the "reset" key on the Game Over screen), so a single listener can
+// decide between attacking and restarting. That is deliberate: with two independent Space
+// listeners, a press while dead could both queue a stale attack AND trigger the reset, and the
+// stale request would fire on the first live frame. Here, only a live game ever calls this.
+export function requestAttack() {
   if (!isPlayerGrounded()) return; // spec: no attacking while airborne (the press is dropped)
   if (cooldownRemaining > 0) return; // still recovering; ignore rather than queue a buffered hit
   attackRequested = true;
-});
+}
 
 // Called every frame. Ticks the cooldown and the ring fade, then resolves a pending request.
 export function updateAttack(delta) {
@@ -143,4 +151,18 @@ function performAttack() {
 
   // TODO (feedback): a one-shot sound, screen shake, or a particle burst would sell the hit —
   //       out of scope for this task.
+}
+
+// Wipes the attack's transient state for a new run. Called by GameState.resetGame() and also at
+// the moment of Game Over (so a ring caught mid-fade does not stay frozen on screen, since the
+// loop stops calling updateAttack while the game is frozen). Clearing the cooldown too means a
+// fresh run always starts with the power ready.
+export function resetAttack() {
+  attackRequested = false;
+  cooldownRemaining = 0;
+  flashRemaining = 0;
+  if (attackCircle) {
+    attackCircle.visible = false;
+    attackCircle.material.opacity = 0;
+  }
 }

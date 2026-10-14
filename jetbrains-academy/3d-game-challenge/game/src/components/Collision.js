@@ -49,6 +49,13 @@ export function unregisterCollider(owner) {
   colliders.delete(owner);
 }
 
+// Read-only lookup for the collider a character registered. GameState and Enemy use it to ask
+// about a *specific* other character (e.g. "does this step touch the player?") without having to
+// re-derive radii or reach into the registry Map directly.
+export function getCollider(owner) {
+  return colliders.get(owner);
+}
+
 // How much two characters overlap on the ground plane, in world units. 0 means they are not
 // touching. One number answers both "are they touching?" and "how much further would this move
 // push them together?", which is what the move rule below needs.
@@ -58,6 +65,15 @@ function penetrationOf(x, y, radius, other) {
     radius + other.radius + COLLISION_DISTANCE -
       Math.hypot(x - other.position.x, y - other.position.y),
   );
+}
+
+// True if placing `mover` at (x, y) would overlap `other` specifically. This is the targeted
+// cousin of isMoveFree: it ignores every other character and only asks about one opponent. The
+// game-over contact check needs exactly that — an enemy may be blocked by a *second* enemy at
+// the same time it is blocked by the player, and only the second test is what "the bee touched
+// the hero" means. Callers must pass a registered collider for both arguments.
+export function wouldOverlap(mover, x, y, other) {
+  return penetrationOf(x, y, mover.radius, other) > EPSILON;
 }
 
 // True if moving `mover` to (x, y) is allowed: the step must land clear of every other

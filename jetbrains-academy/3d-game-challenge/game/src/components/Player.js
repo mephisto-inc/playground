@@ -181,4 +181,25 @@ export function isPlayerGrounded() {
   return move.progress >= 1;
 }
 
+// Puts the hero back to a clean starting state for a new run. Called by GameState.resetGame().
+// Everything that could have been left mid-flight or buffered while the game was frozen has to
+// be cleared here, or the next run would begin by replaying stale input or a half-finished hop.
+export function resetPlayer() {
+  player.position.set(0, 0, 0); // back to the scene center, resting on the ground
+
+  // Cancel any hop in flight and forget where it was headed.
+  move.progress = 1;
+  move.direction.set(0, 0, 0);
+  move.start.copy(player.position);
+  move.target.copy(player.position);
+
+  // Drop queued/held movement keys. While the Game Over state is up, updatePlayer() is not
+  // called, so held keys would otherwise have piled up jumps ready to fire on the first live
+  // frame (and a key held across the reset would keep moving the player with no fresh press).
+  inputQueue.length = 0;
+  heldKeys.clear();
+
+  player.visible = true; // the hero reappears
+}
+
 export default player;

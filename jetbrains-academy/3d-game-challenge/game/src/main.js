@@ -7,6 +7,7 @@ import renderer from './components/Renderer.js';
 import { initEnemies, updateEnemies } from './components/Enemy.js';
 import { initAttack, updateAttack } from './components/Attack.js';
 import { initScore, updateScore } from './components/Score.js';
+import { initGameState, updateGameState, isGameOver } from './components/GameState.js';
 
 // Main entry point: assembles the scene from the component modules and drives the
 // update/render loop.
@@ -48,16 +49,32 @@ initAttack(scene);
 // Builds the on-screen readout; the survival reward and the display update in the loop below.
 initScore();
 
+// --- Game state -------------------------------------------------------------
+// Owns the Game Over overlay and the Space key (attack while playing, restart when over). Must
+// come after the systems it resets so their reset functions exist when it is wired up.
+initGameState();
+
 // --- Loop -------------------------------------------------------------------
-// Update order per frame: move the player, then advance the enemies (spawn + chase), then run
-// the attack (cooldown + hit sweep — after the enemies have moved, so it checks fresh
+// Update order per frame: move the player, then advance the enemies (spawn + chase), then check
+// game state (after the enemies have moved, so a fresh contact freezes the world the same frame),
+// then the attack (cooldown + hit sweep — after the enemies have moved, so it checks fresh
 // positions), then the score (after the attack, so a defeat scored this frame shows immediately),
 // then render.
+//
+// While the Game Over state is up, every world update is skipped so the scene is frozen, but the
+// render call still runs so the overlay/field stay on screen. The Game Over check sits between
+// the enemies and the attack so a defeat takes priority: once it flips, the attack and score are
+// skipped for that frame too.
 renderer.setAnimationLoop(() => {
   const delta = clock.getDelta();
-  updatePlayer(delta);
-  updateEnemies(delta);
-  updateAttack(delta);
-  updateScore(delta);
+  if (!isGameOver()) {
+    updatePlayer(delta);
+    updateEnemies(delta);
+    updateGameState();
+    if (!isGameOver()) {
+      updateAttack(delta);
+      updateScore(delta);
+    }
+  }
   renderer.render(scene, camera);
 });
