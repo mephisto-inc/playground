@@ -6,6 +6,7 @@ import camera from './components/Camera.js';
 import renderer from './components/Renderer.js';
 import { initEnemies, updateEnemies } from './components/Enemy.js';
 import { initAttack, updateAttack } from './components/Attack.js';
+import { initScore, updateScore } from './components/Score.js';
 
 // Main entry point: assembles the scene from the component modules and drives the
 // update/render loop.
@@ -43,14 +44,20 @@ initEnemies(scene);
 // The attack system builds its on-ground ring and listens for Space; it is stepped each frame.
 initAttack(scene);
 
+// --- Score ------------------------------------------------------------------
+// Builds the on-screen readout; the survival reward and the display update in the loop below.
+initScore();
+
 // --- Loop -------------------------------------------------------------------
 // Update order per frame: move the player, then advance the enemies (spawn + chase), then run
 // the attack (cooldown + hit sweep — after the enemies have moved, so it checks fresh
-// positions), then render.
+// positions), then the score (after the attack, so a defeat scored this frame shows immediately),
+// then render.
 renderer.setAnimationLoop(() => {
   const delta = clock.getDelta();
   updatePlayer(delta);
   updateEnemies(delta);
   updateAttack(delta);
+  updateScore(delta);
   renderer.render(scene, camera);
 });

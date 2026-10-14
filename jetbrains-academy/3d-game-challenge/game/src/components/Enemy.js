@@ -227,10 +227,11 @@ export function getEnemies() {
 }
 
 // Removes one enemy from play: drop it from the tracking array, unregister its collider, and
-// detach it from the scene.
+// detach it from the scene. Returns true when it actually removed one, false when the enemy was
+// already gone — callers (the attack's kill credit) use that to avoid scoring a ghost defeat.
 export function removeEnemy(enemy) {
   const index = enemies.indexOf(enemy);
-  if (index === -1) return; // already gone — guards against double-removal in one sweep
+  if (index === -1) return false; // already gone — guards against double-removal in one sweep
 
   enemies.splice(index, 1);
 
@@ -245,4 +246,6 @@ export function removeEnemy(enemy) {
   // TODO: the model ships Death/HitReact clips (see the animation TODO above) — a nicer defeat
   //       would play Death here before detaching instead of the instant "poof".
   if (enemy.parent) enemy.parent.remove(enemy);
+
+  return true;
 }

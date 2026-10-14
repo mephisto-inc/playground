@@ -2,3 +2,20 @@ body {
   margin: 0;
   overflow: hidden;
 }
+
+/* Score readout (div.score, built in Score.js). Pinned to the top of the screen and centred.
+   Dark text because the canvas is transparent (Renderer uses alpha:true) over the default white
+   page, so a light colour would wash out against the background. */
+.score {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.02em;
+  user-select: none; /* purely decorative; never selectable */
+  pointer-events: none; /* never intercepts clicks/keyboard on the canvas */
+}

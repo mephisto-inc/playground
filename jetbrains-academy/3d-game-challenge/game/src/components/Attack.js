@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import player, { isPlayerGrounded } from './Player.js';
 import { getEnemies, removeEnemy } from './Enemy.js';
+import { addKillScore } from './Score.js';
 
 // Attack component: the player's close-range "blast". Space fires it, a cooldown limits how
 // often, a yellow ring flashes on the ground as feedback, and every enemy whose body reaches
@@ -134,12 +135,12 @@ function performAttack() {
     // to a centre test if the collider is somehow missing.
     const enemyRadius = enemy.userData.collider ? enemy.userData.collider.radius : 0;
     if (distance <= ATTACK_RADIUS + enemyRadius) {
-      removeEnemy(enemy);
+      // Credit the kill only when the enemy was really removed (removeEnemy returns false for
+      // one already gone), so a double-count can never inflate the score.
+      if (removeEnemy(enemy)) addKillScore();
     }
   }
 
   // TODO (feedback): a one-shot sound, screen shake, or a particle burst would sell the hit —
   //       out of scope for this task.
-  // TODO (scoring): nothing counts the kills yet; a score counter belongs with whatever system
-  //       tracks the player's progress.
 }
