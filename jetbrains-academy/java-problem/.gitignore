@@ -1,0 +1,8 @@
+# 1. Ignore everything in the repository root
+/*
+
+# 2. Allow the .gitignore file itself (optional but recommended)
+!.gitignore
+
+# 3. Un-ignore the specific folder you want to keep
+!/Topics/
