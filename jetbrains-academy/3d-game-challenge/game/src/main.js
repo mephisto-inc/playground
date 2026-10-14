@@ -4,6 +4,7 @@ import './style.css';
 import player, { updatePlayer } from './components/Player.js';
 import camera from './components/Camera.js';
 import renderer from './components/Renderer.js';
+import { initEnemies, updateEnemies } from './components/Enemy.js';
 
 // Main entry point: assembles the scene from the component modules and drives the
 // update/render loop.
@@ -33,10 +34,15 @@ scene.add(ground);
 scene.add(player);
 player.add(camera); // camera rides along with the player group (follow-cam)
 
+// --- Enemies ----------------------------------------------------------------
+// The enemy system loads its own model and spawns into the scene; it is stepped each frame.
+initEnemies(scene);
+
 // --- Loop -------------------------------------------------------------------
-// setAnimationLoop runs once per display frame: advance the player, then draw the scene.
+// Update order per frame: move the player, then advance the enemies (spawn + chase), render.
 renderer.setAnimationLoop(() => {
   const delta = clock.getDelta();
   updatePlayer(delta);
+  updateEnemies(delta);
   renderer.render(scene, camera);
 });
