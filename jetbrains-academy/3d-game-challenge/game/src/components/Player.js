@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { registerCollider, isMoveFree, measureCollisionShape } from './Collision.js';
 
 // Player component: owns the player group, loads/reorients the Tode model, collects
 // keyboard input into a queue, and advances one "hop" at a time toward the requested
@@ -37,6 +38,13 @@ const heldKeys = new Set(); // movement keys currently held down
 
 let playerModel = null; // the loaded mesh, used for facing rotation once available
 
+// Collision volume. Registered right away with a rough guess so enemies already respect the
+// hero while the model is still loading, then overwritten with a value measured from the real
+// geometry. TODO: the guess is only here to close that async gap; drop it if the models are
+// ever made synchronous.
+const ESTIMATED_RADIUS = 12;
+let playerCollider = registerCollider(player, player.position, ESTIMATED_RADIUS);
+
 const loader = new GLTFLoader();
 
 // Model characteristics for public/models/tode.glb:
@@ -59,10 +67,14 @@ loader.load('/models/tode.glb', (gltf) => {
   model.rotation.x = Math.PI / 2; // lay the Y-up model onto our Z-up ground
   model.scale.setScalar(20);
 
-  // TODO: Z-offset spec is ambiguous. We compute the box AFTER scale + rotation and
-  //       lift the model so its lowest point rests on z=0. Confirm this matches "model height".
-  const box = new THREE.Box3().setFromObject(model);
-  model.position.z -= box.min.z;
+  // Measure the collision shape while the model is still unparented, so the numbers come out
+  // in the player's own frame (the frame `player.position` lives in).
+  // TODO: Z-offset spec is ambiguous. The measured groundOffset lifts the model so its lowest
+  //       point rests on z = 0. Confirm this matches "model height".
+  const shape = measureCollisionShape(model);
+  model.position.z += shape.groundOffset;
+
+  playerCollider = registerCollider(player, player.position, shape.radius);
 
   playerModel = model;
   player.add(model);
@@ -129,14 +141,34 @@ export function updatePlayer(delta) {
     }
   }
 
-  // Advance the hop's 0..1 progress (clamped so it never overshoots 1).
+  // Advance the hop and look at where it would put the player this frame. Nothing is
+  // committed until that spot comes back collision-free (spec: check during the position
+  // update, only move when validated). Only the ground position is tested — height is
+  // ignored, so a bee blocks Tode whether he is on the ground or mid-hop.
   if (move.progress < 1) {
-    move.progress = Math.min(move.progress + delta * MOVE_SPEED, 1);
+    const nextProgress = Math.min(move.progress + delta * MOVE_SPEED, 1);
+    const nextX = THREE.MathUtils.lerp(move.start.x, move.target.x, nextProgress);
+    const nextY = THREE.MathUtils.lerp(move.start.y, move.target.y, nextProgress);
+
+    if (isMoveFree(playerCollider, nextX, nextY)) {
+      move.progress = nextProgress;
+      player.position.x = nextX;
+      player.position.y = nextY;
+    } else {
+      // The step is blocked by a character. Rather than snapping the hop to the floor (which
+      // teleports the hero down mid-air — the bug this replaced), freeze the hop where it
+      // stands by collapsing start and target onto the current spot, and keep advancing
+      // `progress`. The ground path no longer moves, but the sine arc below finishes, so Tode
+      // completes the jump and lands under his own weight at the last clear position. Landing
+      // on a clear spot is also what stops him ever being found "inside" a bee afterwards.
+      move.start.copy(player.position);
+      move.target.copy(player.position);
+      move.progress = nextProgress;
+    }
   }
 
-  // Horizontal motion is a straight lerp; vertical motion is a sine arc for the jump.
-  player.position.x = THREE.MathUtils.lerp(move.start.x, move.target.x, move.progress);
-  player.position.y = THREE.MathUtils.lerp(move.start.y, move.target.y, move.progress);
+  // Vertical motion follows the hop's progress; a hop frozen mid-air lands here as the arc
+  // completes (progress reaches 1 and the sine returns to 0).
   player.position.z = Math.sin(move.progress * Math.PI) * JUMP_HEIGHT;
 }
 

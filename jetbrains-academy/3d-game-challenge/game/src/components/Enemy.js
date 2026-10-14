@@ -3,10 +3,17 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 import player from './Player.js'; // enemy AI reads the player's live position
 import camera from './Camera.js'; // used to find where the screen edges land on the ground
+import {
+  registerCollider,
+  isMoveFree,
+  isSpotFree,
+  measureCollisionShape,
+} from './Collision.js';
 
 // Enemy component: loads the enemy model once, spawns clones just outside the camera view,
-// and each frame steers every live enemy toward the player. main.js adds this system to the
-// scene and calls updateEnemies(delta) once per animation frame.
+// and each frame steers every live enemy toward the player — stopping whenever that step
+// would push it into the player or another enemy. main.js adds this system to the scene and
+// calls updateEnemies(delta) once per animation frame.
 
 // --- Tuning -----------------------------------------------------------------
 // TODO (difficulty, per task.md): tweak ENEMY_SPEED / ENEMY_SPAWN_DELAY for "horde" (fast
@@ -16,14 +23,17 @@ export const ENEMY_SPAWN_DELAY = 3; // seconds between spawns
 
 const ENEMY_SCALE = 5; // model scalar (see the characteristics block below)
 
+// How many screen-edge samples to try before giving up and spawning anyway (see spawnEnemy).
+const SPAWN_RETRY_ATTEMPTS = 8;
+
 // Facing offset. The model's forward is its local +Z: its rig's torso -> head axis maps to
 // world -Y at yaw 0, so without an offset the bee would run 90° to its own left (the same
 // class of bug the player's MODEL_YAW_OFFSET fixed). +PI/2 aligns the face with the move
 // direction.
 // NOTE (possible future bug): this is feel-based, not structural — if enemy.glb is replaced
 //   or its rig/orientation changes, facing breaks again. Quick fix: change this one constant
-//       (try -PI/2 or PI). TODO: fold model-orientation facts into the project docs, then this
-//       note can be removed.
+//   (try -PI/2 or PI). TODO: fold model-orientation facts into the project docs, then this
+//   note can be removed.
 const ENEMY_YAW_OFFSET = Math.PI / 2;
 
 // --- Spawn placement --------------------------------------------------------
@@ -42,13 +52,14 @@ const enemies = []; // live enemy groups currently in the scene
 let template = null; // the loaded enemy.glb scene, cloned per spawn (see spawnEnemy)
 let spawnScene = null; // scene handed in by initEnemies, where spawned enemies are added
 let spawnTimer = 0;
+let enemyShape = null; // measured collision shape, shared by every clone (they are identical)
 
 // enemy.glb — model characteristics (source: public/models/enemy.glb)
 //   format:      glTF 2.0 binary, exported from Blender
-//   rig:         SKINNED mesh (1 skin) with an armature node that carries scale 100, so the
-//                native size is unusual — verify ENEMY_SCALE (5) visually. Because it is
-//                skinned, spawns must use SkeletonUtils.clone (a plain .clone() would share
-//                and corrupt the skeleton).
+//   rig:         SKINNED mesh (1 skin) under a "CharacterArmature" node carrying scale 100,
+//                so the native size is unusual — verify ENEMY_SCALE (5) visually. Because it
+//                is skinned, spawns must use SkeletonUtils.clone (a plain .clone() would
+//                share and corrupt the skeleton).
 //   meshes:      1 mesh, 7 primitives, attributes POSITION/NORMAL/JOINTS_0/WEIGHTS_0
 //   materials:   5 material slots (base colors only, no textures)
 //   animations:  8 clips are bundled in the file but are NOT played yet (see below)
@@ -61,33 +72,7 @@ let spawnTimer = 0;
 //   call `mixer.update(delta)` in the loop. The template must keep its animation clips handy.
 //
 // Positioning mirrors the player: rotation.x = +PI/2 lays the model onto the Z-up ground,
-// then a box lifts it so its lowest point rests on z = 0.
-
-// World-space bounds for a (possibly skinned) model.
-// Why not Box3.setFromObject()? It transforms each mesh's geometry box by mesh.matrixWorld
-// directly, which is wrong for SKINNED meshes: enemy.glb's armature bakes in scale 100, so
-// setFromObject inflates the box ~100x and the ground offset throws the enemy off-screen.
-// SkinnedMesh.computeBoundingBox() accounts for the skeleton + inverse-bind matrices and
-// returns the real rendered bounds. Non-skinned meshes fall back to the geometry box.
-// TODO: share this helper if other skinned models (e.g. a future animated player) need it.
-function computeWorldBounds(object) {
-  object.updateMatrixWorld(true);
-  const box = new THREE.Box3();
-  object.traverse((mesh) => {
-    if (!mesh.isMesh) return;
-    const local = new THREE.Box3();
-    if (mesh.isSkinnedMesh && typeof mesh.computeBoundingBox === 'function') {
-      mesh.computeBoundingBox();
-      local.copy(mesh.boundingBox);
-    } else {
-      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-      local.copy(mesh.geometry.boundingBox);
-    }
-    local.applyMatrix4(mesh.matrixWorld);
-    box.union(local);
-  });
-  return box;
-}
+// then the measured groundOffset lifts it so its lowest point rests on z = 0.
 
 // The four ground points where the camera's view frustum edges meet z = 0, expressed
 // relative to the player. Fire-and-forget inverse projection: one point per screen corner.
@@ -116,7 +101,7 @@ function pickSpawnPosition() {
 }
 
 function spawnEnemy() {
-  if (!template || !spawnScene) return;
+  if (!template || !spawnScene || !enemyShape) return;
 
   // Clone the loaded template so each enemy has its own skeleton/transform.
   const model = skeletonClone(template);
@@ -124,17 +109,29 @@ function spawnEnemy() {
   model.rotation.x = Math.PI / 2; // lay the Y-up model onto our Z-up ground
   model.scale.setScalar(ENEMY_SCALE);
 
-  // TODO: Z-offset spec is ambiguous (same as the player). We lift the model so its lowest
-  //       (skin-aware) point rests on z = 0. Confirm this matches "model height".
-  const box = computeWorldBounds(model);
-  model.position.z -= box.min.z;
+  // Lift the bee onto the ground. The offset was measured once, from the same transform,
+  // on the throwaway clone in initEnemies.
+  model.position.z += enemyShape.groundOffset;
 
   // The group carries position only; the model carries rotation, so facing does not spin
   // the group wrapper.
   const enemy = new THREE.Group();
-  enemy.position.copy(pickSpawnPosition());
+
+  // Sample the screen edge until we find a free spot. Without this, two bees spawned on the
+  // same edge could land inside each other — and since movement never deepens an overlap,
+  // they would be stuck together for the rest of the game.
+  let spawnAt = pickSpawnPosition();
+  for (let attempt = 0; attempt < SPAWN_RETRY_ATTEMPTS; attempt++) {
+    if (isSpotFree(spawnAt.x, spawnAt.y, enemyShape.radius)) break;
+    spawnAt = pickSpawnPosition();
+  }
+  // TODO: if the screen edge is genuinely jammed the bee still spawns overlapping. Fine at
+  //       this scale (a dozen bees); later a proper fix is to push the pair apart or to hold
+  //       the spawn until the next timer tick.
+  enemy.position.copy(spawnAt);
 
   enemy.userData.model = model;
+  enemy.userData.collider = registerCollider(enemy, enemy.position, enemyShape.radius);
   enemy.add(model);
   spawnScene.add(enemy);
   enemies.push(enemy);
@@ -150,13 +147,27 @@ export function initEnemies(scene) {
   //       `enemies` array immediately after initEnemies() sees it empty.
   loader.load('/models/enemy.glb', (gltf) => {
     template = gltf.scene;
+
+    // Every clone is identical, so the shape is measured once on a throwaway clone prepared
+    // exactly like a real spawn (never on the template itself — that transform would leak
+    // into the clones and get applied twice).
+    // TODO: the bee's geometry is not centred on its own origin (its footprint sits ~1.8
+    //       units toward +Y), so the circumscribing circle comes out ~12.8 wide where the
+    //       bee's half-width is only ~10.8 — a slightly generous hitbox. Centring the circle
+    //       on the footprint would tighten it, but then the centre would have to rotate with
+    //       the bee's yaw. Only worth doing if the extra gap is noticeable in play.
+    const probe = skeletonClone(template);
+    probe.rotation.x = Math.PI / 2;
+    probe.scale.setScalar(ENEMY_SCALE);
+    enemyShape = measureCollisionShape(probe);
+
     spawnTimer = 0;
     spawnEnemy(); // one enemy at the start...
   });
 }
 
 // Called every frame from the animation loop: spawns on the timer and steers each enemy
-// toward the player. Enemies may overlap the player and each other at this stage (by spec).
+// toward the player, one collision-checked step at a time.
 export function updateEnemies(delta) {
   if (!template) return; // model not loaded yet
 
@@ -174,12 +185,28 @@ export function updateEnemies(delta) {
     if (direction.lengthSq() < 1e-6) continue;
     direction.normalize();
 
-    // Move one step closer, then face that direction (yaw about world Z on the model).
-    enemy.position.addScaledVector(direction, ENEMY_SPEED * delta);
+    const collider = enemy.userData.collider;
+    if (collider) {
+      const nextX = enemy.position.x + direction.x * ENEMY_SPEED * delta;
+      const nextY = enemy.position.y + direction.y * ENEMY_SPEED * delta;
+
+      // Only commit the step if it does not push this bee deeper into the player or another
+      // bee. The check is ground-plane only — height is ignored (see Collision.js).
+      if (isMoveFree(collider, nextX, nextY)) {
+        enemy.position.x = nextX;
+        enemy.position.y = nextY;
+      }
+    }
+
+    // Facing updates either way, so a blocked bee still turns toward its target and is ready
+    // to move the moment the way clears.
     const model = enemy.userData.model;
     if (model) {
       // Facing uses the model's yaw; see ENEMY_YAW_OFFSET for why +90 deg is required.
       model.rotation.y = Math.atan2(direction.y, direction.x) + ENEMY_YAW_OFFSET;
     }
   }
+  // TODO (crowding): enough bees can form a ring that pins the player with no free cell to
+  //       step into. If that ever feels unfair, add a separation pass that shoves overlapping
+  //       bees apart after the movement loop.
 }
