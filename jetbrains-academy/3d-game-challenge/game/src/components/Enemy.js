@@ -14,6 +14,7 @@ import {
   MAX_MOVE_SUB_STEP,
 } from './Collision.js';
 import { getEnemySpeed, getEnemySpawnDelay } from './Difficulty.js';
+import { MAP_SIZE } from './Map.js';
 
 // Enemy component: loads the enemy model once, spawns clones just outside the camera view,
 // and each frame steers every live enemy toward the player — stopping whenever that step
@@ -49,6 +50,9 @@ const ENEMY_YAW_OFFSET = Math.PI / 2;
 // holds that area's four corners relative to the player (the camera follows the player, so
 // the shape is constant in the player's frame) and `SPAWN_MARGIN` pushes spawns just past it.
 const SPAWN_MARGIN = 1.1; // 1.0 = exactly on the screen edge, 1.1 = 10% beyond it
+// Extra clearance kept between a spawn and the wall's inner face, on top of the bee's own radius,
+// so a clamped spawn never starts tangent to (or overlapping) a wall.
+const SPAWN_EDGE_MARGIN = 5;
 let spawnCorners = [];
 
 const loader = new GLTFLoader();
@@ -94,15 +98,30 @@ function computeSpawnCorners() {
 }
 
 // A random point on the visible area's perimeter, pushed just outside it so the enemy walks
-// straight into view. The perimeter is sampled by picking an edge and a random spot on it.
+// straight into view, then clamped into the map's interior. The perimeter is sampled by picking
+// an edge and a random spot on it.
 function pickSpawnPosition() {
   const i = Math.floor(Math.random() * spawnCorners.length);
   const a = spawnCorners[i];
   const b = spawnCorners[(i + 1) % spawnCorners.length];
-  return new THREE.Vector3()
+  const position = new THREE.Vector3()
     .lerpVectors(a, b, Math.random()) // random point on this screen edge
     .multiplyScalar(SPAWN_MARGIN) // push outward from the player (off-camera)
     .add(player.position); // place relative to where the player is right now
+
+  // Keep the spawn inside the walls. Near a map edge the screen-edge point lands outside the
+  // arena, where the boundary wall would trap the bee out of reach (it can never walk in from
+  // outside). Pull the centre back so the whole bee stays inside the wall's inner face at
+  // MAP_SIZE/2. When the player is away from the edges this clamp does nothing, because the
+  // visible area already sits well inside the map.
+  //
+  // The cost of the clamp: right up against a wall the pulled-in point can be on-screen, so the
+  // bee may appear in view instead of strolling in from just off-camera. Staying inside the arena
+  // is the priority; the spawn *rate* is untouched either way.
+  const limit = Math.max(0, MAP_SIZE / 2 - enemyShape.radius - SPAWN_EDGE_MARGIN);
+  position.x = THREE.MathUtils.clamp(position.x, -limit, limit);
+  position.y = THREE.MathUtils.clamp(position.y, -limit, limit);
+  return position;
 }
 
 function spawnEnemy() {

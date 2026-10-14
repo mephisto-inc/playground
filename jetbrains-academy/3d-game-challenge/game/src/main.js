@@ -4,6 +4,8 @@ import './style.css';
 import player, { updatePlayer } from './components/Player.js';
 import camera from './components/Camera.js';
 import renderer from './components/Renderer.js';
+import { initMap, map } from './components/Map.js';
+import { initHouses } from './components/House.js';
 import { initEnemies, updateEnemies } from './components/Enemy.js';
 import { initAttack, updateAttack } from './components/Attack.js';
 import { initScore, updateScore } from './components/Score.js';
@@ -33,13 +35,12 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
 directionalLight.position.set(-100, -100, 200);
 scene.add(directionalLight);
 
-// --- Ground -----------------------------------------------------------------
-// TODO: temporary ground reference to visualize player movement/hop. Replace with the
-//       real map when that stage is implemented. GridHelper lies in the XZ plane by
-//       default, so rotate it PI/2 about X to lay it on the XY ground plane (Z-up).
-const ground = new THREE.GridHelper(2000, 40);
-ground.rotation.x = Math.PI / 2;
-scene.add(ground);
+// --- Map & houses -----------------------------------------------------------
+// The map owns the checkerboard floor, the dark backdrop, and the invisible boundary walls (as
+// colliders). It is added to the scene first so its colliders exist before anything spawns, and
+// its group is what the houses are parented to. Houses then register their own box colliders.
+initMap(scene);
+initHouses(map);
 
 // --- Player & camera --------------------------------------------------------
 scene.add(player);

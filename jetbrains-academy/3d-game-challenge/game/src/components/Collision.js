@@ -1,12 +1,17 @@
 import * as THREE from 'three';
 
-// Collision module: the shared "characters must not overlap" rules (spec: Collision detection).
+// Collision module: the shared "characters must not overlap" rules (spec: Collision detection),
+// extended for the game world (spec: Game world) to also cover static obstacles.
 //
-// Each character is reduced to a shape measured from its own geometry — not a raw bounding
-// box, which is far too boxy for rounded characters — a single circle on the ground plane.
-// Two characters overlap when their circles are closer than radiusA + radiusB +
-// COLLISION_DISTANCE. Everything is 2D: height is ignored, so a bee blocks Tode whether he is
-// standing or mid-hop.
+// Two kinds of collider live in the registry:
+//   * circle — every moving character, reduced to a shape measured from its own geometry (not a
+//     raw bounding box, which is far too boxy for rounded characters). Two circles overlap when
+//     their centres are closer than radiusA + radiusB + COLLISION_DISTANCE.
+//   * box — static, axis-aligned obstacles: the houses (House.js) and the map's boundary walls
+//     (Map.js). A box carries halfWidth/halfDepth instead of a radius.
+//
+// Everything is 2D: height is ignored, so a bee blocks Tode whether he is standing or mid-hop,
+// and a character is blocked by a house no matter how high the hop arc climbs.
 //
 // Every check happens in the position-update phase of the animation loop (updatePlayer /
 // updateEnemies), and a character only commits a move that came back free.
@@ -39,11 +44,10 @@ const EPSILON = 1e-6;
 // refreshed as characters move.
 const colliders = new Map();
 
-// TODO (future enemies / bosses): this assumes exactly one circular collider per character.
-//       A boss will probably need several colliders (or a different shape entirely) and
-//       per-type radii, so expect this to grow into a small list of shapes per owner.
-//       Figure out the real shape of that when bosses land; the callers below should not
-//       have to change much.
+// TODO (future enemies / bosses): the registry now holds both circles (characters) and boxes
+//       (obstacles), but it still assumes exactly one collider per owner. A boss will probably
+//       need several colliders (or a different shape again), so expect this to grow into a small
+//       list of shapes per owner. The callers below should not have to change much.
 //
 // TODO (hop-over, reversed): an earlier version also compared a vertical range [z, z + height]
 //       so an airborne Tode could clear a bee; it felt stiff, so height is deliberately out of
@@ -51,10 +55,23 @@ const colliders = new Map();
 //       penetrationOf() return Math.min(horizontal, vertical), where vertical is the overlap
 //       of the two [z, z + height] ranges. The "no worse than before" rule stays as-is.
 
-// Registers a character's collider and returns it (callers keep the result and hand it back
-// to isMoveFree). Registering the same owner twice replaces its collider.
+// Registers a moving character's circular collider and returns it (callers keep the result and
+// hand it back to isMoveFree). Registering the same owner twice replaces its collider. `position`
+// is kept by reference to the owner's live Vector3, so the collider tracks the character for free.
 export function registerCollider(owner, position, radius) {
-  const collider = { position, radius };
+  const collider = { position, shape: 'circle', radius };
+  colliders.set(owner, collider);
+  return collider;
+}
+
+// Registers a static, axis-aligned box obstacle (a house or a boundary wall) and returns it.
+// `halfWidth`/`halfDepth` are half-extents along world X/Y, measured from `position`. The spec
+// only ever rotates houses in multiples of PI/2 about the scene-vertical Z axis, so a house's
+// footprint stays axis-aligned whatever its yaw — which is exactly what lets a plain AABB stand
+// in for the real walls instead of costing us rotated-box math. Obstacles never move, so unlike a
+// character, `position` here is a fixed point rather than a live reference.
+export function registerBoxCollider(owner, position, halfWidth, halfDepth) {
+  const collider = { position, shape: 'box', halfWidth, halfDepth };
   colliders.set(owner, collider);
   return collider;
 }
@@ -70,10 +87,22 @@ export function getCollider(owner) {
   return colliders.get(owner);
 }
 
-// How much two characters overlap on the ground plane, in world units. 0 means they are not
-// touching. One number answers both "are they touching?" and "how much further would this move
-// push them together?", which is what the move rule below needs.
+// How much a circle of `radius` centred at (x, y) overlaps `other` on the ground plane, in world
+// units. 0 means they are not touching. One number answers both "are they touching?" and "how
+// much further would this move push them together?", which is what the move rule below needs.
+//
+// Movers are always circles (see wouldOverlap/isMoveFree), so only `other` needs the shape split:
+//   * circle: centre-to-centre distance minus the two radii and the padding.
+//   * box: distance from the centre to the nearest point on the box — clamp the offset on each
+//     axis to the half-extent, so anything inside the box collapses to 0 on that axis. A centre
+//     inside the box therefore always has penetration = radius + padding (a constant), which is
+//     what lets a character that somehow ends up inside back out without deepening the overlap.
 function penetrationOf(x, y, radius, other) {
+  if (other.shape === 'box') {
+    const dx = Math.max(Math.abs(x - other.position.x) - other.halfWidth, 0);
+    const dy = Math.max(Math.abs(y - other.position.y) - other.halfDepth, 0);
+    return Math.max(0, radius + COLLISION_DISTANCE - Math.hypot(dx, dy));
+  }
   return Math.max(
     0,
     radius + other.radius + COLLISION_DISTANCE -
@@ -85,7 +114,8 @@ function penetrationOf(x, y, radius, other) {
 // cousin of isMoveFree: it ignores every other character and only asks about one opponent. The
 // game-over contact check needs exactly that — an enemy may be blocked by a *second* enemy at
 // the same time it is blocked by the player, and only the second test is what "the bee touched
-// the hero" means. Callers must pass a registered collider for both arguments.
+// the hero" means. Callers must pass a registered collider for both arguments; `mover` is always
+// a moving character (a circle), while `other` may be a circle or an obstacle box.
 export function wouldOverlap(mover, x, y, other) {
   return penetrationOf(x, y, mover.radius, other) > EPSILON;
 }

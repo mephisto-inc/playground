@@ -11,10 +11,18 @@ import { getPlayerMoveSpeed } from './Difficulty.js';
 // Hop speed is score-scaled by the difficulty system (tune BASE_PLAYER_MOVE_SPEED and
 // PLAYER_MOVE_SPEED_WEIGHT in Difficulty.js); it is read fresh each frame. Raising the speed makes
 // each hop finish sooner, so Tode covers ground faster without changing the hop's size.
+//
+// The hop is deliberately short and low: on the compact arena the old 50-unit leap overshot whole
+// tiles and made Tode hard to steer around houses. Distance is the size of the step, height the
+// peak of its sine arc — a lower arc keeps the ground path the readable part of the motion.
+//
+// NOTE: hop *duration* is set by the move speed (progress advances 0..1 at that rate), not by the
+// distance, so shortening the distance also shortens how far Tode travels per second. The
+// difficulty scaling above still applies on top of this, unchanged.
 // TODO (tuning): constants are placeholders — verify they are customizable later per task.md
 //       ("Customize it your way": jump speed/height/distance).
-const JUMP_HEIGHT = 25;   // peak height (world Z) of the hop's sine arc
-const JUMP_DISTANCE = 50; // ground distance (world XY) covered per hop
+const JUMP_HEIGHT = 18;   // peak height (world Z) of the hop's sine arc
+const JUMP_DISTANCE = 30; // ground distance (world XY) covered per hop
 
 // The model's forward points along its local +Z (see the model characteristics block).
 // Combined with the model's built-in rotation.x = PI/2, yaw 0 points the face at world -Y,
