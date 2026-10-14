@@ -4,3 +4,6 @@
 [submodule "backend/spring/petshop_api"]
 	path = backend/spring/petshop_api
 	url = https://github.com/mephisto-inc/petshop_api.git
+[submodule "pages/mephisto-inc"]
+	path = pages/mephisto-inc
+	url = https://github.com/mephisto-inc/mephisto-inc.git
