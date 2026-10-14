@@ -5,6 +5,7 @@ import player from './Player.js'; // enemy AI reads the player's live position
 import camera from './Camera.js'; // used to find where the screen edges land on the ground
 import {
   registerCollider,
+  unregisterCollider,
   isMoveFree,
   isSpotFree,
   measureCollisionShape,
@@ -209,4 +210,39 @@ export function updateEnemies(delta) {
   // TODO (crowding): enough bees can form a ring that pins the player with no free cell to
   //       step into. If that ever feels unfair, add a separation pass that shoves overlapping
   //       bees apart after the movement loop.
+}
+
+// --- Removal API (used by the attack system) --------------------------------
+// The attack needs to reach into this module's private `enemies` array without owning it, so
+// these two functions are the whole contract: read the list, then delete one. Keeping removal
+// here (rather than mutating the array from Attack.js) means the bookkeeping that only this
+// module knows about — the collider registry and the scene graph parent — always happens in
+// one place.
+
+// The live array of enemies (do not mutate it directly; use removeEnemy so the collider
+// registry stays in sync). Returned by reference so callers can run over it each frame without
+// allocating; callers that remove while looping should snapshot it first (see Attack.js).
+export function getEnemies() {
+  return enemies;
+}
+
+// Removes one enemy from play: drop it from the tracking array, unregister its collider, and
+// detach it from the scene.
+export function removeEnemy(enemy) {
+  const index = enemies.indexOf(enemy);
+  if (index === -1) return; // already gone — guards against double-removal in one sweep
+
+  enemies.splice(index, 1);
+
+  // Critical: forget the collider. A collider left in the registry would keep its dead owner's
+  // position and go on invisibly blocking the player (and other bees) forever.
+  unregisterCollider(enemy);
+
+  // Detach the whole group (mesh child included). dispose() is deliberately NOT called: every
+  // clone shares its geometry and materials with the loaded template (SkeletonUtils.clone does
+  // not deep-copy them), so disposing here would break the template and every surviving bee.
+  // If enemies ever get unique materials, dispose them here.
+  // TODO: the model ships Death/HitReact clips (see the animation TODO above) — a nicer defeat
+  //       would play Death here before detaching instead of the instant "poof".
+  if (enemy.parent) enemy.parent.remove(enemy);
 }

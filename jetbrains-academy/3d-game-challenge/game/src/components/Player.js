@@ -172,4 +172,13 @@ export function updatePlayer(delta) {
   player.position.z = Math.sin(move.progress * Math.PI) * JUMP_HEIGHT;
 }
 
+// True while no hop is in flight, i.e. Tode is standing on the ground. The attack system uses
+// this to refuse mid-air swings (spec: no attack while airborne).
+// NOTE: do NOT test player.position.z === 0 instead — the sine is also 0 at the very first
+// frame of a hop, so z alone cannot tell "landed" from "just left the ground". `progress` is
+// the single source of truth for that.
+export function isPlayerGrounded() {
+  return move.progress >= 1;
+}
+
 export default player;
