@@ -1,0 +1,167 @@
+import * as THREE from 'three';
+
+// Collision module: two shared responsibilities, split as before —
+//
+//   * MOVEMENT (isMoveFree / isObstacleFree) — "may a mover stand at (x, y)?". Only static
+//     boxes block movement/shots: houses and the arena's boundary walls. Characters pass
+//     through each other; contact between them is a separate overlap test.
+//
+//   * DETECTION (wouldOverlap / isSpotFree) — "do these two circles touch?" / "is this spawn
+//     spot clear of everything?".
+//
+// Everything is 2D on the ground plane: height is ignored, so a hopping player is still blocked
+// by a house and an airborne enemy still touches Tode.
+
+// Extra reach added to every contact test, in world units. Small on purpose: the collider radius
+// is measured from the real model geometry, so this only smooths over frame-to-frame jitter —
+// it is NOT the old "chunky hitbox" padding (the old arena's models were 10x larger).
+const COLLISION_PADDING = 0.1;
+
+// The largest world-space increment a mover may advance per collision check. Both characters and
+// projectiles advance in sub-steps of at most this size, so fast movement cannot tunnel through a
+// wall and a mover always comes to rest right at the boundary instead of a frame's-step short.
+export const MAX_MOVE_SUB_STEP = 0.1;
+
+// Tolerance so a step landing a hair inside a boundary due to floating-point rounding is not
+// treated as an overlap.
+const EPSILON = 1e-6;
+
+// Registry of every collider, keyed by its owner object. Character circles keep their position
+// Vector3 by reference (it always reflects the live object); box colliders store a fixed point.
+const colliders = new Map();
+
+// Registers a moving character's circular collider and returns it. Registering the same owner
+// again replaces the previous collider.
+export function registerCollider(owner, position, radius) {
+    const collider = { position, shape: 'circle', radius };
+    colliders.set(owner, collider);
+    return collider;
+}
+
+// Registers a static axis-aligned box obstacle (house or boundary wall) and returns it.
+// `halfWidth`/`halfDepth` are half-extents along world X/Y. Only quarter-turn yaws are used on
+// houses, so their footprints stay axis-aligned and a plain AABB is exact.
+export function registerBoxCollider(owner, position, halfWidth, halfDepth) {
+    const collider = { position, shape: 'box', halfWidth, halfDepth };
+    colliders.set(owner, collider);
+    return collider;
+}
+
+export function unregisterCollider(owner) {
+    colliders.delete(owner);
+}
+
+// Read-only lookup of the collider a character registered (used by Combat and Enemy to ask about
+// the player specifically without re-deriving radii).
+export function getCollider(owner) {
+    return colliders.get(owner);
+}
+
+// How much a circle of `radius` centred at (x, y) overlaps `other`, in world units (0 = clear).
+// One number answers both "are they touching?" and "would this move deepen the overlap?".
+function penetrationOf(x, y, radius, other) {
+    if (other.shape === 'box') {
+        const dx = Math.max(Math.abs(x - other.position.x) - other.halfWidth, 0);
+        const dy = Math.max(Math.abs(y - other.position.y) - other.halfDepth, 0);
+        return Math.max(0, radius + COLLISION_PADDING - Math.hypot(dx, dy));
+    }
+    return Math.max(
+        0,
+        radius + other.radius + COLLISION_PADDING -
+            Math.hypot(x - other.position.x, y - other.position.y),
+    );
+}
+
+// True if placing `mover` at (x, y) would overlap `other` specifically. `mover` is always a
+// character circle; `other` may be a circle (another character) or an obstacle box.
+export function wouldOverlap(mover, x, y, other) {
+    return penetrationOf(x, y, mover.radius, other) > EPSILON;
+}
+
+// True if moving `mover` to (x, y) is allowed: it must land clear of every static box. Characters
+// are skipped entirely — they never block movement in this game.
+//
+// The one exception: a mover already inside a box may take a step that does not deepen the
+// overlap, so it can always back out instead of being frozen (odd states like a house placed on
+// top of a character).
+export function isMoveFree(mover, x, y) {
+    for (const other of colliders.values()) {
+        if (other === mover) continue;
+        if (other.shape !== 'box') continue;
+        const after = penetrationOf(x, y, mover.radius, other);
+        if (after <= EPSILON) continue;
+        const before = penetrationOf(mover.position.x, mover.position.y, mover.radius, other);
+        if (before <= EPSILON) return false; // was clear — may not enter the box now
+        if (after > before + EPSILON) return false; // already inside — may not push deeper
+    }
+    return true;
+}
+
+// True if a projectile (or any transient circle) may sit at (x, y): static boxes only, no
+// "was inside" forgiveness — a shot that ends up inside a house must die, not slide along it.
+export function isObstacleFree(x, y, radius) {
+    for (const other of colliders.values()) {
+        if (other.shape !== 'box') continue;
+        if (penetrationOf(x, y, radius, other) > EPSILON) return false;
+    }
+    return true;
+}
+
+// True if no registered collider currently overlaps the circle at (x, y). Used when placing a
+// brand-new character (spawns), where an existing overlap is never acceptable.
+export function isSpotFree(x, y, radius) {
+    for (const other of colliders.values()) {
+        if (penetrationOf(x, y, radius, other) > EPSILON) return false;
+    }
+    return true;
+}
+
+// Measures a model's collision shape and ground offset from its own geometry. Call it on the
+// model while it is still unparented and already at its final scale/rotation — everything is
+// reported in the character's own frame, which is the frame its group's position lives in.
+//
+// Returns:
+//   radius        max ground-plane distance from the model's centre to any surface vertex.
+//                 A circumscribing circle: generous on the diagonals but never overlapping.
+//   groundOffset  lift to add to model.position.z so the lowest point rests on z = 0.
+//   size          full vertex-bounds extents {x, y, z} in the model's current frame — used by
+//                 normalizeModel() to scale a model to a target height at load time.
+export function measureCollisionShape(object) {
+    // Refresh world matrices BEFORE reading any vertex: SkeletonUtils.clone() leaves the cloned
+    // skeleton's bone matrices stale, and measuring before they refresh caused wild sizes in the
+    // previous codebase.
+    object.updateMatrixWorld(true);
+
+    let radius = 0;
+    let minZ = Infinity;
+    const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+    const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+    const vertex = new THREE.Vector3();
+
+    object.traverse((child) => {
+        if (!child.isMesh) return;
+        const positions = child.geometry.attributes.position;
+        for (let i = 0; i < positions.count; i++) {
+            // getVertexPosition() applies skinning for SkinnedMesh and plain geometry otherwise;
+            // matrixWorld then brings the vertex into the character's frame.
+            child.getVertexPosition(i, vertex).applyMatrix4(child.matrixWorld);
+            radius = Math.max(radius, Math.hypot(vertex.x, vertex.y));
+            minZ = Math.min(minZ, vertex.z);
+            min.min(vertex);
+            max.max(vertex);
+        }
+    });
+
+    // An empty model (no meshes) must not produce Infinity/-Infinity values downstream.
+    if (!Number.isFinite(minZ)) {
+        minZ = 0;
+        min.set(0, 0, 0);
+        max.set(0, 0, 0);
+    }
+
+    return {
+        radius,
+        groundOffset: -minZ,
+        size: { x: max.x - min.x, y: max.y - min.y, z: max.z - min.z },
+    };
+}

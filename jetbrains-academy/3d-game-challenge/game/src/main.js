@@ -1,101 +1,133 @@
 import * as THREE from 'three';
-import './style.css';
+import './styles/index.css';
 
-import player, {playerReady, updatePlayer} from './components/Player.js';
-import camera, {updateCamera} from './components/Camera.js';
-import renderer from './components/Renderer.js';
-import {initMap, map} from './components/Map.js';
-import {initHouses} from './components/House.js';
-import {initEnemies, updateEnemies} from './components/Enemy.js';
-import {initAttack, updateAttack} from './components/Attack.js';
-import {initScore, updateScore} from './components/Score.js';
-import {initGameState, isGameOver, updateGameState} from './components/GameState.js';
-import {updateDifficulty} from './components/Difficulty.js';
-import {initInput} from './components/Input.js';
+import renderer from './core/Renderer.js';
+import camera, { updateCamera } from './world/Camera.js';
+import { initArena, map, resetArenaRotation, spinArena } from './world/Arena.js';
+import { initHouses } from './world/Houses.js';
+import { LIGHTS } from './config/tuning.js';
+import { STATE, getState, onStateChange } from './core/StateMachine.js';
+import { getPointerGroundPoint, initInput, onAbility } from './core/Input.js';
+import player, {
+    initPlayer,
+    playerReady,
+    resetPlayer,
+    tryActivateAbility,
+    updateDeathAnimation,
+} from './entities/Player.js';
+import { initEnemies } from './entities/Enemy.js';
+import { initBoss } from './entities/Boss.js';
+import { initProjectiles } from './entities/Projectile.js';
+import { initPickups } from './entities/Pickup.js';
+import { initTrails } from './entities/Trail.js';
+import { initAudio } from './systems/Audio.js';
+import { updateCombat } from './systems/Combat.js';
+import { updateWaves } from './systems/Waves.js';
+import { initRun, resetWorld } from './systems/Run.js';
+import { initUI, updateHUD } from './ui/index.js';
 
-// Main entry point: assembles the scene from the component modules and drives the
-// update/render loop.
+// Main entry point: assembles the scene, loads every asset, wires the systems together and runs
+// the frame loop. The loop is state-gated (GDD 1): the arena drifts in the main menu, the world
+// simulates in WAVE_PLAYING, the defeat animation plays in GAME_OVER, and everything else is
+// frozen — the same single state variable drives the UI and the audio through subscriptions.
 
 const scene = new THREE.Scene();
 const clock = new THREE.Clock(); // tracks elapsed time between frames (delta)
 
-// Largest frame time the world is stepped by, in seconds (~10 fps). A backgrounded tab, a GC
-// pause, or a slow load can make a single delta huge; without this cap the next frame would try
-// to advance everything by that whole gap in one go (sub-stepping already prevents tunneling, but
-// the world would visibly lurch). Clamping makes the simulation run briefly in slow motion
-// instead. Frame-rate independence is unaffected for normal frames, which are well under this.
+// Largest frame time the world is stepped by, in seconds (~10 fps). A backgrounded tab or a GC
+// pause can make one delta huge; clamping runs the world briefly in slow motion instead of
+// lurching (movement sub-stepping already prevents tunneling).
 const MAX_FRAME_DELTA = 0.1;
 
-// --- Lighting ---------------------------------------------------------------
-// Flat base illumination so nothing is fully black.
-const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+// --- Lighting (GDD 5) ---------------------------------------------------------
+// Ambient fill (light blue, 0.75) plus one directional light (15, -20, 30 / 1.1) that casts the
+// soft ground shadows the GDD asks for. The shadow camera covers the whole 60x40 arena.
+const ambientLight = new THREE.AmbientLight(LIGHTS.ambientColor, LIGHTS.ambientIntensity);
 scene.add(ambientLight);
 
-// Directional light for shape/shadow depth, positioned up and to one side.
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-directionalLight.position.set(-100, -100, 200);
+const directionalLight = new THREE.DirectionalLight(LIGHTS.dirColor, LIGHTS.dirIntensity);
+directionalLight.position.set(LIGHTS.dirPosition.x, LIGHTS.dirPosition.y, LIGHTS.dirPosition.z);
+directionalLight.castShadow = true;
+directionalLight.shadow.mapSize.set(2048, 2048);
+const shadowCamera = directionalLight.shadow.camera;
+shadowCamera.left = -LIGHTS.shadowHalfX;
+shadowCamera.right = LIGHTS.shadowHalfX;
+shadowCamera.top = LIGHTS.shadowHalfY;
+shadowCamera.bottom = -LIGHTS.shadowHalfY;
+shadowCamera.near = LIGHTS.shadowNear;
+shadowCamera.far = LIGHTS.shadowFar;
+shadowCamera.updateProjectionMatrix();
 scene.add(directionalLight);
 
-// --- Input -------------------------------------------------------------------
-// Owns every pointer listener: hover/drag steering for the hero plus the tap-on-hero that
-// GameState routes to the attack. The position provider is read lazily at tap time, so pointing
-// at the Player import above is all the wiring it needs. Set up before the systems that consume it.
-initInput(() => player.position);
+// --- Input --------------------------------------------------------------------
+// Owns every pointer listener: steering, the double-tap ability and the camera's pointer lead.
+initInput();
+onAbility(() => {
+    // A double click/tap only activates the class ability during live gameplay.
+    if (getState() === STATE.WAVE_PLAYING) tryActivateAbility();
+});
 
-// --- Map & houses -----------------------------------------------------------
-initMap(scene);
+// --- World --------------------------------------------------------------------
+initArena(scene);
 await initHouses(map);
 
-// --- Player & camera --------------------------------------------------------
-scene.add(player);
-updateCamera(player); // settle the orthographic camera over the hero's ground position
+// --- Player, enemies, boss ------------------------------------------------------
+initPlayer(scene);
 await playerReady;
+await Promise.all([initEnemies(scene), initBoss(scene)]);
 
-// --- Enemies ----------------------------------------------------------------
-await initEnemies(scene);
+// --- Combat plumbing -------------------------------------------------------------
+initProjectiles(scene);
+initPickups(scene);
+initTrails(scene);
 
-// --- Attack -----------------------------------------------------------------
-// The attack system builds its on-ground ring; the tap-on-hero reaches it through GameState,
-// and it is stepped each frame.
-initAttack(scene);
+// --- Systems and UI ---------------------------------------------------------------
+initAudio(); // subscribes to the state machine; the AudioContext unlocks on the first gesture
+initRun();   // wires death -> run end, wave clear -> draft
+initUI();
 
-// --- Score ------------------------------------------------------------------
-// Builds the on-screen readout; the survival reward and the display update in the loop below.
-initScore();
+// State reactions that belong to the 3D world:
+//   * the main menu shows the slowly rotating arena — leaving a run behind it would leave frozen
+//     corpses and bullets on display, so the world is cleared when the menu is entered;
+//   * everywhere else the frog is visible (GDD 1: the character selection "focuses on the
+//     player"), which needs the arena's rotation back because colliders are world-space and
+//     assume a level map;
+//   * "Play Again" after a defeat looks at a living hero, so the death animation's faded, tilted
+//     model must be restored (the fading, bullet-free battlefield too).
+let previousState = getState();
+onStateChange((state) => {
+    const leftState = previousState;
+    previousState = state;
 
-// --- Game state -------------------------------------------------------------
-// Owns the Game Over overlay (its click restarts the run) and routes the attack tap while a run
-// is live. Must come after the systems it resets so their reset functions exist when it is
-// wired up.
-initGameState();
-
-// --- Loop -------------------------------------------------------------------
-// Update order per frame: refresh difficulty (so this frame's speeds/delays reflect the current
-// score), move the player, then advance the enemies (spawn + chase), then check game state (after
-// the enemies have moved, so a fresh contact freezes the world the same frame), then the attack
-// (cooldown + hit sweep — after the enemies have moved, so it checks fresh positions), then the
-// score (after the attack, so a defeat scored this frame shows immediately), then render.
-//
-// Difficulty uses the score from the previous frame (updateScore runs at the end). The factor
-// moves so slowly that a one-frame lag is invisible; putting the refresh first means this frame's
-// movement already uses the latest value rather than waiting a full frame.
-//
-// While the Game Over state is up, every world update is skipped so the scene is frozen, but the
-// render call still runs so the overlay/field stay on screen. The Game Over check sits between
-// the enemies and the attack so a defeat takes priority: once it flips, the attack and score are
-// skipped for that frame too.
-renderer.setAnimationLoop(() => {
-    const delta = Math.min(clock.getDelta(), MAX_FRAME_DELTA);
-    if (!isGameOver()) {
-        updateDifficulty();
-        updatePlayer(delta);
-        updateEnemies(delta);
-        updateGameState();
-        if (!isGameOver()) {
-            updateAttack(delta);
-            updateScore();
+    if (state === STATE.MAIN_MENU) {
+        if (leftState !== STATE.MAIN_MENU) resetWorld(); // wipe the abandoned battlefield
+        player.visible = false;
+    } else {
+        player.visible = true;
+        if (leftState === STATE.MAIN_MENU) resetArenaRotation();
+        if (state === STATE.CHARACTER_SELECTION) {
+            resetWorld();
+            resetPlayer(); // undo the defeat animation (spin, sink, faded materials)
         }
     }
-    updateCamera(player); // follow the hero's ground position (x/y), never the hop height
+});
+
+// --- Loop -------------------------------------------------------------------------
+renderer.setAnimationLoop(() => {
+    const delta = Math.min(clock.getDelta(), MAX_FRAME_DELTA);
+    const state = getState();
+
+    if (state === STATE.MAIN_MENU) {
+        spinArena(delta); // the slow menu drift (GDD 1 state 1)
+    } else if (state === STATE.WAVE_PLAYING) {
+        updateWaves(delta);  // spawning, wave timing, boss scheduling
+        updateCombat(delta); // player + enemies + boss + projectiles + pickups
+    } else if (state === STATE.GAME_OVER) {
+        updateDeathAnimation(delta); // the code-made defeat animation (GDD state 6)
+    }
+    // POWERUP_DRAFT, PAUSE_MENU and CHARACTER_SELECTION freeze the world (time step = 0).
+
+    updateCamera(delta, getPointerGroundPoint(), player.position);
+    updateHUD();
     renderer.render(scene, camera);
 });

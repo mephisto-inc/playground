@@ -1,0 +1,95 @@
+import { STATE, setState } from '../core/StateMachine.js';
+import { snapCameraTo } from '../world/Camera.js';
+import player, {
+    applyCard,
+    configureClass,
+    getCollectedCards,
+} from '../entities/Player.js';
+import { clearProjectiles } from '../entities/Projectile.js';
+import { clearPickups } from '../entities/Pickup.js';
+import { clearTrails } from '../entities/Trail.js';
+import { resetEnemies } from '../entities/Enemy.js';
+import { resetBoss } from '../entities/Boss.js';
+import { onPlayerDeath, resetCombat } from './Combat.js';
+import {
+    advanceAfterDraft,
+    registerClearHandler,
+    resetWaves,
+    startRun as startWaves,
+} from './Waves.js';
+import { openDraft, resetDraft } from './PowerupDraft.js';
+import { commitScore, getBestScore, resetScore } from './Score.js';
+import { checkNewRecord, getRunUnlocks, resetRunTracking } from './Achievements.js';
+
+// Run system: the orchestrator that owns a single run's life — starting it (class, score, world
+// reset, wave 1), the draft hand-off between waves, and the end (score commit, achievements,
+// GAME_OVER state). main.js calls initRun() once and then only steps the loop; everything else
+// flows through here or through the state machine.
+
+let initialized = false;
+let lastCommit = null; // the Score.commitScore() result of the run that just ended
+
+// Wires the cross-module callbacks. Called once from main.js after all assets load.
+export function initRun() {
+    if (initialized) return;
+    initialized = true;
+
+    // Combat reports the player's death; the run decides what it means.
+    onPlayerDeath(() => endRun());
+
+    // Waves reports a cleared wave; the run opens the power-up draft (GDD 6A, after waves 1-4).
+    registerClearHandler(() => {
+        openDraft();
+        setState(STATE.POWERUP_DRAFT);
+    });
+}
+
+// Starts a fresh run with the chosen class (from the character-selection modal).
+export function beginRun(classId) {
+    resetWorld();          // clear anything left from a previous run
+    configureClass(classId); // stats, hearts, collected cards, minions for the class
+    resetScore();
+    resetRunTracking();    // achievements' per-run trackers
+    resetDraft();          // 3 fresh offers + the once-per-run reshuffle
+    snapCameraTo(player.position);
+    startWaves();          // running = true, wave 1 begins
+    setState(STATE.WAVE_PLAYING);
+}
+
+// Applies the chosen draft card and resumes play at the next wave.
+export function completeDraft(card) {
+    applyCard(card);
+    advanceAfterDraft(); // starts the next wave (audio stage follows inside)
+    setState(STATE.WAVE_PLAYING);
+}
+
+// Ends the run: commits the score, evaluates the New Record achievement, freezes into GAME_OVER
+// (main plays the defeat animation there).
+function endRun() {
+    lastCommit = commitScore();
+    checkNewRecord(lastCommit);
+    setState(STATE.GAME_OVER);
+}
+
+// Clears every live system for a clean slate. Also called at the start of beginRun().
+export function resetWorld() {
+    clearProjectiles();
+    clearPickups();
+    clearTrails();
+    resetBoss();     // must run before resetEnemies(): the boss lives in the enemy list
+    resetEnemies();
+    resetCombat();
+    resetWaves();
+}
+
+// Everything the game-over screen needs: final score, best, record flag, collected cards and
+// the achievements unlocked during this run. Validity: meaningful after endRun().
+export function getGameOverSummary() {
+    return {
+        score: lastCommit ? lastCommit.finalScore : 0,
+        best: getBestScore(),
+        isRecord: lastCommit ? lastCommit.isRecord : false,
+        cards: getCollectedCards(),
+        unlocked: getRunUnlocks(),
+    };
+}
