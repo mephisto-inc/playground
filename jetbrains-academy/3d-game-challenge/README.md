@@ -2,7 +2,7 @@
 
 ## Credits
 
-Small House by Jarlan Perez [CC-BY] (https://creativecommons.org/licenses/by/3.0/) via Poly Pizza (https://poly.pizza/m/053kskrV4U_) \
+Small House by Jarlan Perez [CC-BY](https://creativecommons.org/licenses/by/3.0/) via Poly Pizza (https://poly.pizza/m/053kskrV4U_) \
 House by Quaternius (https://poly.pizza/m/oJJIRwv6Bo) \
 House by Quaternius (https://poly.pizza/m/L7h0SjZX2K) \
 House by Quaternius (https://poly.pizza/m/vZ1CLbWmSx) \
