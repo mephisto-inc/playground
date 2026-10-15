@@ -6,3 +6,5 @@
 
 # 3. Un-ignore the specific folder you want to keep
 !/game/
+!/LICENSE
+!/README.md
