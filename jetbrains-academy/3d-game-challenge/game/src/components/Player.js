@@ -221,7 +221,31 @@ export function updatePlayer(delta) {
       const nextY = THREE.MathUtils.lerp(move.start.y, move.target.y, nextProgress);
 
       if (!isMoveFree(playerCollider, nextX, nextY)) {
-        blocked = true;
+        // The straight hop line is blocked (a house or wall ahead). Before giving up, try the
+        // step split into its two axis halves — whichever is free lets Tode skim along the
+        // obstacle's face toward the pointer instead of stopping dead against it (the bees slide
+        // the same way; see Enemy.js). The hop path has to follow the slid point, so `start` and
+        // `target` are translated by exactly slid − full: with both endpoints moved by the same
+        // delta the invariant position = lerp(start, target, progress) still holds at the already
+        // advanced progress, which also drives the hop arc and lean — so progress never rewinds
+        // and the sine arc above cannot pop.
+        const slideX = isMoveFree(playerCollider, nextX, player.position.y);
+        const slideY = !slideX && isMoveFree(playerCollider, player.position.x, nextY);
+        if (slideX || slideY) {
+          const slidX = slideX ? nextX : player.position.x;
+          const slidY = slideX ? player.position.y : nextY;
+          const shiftX = slidX - nextX;
+          const shiftY = slidY - nextY;
+          move.start.x += shiftX;
+          move.start.y += shiftY;
+          move.target.x += shiftX;
+          move.target.y += shiftY;
+          move.progress = nextProgress;
+          player.position.x = slidX;
+          player.position.y = slidY;
+          continue;
+        }
+        blocked = true; // neither axis half is free either — fall through to the freeze below
         break;
       }
       move.progress = nextProgress;
@@ -230,11 +254,11 @@ export function updatePlayer(delta) {
     }
 
     if (blocked) {
-      // Blocked by an obstacle (a house or a wall). Rather than snapping the hop to the floor
-      // (which teleports the hero down mid-air — the bug this replaced), freeze the ground path by
-      // collapsing start and target onto the current spot, then let `progress` run on to complete
-      // the frame's arc. The ground no longer moves, but the sine arc below finishes, so Tode
-      // lands under his own weight at the last clear position.
+      // Fully blocked — no combined step and no axis half was free. Rather than snapping the hop
+      // to the floor (which teleports the hero down mid-air — the bug this replaced), freeze the
+      // ground path by collapsing start and target onto the current spot, then let `progress` run
+      // on to complete the frame's arc. The ground no longer moves, but the sine arc below
+      // finishes, so Tode lands under his own weight at the last clear position.
       move.start.copy(player.position);
       move.target.copy(player.position);
       move.progress = targetProgress;

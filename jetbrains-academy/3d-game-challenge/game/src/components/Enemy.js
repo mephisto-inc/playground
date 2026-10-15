@@ -18,10 +18,11 @@ import { MAP_SIZE } from './Map.js';
 
 // Enemy component: loads the enemy model once, spawns clones just outside the camera view (or
 // clamped to the map wall when the player is near an edge), and each frame steers every live
-// enemy toward the player — stopping whenever that step would push it into a house or a wall.
-// Bees pass straight through each other and the player; contact with the hero is detected
-// separately by an overlap test (see wouldOverlap). main.js adds this system to the scene and
-// calls updateEnemies(delta) once per animation frame.
+// enemy toward the player — slipping sideways along houses and walls when the direct step is
+// blocked, and detouring around obstacles that keep blocking it (see updateEnemies). Bees pass
+// straight through each other and the player; contact with the hero is detected separately by an
+// overlap test (see wouldOverlap). main.js adds this system to the scene and calls
+// updateEnemies(delta) once per animation frame.
 
 // --- Tuning -----------------------------------------------------------------
 // Enemy speed and spawn delay are no longer fixed here: they are score-scaled by the difficulty
@@ -33,6 +34,38 @@ const ENEMY_SCALE = 5; // model scalar (see the characteristics block below)
 
 // How many screen-edge samples to try before giving up and spawning anyway (see spawnEnemy).
 const SPAWN_RETRY_ATTEMPTS = 8;
+
+// --- Unstick / detour tuning -------------------------------------------------
+// Seconds a bee may make zero progress before it gives up on the direct line and slips sideways
+// around the obstacle instead (the "escape detour" in updateEnemies). Sliding along a face counts
+// as progress, so this only fires when the bee is genuinely wedged — nose in a corner, or in a
+// corridor too narrow to cross head-on. At BASE_ENEMY_SPEED (30 u/s, scaled up by difficulty) a
+// bee that could move covers ~15 units in this window, so the detour kicks in before a stationary
+// bee becomes visible as a bug.
+const STUCK_ESCAPE_SECONDS = 0.5;
+
+// How far (world units) an escape waypoint sits sideways from the bee, along the line to the
+// player. Roughly a second of flight at base speed — far enough to clear the obstacle face the
+// bee was pressed against; every candidate is validated with isMoveFree before it is chosen, so a
+// waypoint inside a house or wall is never issued.
+const ESCAPE_WAYPOINT_DISTANCE = 50;
+
+// How close the bee must come to its escape waypoint to count as arrived (at which point pursuit
+// resumes if the direct line has not already cleared). World units.
+const ESCAPE_WAYPOINT_REACHED = 3;
+
+// Spacing of the samples along the bee→player segment in the line-of-sight probe (see
+// hasLineOfSight). Far below any obstacle's size, so a house can never hide between two samples.
+const ESCAPE_PROBE_SPACING = 15;
+
+// Minimum displacement in one frame that counts as progress, in world units. Any genuine slide is
+// orders of magnitude larger; this exists only so floating-point jitter cannot mask a wedge.
+const STUCK_EPSILON = 0.01;
+
+// TODO: a corridor narrower than a bee's diameter has no path at all (house placement can leave
+//       as little as 5 units to a wall), so a player camping one stays unreachable — steering can
+//       never cross what does not fit. Only worth addressing if it becomes a strategy; the fix
+//       would be real pathfinding (baked grid + A*), not more steering.
 
 // Facing offset. The model's forward is its local +Z: its rig's torso -> head axis maps to
 // world -Y at yaw 0, so without an offset the bee would run 90° to its own left (the same
@@ -167,6 +200,12 @@ function spawnEnemy() {
   // Contact flag polled by GameState: true when this bee overlaps the player. Recomputed each
   // frame in updateEnemies; false until then.
   enemy.userData.touchingPlayer = false;
+  // Steering state for updateEnemies: seconds spent fully wedged (drives the escape detour), and
+  // the lateral waypoint while detouring (null = pursuing directly). Both must start fresh — an
+  // undefined stuckTimer would poison every arithmetic below with NaN and silently disable the
+  // whole unstick system.
+  enemy.userData.stuckTimer = 0;
+  enemy.userData.escapeWaypoint = null;
   enemy.add(model);
   spawnScene.add(enemy);
   enemies.push(enemy);
@@ -204,8 +243,81 @@ export function initEnemies(scene) {
   });
 }
 
-// Called every frame from the animation loop: spawns on the timer and steers each enemy
-// toward the player, one collision-checked step at a time.
+// --- Detour helpers (used by updateEnemies) ---------------------------------
+
+// True when a straight line from `from` to `to` stays clear of every obstacle for the bee's own
+// circle — a body-width line-of-sight test, not a ray: the line is sampled every
+// ESCAPE_PROBE_SPACING units (plus the endpoint) and each sample must pass isMoveFree with the
+// bee's collider, so it can never approve a gap the bee does not fit through. Characters are not
+// obstacles for this test (isMoveFree ignores them), which is correct: bees and Tode are passable.
+function hasLineOfSight(collider, from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / ESCAPE_PROBE_SPACING));
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    if (!isMoveFree(collider, from.x + dx * t, from.y + dy * t)) return false;
+  }
+  return true;
+}
+
+// Picks a sideways escape waypoint for a wedged bee: the two points ESCAPE_WAYPOINT_DISTANCE to
+// the left/right of the bee along its line to the player, keeping only the ones that pass a full
+// isMoveFree check. When both are free and `avoid` names the side the bee is already wedged
+// against (the flip case), its opposite is returned — `avoid` is compared by half-plane, because
+// it was placed from an earlier position and cannot match exactly. Otherwise the side is random,
+// so several bees wedged at the same spot fan out instead of convoying. Returns null when neither
+// side is free; the caller then waits a full window and retries rather than thrashing.
+function pickEscapeWaypoint(collider, enemy, avoid) {
+  const toPlayerX = player.position.x - enemy.position.x;
+  const toPlayerY = player.position.y - enemy.position.y;
+  const length = Math.hypot(toPlayerX, toPlayerY);
+  if (length < 1e-6) return null; // standing on the player — nothing to detour around
+
+  // Unit "left" of the player line, scaled to the detour distance; the right side is its negation.
+  const sideX = (-toPlayerY / length) * ESCAPE_WAYPOINT_DISTANCE;
+  const sideY = (toPlayerX / length) * ESCAPE_WAYPOINT_DISTANCE;
+  const left = new THREE.Vector3(enemy.position.x + sideX, enemy.position.y + sideY, 0);
+  const right = new THREE.Vector3(enemy.position.x - sideX, enemy.position.y - sideY, 0);
+
+  const free = [];
+  if (isMoveFree(collider, left.x, left.y)) free.push(left);
+  if (isMoveFree(collider, right.x, right.y)) free.push(right);
+  if (free.length === 0) return null;
+  if (free.length === 1) return free[0]; // no choice to make
+
+  if (avoid) {
+    const onLeft = (avoid.x - enemy.position.x) * sideX + (avoid.y - enemy.position.y) * sideY > 0;
+    return onLeft ? right : left; // both free: flip to the side the bee is not wedged against
+  }
+  return Math.random() < 0.5 ? left : right;
+}
+
+// Decides what a bee that moved nowhere this frame should do about it. After
+// STUCK_ESCAPE_SECONDS it abandons the direct line and picks a lateral waypoint; while already
+// detouring, it flips to the other side after twice that window, since the chosen corridor is
+// blocked too. The clock is *set* rather than left alone so the next decision lands a full
+// window from now — and a failed pick (both sides blocked) restarts from zero and retries a full
+// window later instead of re-rolling every frame.
+function updateEscapeState(collider, enemy) {
+  const data = enemy.userData;
+
+  if (data.escapeWaypoint) {
+    if (data.stuckTimer < STUCK_ESCAPE_SECONDS * 2) return;
+    data.escapeWaypoint = pickEscapeWaypoint(collider, enemy, data.escapeWaypoint) ??
+      data.escapeWaypoint; // both sides unusable: keep the old waypoint, it beats the wall
+    data.stuckTimer = STUCK_ESCAPE_SECONDS;
+    return;
+  }
+
+  if (data.stuckTimer < STUCK_ESCAPE_SECONDS) return;
+  data.escapeWaypoint = pickEscapeWaypoint(collider, enemy, null);
+  data.stuckTimer = data.escapeWaypoint ? STUCK_ESCAPE_SECONDS : 0;
+}
+
+// Called every frame from the animation loop: spawns on the timer and steers each enemy toward
+// the player, one collision-checked step at a time — sliding along obstacles, and detouring via a
+// lateral waypoint when they stay wedged (see the tuning block and the helpers above).
 export function updateEnemies(delta) {
   if (!template) return; // model not loaded yet
 
@@ -224,15 +336,30 @@ export function updateEnemies(delta) {
   const speed = getEnemySpeed();
 
   for (const enemy of enemies) {
-    // Vector from the enemy to the player, flattened to the ground plane.
-    const direction = new THREE.Vector3().subVectors(player.position, enemy.position);
+    const collider = enemy.userData.collider;
+
+    // Leave the detour as soon as it has done its job: the waypoint is reached, or the direct
+    // line to the player is open again (the body-width probe). Checked before steering so pursuit
+    // resumes in this same frame instead of the bee idling on the waypoint.
+    if (collider && enemy.userData.escapeWaypoint) {
+      const arrived =
+        enemy.position.distanceTo(enemy.userData.escapeWaypoint) <= ESCAPE_WAYPOINT_REACHED;
+      if (arrived || hasLineOfSight(collider, enemy.position, player.position)) {
+        enemy.userData.escapeWaypoint = null;
+        enemy.userData.stuckTimer = 0;
+      }
+    }
+
+    // Vector from the enemy to its current target — the escape waypoint while detouring, the
+    // player otherwise — flattened to the ground plane.
+    const target = enemy.userData.escapeWaypoint || player.position;
+    const direction = new THREE.Vector3().subVectors(target, enemy.position);
     direction.z = 0;
-    if (direction.lengthSq() < 1e-6) continue;
+    if (direction.lengthSq() < 1e-6) continue; // already on top of the target
     direction.normalize();
 
-    const collider = enemy.userData.collider;
     if (collider) {
-      // Advance toward the player in sub-steps of at most MAX_MOVE_SUB_STEP so the bee comes to
+      // Advance toward the target in sub-steps of at most MAX_MOVE_SUB_STEP so the bee comes to
       // rest right at the collision boundary instead of up to a whole frame's step short of it.
       // (Rejecting the whole step was the old behaviour; since that step scales with difficulty,
       // it left a gap that grew with speed and made Game Over fire from visibly too far away.)
@@ -244,15 +371,45 @@ export function updateEnemies(delta) {
       const subX = (direction.x * stepLength) / subSteps;
       const subY = (direction.y * stepLength) / subSteps;
 
+      const startX = enemy.position.x;
+      const startY = enemy.position.y;
+
       const playerCollider = getCollider(player);
       for (let i = 0; i < subSteps; i++) {
         const nx = enemy.position.x + subX;
         const ny = enemy.position.y + subY;
-        if (!isMoveFree(collider, nx, ny)) {
-          break;
+        if (isMoveFree(collider, nx, ny)) {
+          enemy.position.x = nx;
+          enemy.position.y = ny;
+          continue;
         }
-        enemy.position.x = nx;
-        enemy.position.y = ny;
+        // Direct step blocked: retry it as its two axis halves (the slide). Both subX and subY
+        // point toward the target, so a free half always makes lateral progress and never
+        // backtracks — the bee glides along the obstacle's face and rounds the corner on its own.
+        // Before this split the bee stopped dead at the first rejection, every frame, and stayed
+        // wedged behind the house it was chasing through.
+        if (isMoveFree(collider, nx, enemy.position.y)) {
+          enemy.position.x = nx;
+          continue;
+        }
+        if (isMoveFree(collider, enemy.position.x, ny)) {
+          enemy.position.y = ny;
+          continue;
+        }
+        break; // both halves blocked too — hold position; the stuck clock below notices
+      }
+
+      // --- Stuck clock and the escape detour -------------------------------
+      // Any real movement resets the clock, so ordinary wall-hugging (which always slides at
+      // least a little) never triggers the detour; only fully wedged frames grow it, and
+      // updateEscapeState makes the actual enter/flip decision once the window elapses.
+      const moved =
+        Math.hypot(enemy.position.x - startX, enemy.position.y - startY) > STUCK_EPSILON;
+      if (moved) {
+        enemy.userData.stuckTimer = 0;
+      } else {
+        enemy.userData.stuckTimer += delta;
+        updateEscapeState(collider, enemy);
       }
 
       // Detection: is this bee overlapping the player?
