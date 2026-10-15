@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { getEnemies } from './Enemy.js';
 import { spawnMinionShot } from './Projectile.js';
+import { assetUrl } from '../core/Assets.js';
 import { isLineSightClear } from '../core/Collision.js';
 import { playSfx } from '../systems/Audio.js';
 import { ABILITY, PLAYER, PROJECTILE } from '../config/tuning.js';
@@ -32,7 +33,7 @@ function loadSpriteTexture() {
     if (texturePromise) return texturePromise;
     texturePromise = new Promise((resolve, reject) => {
         const image = new Image();
-        image.src = '/assets/tode.svg';
+        image.src = assetUrl('/assets/tode.svg'); // base-relative so subpath deploys work
         image.onload = () => {
             const canvas = document.createElement('canvas');
             canvas.width = 128;

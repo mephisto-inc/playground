@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { registerBoxCollider } from '../core/Collision.js';
+import { assetUrl } from '../core/Assets.js';
 import renderer from '../core/Renderer.js';
 import { ARENA } from '../config/tuning.js';
 
@@ -25,7 +26,8 @@ const MENU_ROTATION_SPEED = 0.12;
 function makeFloor() {
     // TextureLoader is asynchronous, so the floor may render untextured for a frame or two —
     // acceptable for a local PNG, and it avoids threading a promise through arena startup.
-    const texture = new THREE.TextureLoader().load('/assets/PlaneMesh.png');
+    // assetUrl(): the floor PNG must also resolve under a subpath deploy (see vite.config.js).
+    const texture = new THREE.TextureLoader().load(assetUrl('/assets/PlaneMesh.png'));
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(ARENA.width / ARENA.floorTile, ARENA.depth / ARENA.floorTile);

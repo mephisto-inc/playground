@@ -23,10 +23,10 @@ export const ARENA = {
 // sits 3 units beyond the house's worst-case face (footprint cap), keeping at least 3 units of
 // clearance to every obstacle, so even a tank (~1-unit radius) walks out instead of wedging.
 export const SPAWN_POINTS = [
-    { x: 41.7, y: 20.8 }, { x: 35.2, y: 27.3 },   // NE corner (house at 35.2, 20.8)
-    { x: -41.7, y: 20.8 }, { x: -35.2, y: 27.3 }, // NW corner (house at -35.2, 20.8)
-    { x: 41.7, y: -20.8 }, { x: 35.2, y: -27.3 }, // SE corner (house at 35.2, -20.8)
-    { x: -41.7, y: -20.8 }, { x: -35.2, y: -27.3 }, // SW corner (house at -35.2, -20.8)
+    {x: 41.7, y: 20.8}, {x: 35.2, y: 27.3},   // NE corner (house at 35.2, 20.8)
+    {x: -41.7, y: 20.8}, {x: -35.2, y: 27.3}, // NW corner (house at -35.2, 20.8)
+    {x: 41.7, y: -20.8}, {x: 35.2, y: -27.3}, // SE corner (house at 35.2, -20.8)
+    {x: -41.7, y: -20.8}, {x: -35.2, y: -27.3}, // SW corner (house at -35.2, -20.8)
 ];
 
 // --- Camera (GDD 3A) ---------------------------------------------------------
@@ -39,7 +39,7 @@ export const CAMERA = {
     height: 38,           // Z height of the camera (GDD 3A)
     viewWidth: 40,        // camera box width in world units (user: 2x wider than the previous 20)
     followOffsetMax: 4,   // max units the view leads toward the pointer (GDD 3A)
-    followDamping: 5,     // exponential smoothing rate for the follow (higher = tighter)
+    followDamping: 1,     // exponential smoothing rate for the follow (higher = tighter)
     near: 0.1,            // near clip; unspecified by the GDD, safe for this scale
     far: 4000,            // far clip; must clear the 4000-unit backdrop's furthest corner
 };
@@ -50,7 +50,7 @@ export const LIGHTS = {
     ambientIntensity: 0.75,
     dirColor: 0xffffff,
     dirIntensity: 1.1,
-    dirPosition: { x: 15, y: -20, z: 30 },
+    dirPosition: {x: 15, y: -20, z: 30},
     // Shadow camera half-extents: covers the whole 97.2x64.8 arena plus a margin so no shadow pops.
     shadowHalfX: 59,
     shadowHalfY: 43,
@@ -86,7 +86,7 @@ export const PLAYER = {
 export const MOVE = {
     // World units around the hero where the pointer does not move the player (GDD 3B).
     // Must stay above PLAYER.hopDistance, or the hero could overshoot the pointer and oscillate.
-    deadzone: 3.5,
+    deadzone: 4,
 };
 
 // --- Enemy combat (GDD 3C, 4B, 6B) -------------------------------------------
@@ -188,7 +188,7 @@ export const DRAFT = {
 
 // --- Audio (GDD 2 + 9) -------------------------------------------------------
 export const AUDIO = {
-    masterVolumeDefault: 0.7, // initial master volume; persisted in localStorage
+    masterVolumeDefault: 0.5, // initial master volume; persisted in localStorage
     lowPassHz: 400,           // the "muffled" filter frequency (GDD 2)
     // GDD 9 leaves the boss_step3 fade length to the editor. Two constants: a snappy crossfade
     // for ordinary step changes (user-approved) and the longer one for bgm_boss_step3 swaps.
@@ -201,17 +201,19 @@ export const AUDIO = {
 // --- Class abilities (GDD 4A) ------------------------------------------------
 export const ABILITY = {
     // Parry
-    parryCooldown: 4.0,        // seconds
-    parryShield: 0.4,          // seconds the shield stays up
-    parryReflectRadius: 2.2,   // shield circle that flips hostile projectiles (not in the GDD)
-    parryShockwaveRadius: 8,   // not specified by the GDD; sized to catch nearby enemies
+    parryCooldown: 1.0,        // seconds
+    parryShield: 0.6,          // seconds the shield stays up
+    parryReflectRadius: 4,   // shield circle that flips hostile projectiles (not in the GDD)
+    parryShockwaveRadius: 5,   // not specified by the GDD; sized to catch nearby enemies
     parryShockwaveBaseDamage: 3, // shockwave damage is 3 + current HP
     parryStun: ENEMY.stunDuration,
+    parryReflectDamage: 3,     // damage of a reflected projectile (user round 5b: "increase the
+                               // parried projectile damage" — normal shots deal PROJECTILE.damage)
     // Round-5 parry visual timings (cosmetic only — shield/reflect behavior never reads these):
-    parryGlowRadius: 0.9,      // soft blue glow ring's outer radius while the shield is up
-    parryImpactDuration: 0.12, // white-blue impact flash right when a parry succeeds
-    parryRingDuration: 0.4,    // shiny-blue ring expanding to the shockwave radius after the flash
-    parryFailDuration: 0.15,   // quick collapse of the glow when the shield expires with no parry
+    parryGlowRadius: 0.8,      // soft blue glow ring's outer radius while the shield is up
+    parryImpactDuration: 0.03, // white-blue impact flash right when a parry succeeds
+    parryRingDuration: 0.1,    // shiny-blue ring expanding to the shockwave radius after the flash
+    parryFailDuration: 0.15,   // collapse of the glow when the shield expires with no parry
     // Dasher
     dashCooldown: 3.0,         // seconds
     dashDistance: 6,           // world units covered instantly
@@ -226,7 +228,7 @@ export const ABILITY = {
     // Anchor
     minionCount: 2,            // two orbiting minions
     minionOrbitRadius: 1.7,    // world units from the player
-    minionOrbitSpeed: 1.6,     // radians per second
+    minionOrbitSpeed: 1.3,     // radians per second
     minionHeight: 1.2,         // Z height of the orbit (they float)
     minionDamage: 1,           // damage per shot (round 5: integer; was 0.5)
     minionInterval: 2.4,       // seconds between shots (doubled alongside the damage change,

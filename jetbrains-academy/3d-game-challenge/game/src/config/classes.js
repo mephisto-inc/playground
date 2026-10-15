@@ -13,10 +13,14 @@ export const CLASSES = [
         name: 'Parry',
         icon: '🛡️',
         hearts: PLAYER.baseHearts,
-        description: 'Double click/tap: raise a 0.4 s shield that cancels physical damage and '
-            + 'reflects every projectile around you straight back at whoever fired it (bosses '
-            + 'included). On parry, a shockwave deals 3 + current HP, stuns common enemies for '
-            + '1.5 s and knocks the Boss back. 4.0 s cooldown.',
+        // The numbers interpolate the live values from tuning.js, so this text can never drift
+        // from the actual balance (round 5b: also mentions the reflected shots' damage).
+        description: `Double click/tap: raise a ${ABILITY.parryShield} s shield that cancels physical `
+            + `damage and reflects every projectile around you straight back at whoever fired it `
+            + `(bosses included), each reflected shot dealing ${ABILITY.parryReflectDamage} damage. `
+            + `On parry, a shockwave deals ${ABILITY.parryShockwaveBaseDamage} + current HP, stuns `
+            + `common enemies for ${ABILITY.parryStun} s and knocks the Boss back. `
+            + `${ABILITY.parryCooldown} s cooldown.`,
         ability: {
             // Shield window and cooldown live in tuning.js so balance stays in one place.
             cooldown: ABILITY.parryCooldown,

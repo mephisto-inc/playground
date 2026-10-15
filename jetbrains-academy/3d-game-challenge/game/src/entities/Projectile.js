@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { isObstacleFree } from '../core/Collision.js';
-import { PROJECTILE } from '../config/tuning.js';
+import { ABILITY, PROJECTILE } from '../config/tuning.js';
 
 // Projectile component: one pool for every shot in the game — player shots (and Anchor minion
 // shots, which behave identically) and enemy shots (ranged projectiles and boss orbs).
@@ -33,7 +33,7 @@ const materials = {
 // hitSet, sender } where owner is 'player' | 'minion' | 'enemy' | 'boss' and hitSet remembers
 // enemies a piercing shot already damaged (so one bullet never damages the same body twice).
 // sender (round 5) is the enemy/boss object that fired a hostile bullet; parry reflections aim
-// at its last position, which stays readable even after the sender died.
+// back at it while it is alive (see reflectProjectilesNear).
 const bullets = [];
 let sceneRef = null;
 
@@ -135,10 +135,12 @@ export function spawnBossOrb(x, y, dirX, dirY, speedMul = 1, sender = null) {
 }
 
 // Turns every hostile bullet currently overlapping the parry shield circle back into a
-// player-owned bullet: ownership flips, the shot accelerates to player speed and it flies
-// straight at its sender (round 5: "reflect it back into the enemy that sent it" — bosses
-// included), using the sender's position at parry time, so even a dying enemy gets hit where it
-// last stood. Bullets without a sender (none in practice) just reverse direction.
+// player-owned bullet: ownership flips, the shot accelerates to player speed and it hits harder
+// than normal fire (ABILITY.parryReflectDamage). Direction (round 5b):
+//   * live sender  — the shot flies straight back into the enemy/boss that fired it (bosses
+//     included), aimed at its position at parry time;
+//   * dead/absent sender — a corpse must not "pull" shots toward where it fell, so the shot is
+//     just flung the opposite way of its incoming travel instead.
 // Returns how many projectiles were reflected, so the parry can decide success/failure sound.
 export function reflectProjectilesNear(x, y, radius) {
     let reflected = 0;
@@ -151,10 +153,12 @@ export function reflectProjectilesNear(x, y, radius) {
         const speed = Math.hypot(bullet.speedX, bullet.speedY);
         if (speed < 1e-6) continue;
 
-        // Default: reverse the flight direction. With a sender, aim exactly at it instead.
+        // Default: reverse the flight direction (also the dead-sender behavior).
         let dirX = -bullet.speedX / speed;
         let dirY = -bullet.speedY / speed;
-        if (bullet.sender) {
+        // The dying flag survives killEnemy()/killBoss() and corpse removal, so a sender that
+        // died before (or is dying during) the parry counts as dead here.
+        if (bullet.sender && !bullet.sender.userData.dying) {
             const toSenderX = bullet.sender.position.x - bullet.mesh.position.x;
             const toSenderY = bullet.sender.position.y - bullet.mesh.position.y;
             const toSender = Math.hypot(toSenderX, toSenderY);
@@ -165,7 +169,7 @@ export function reflectProjectilesNear(x, y, radius) {
         }
 
         bullet.owner = 'player';
-        bullet.damage = PROJECTILE.damage;
+        bullet.damage = ABILITY.parryReflectDamage;
         bullet.pierce = 0;
         bullet.hitSet.clear();
         bullet.speedX = dirX * PROJECTILE.playerSpeed;

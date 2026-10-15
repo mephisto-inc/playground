@@ -1,4 +1,5 @@
 import { AUDIO } from '../config/tuning.js';
+import { assetUrl } from '../core/Assets.js';
 import { STORAGE_KEYS, loadNumber, saveNumber } from '../core/Storage.js';
 import { STATE, getState, onStateChange } from '../core/StateMachine.js';
 
@@ -163,10 +164,12 @@ function preloadMusic() {
 // --- Buffer loading ----------------------------------------------------------
 
 // Fetches and decodes an asset once; subsequent calls return the same promise.
+// assetUrl(): the audio files live under the base-relative assets folder so the game also works
+// when deployed to a subpath (see vite.config.js).
 function getBuffer(fileName) {
     if (!ctx) return Promise.reject(new Error('audio not started'));
     if (buffers.has(fileName)) return buffers.get(fileName);
-    const promise = fetch(`/assets/${fileName}`)
+    const promise = fetch(assetUrl(`/assets/${fileName}`))
         .then((response) => {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             return response.arrayBuffer();

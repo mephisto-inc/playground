@@ -14,11 +14,21 @@ import { measureCollisionShape } from './Collision.js';
 
 const loader = new GLTFLoader();
 
+// Prefixes a public-asset path with the build's base URL, so the absolute-looking paths used
+// everywhere in src ('/assets/tode.glb') resolve in every deployment: the dev server (base '/'),
+// a repository root, or a nested subpath like /game/3d-game/ (base './' from vite.config.js —
+// the emitted './assets/...' then resolves against the page URL). Keeps the deploy location out
+// of every individual call site.
+export function assetUrl(path) {
+    return import.meta.env.BASE_URL + path.replace(/^\/+/, '');
+}
+
 // Loads a GLB and resolves with its gltf object (scene + animations). Rejects on network/decode
-// errors so callers can surface a message, as the previous components did.
+// errors so callers can surface a message, as the previous components did. The URL passes
+// through assetUrl() so callers keep writing '/assets/...' regardless of the deploy base.
 export function loadGLTF(url) {
     return new Promise((resolve, reject) => {
-        loader.load(url, resolve, undefined, reject);
+        loader.load(assetUrl(url), resolve, undefined, reject);
     });
 }
 
