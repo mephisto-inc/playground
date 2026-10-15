@@ -1,17 +1,16 @@
-# Build a Game with an AI Coding Agent
-[![official JetBrains project](http://jb.gg/badges/official.svg)](https://confluence.jetbrains.com/display/ALL/JetBrains+on+GitHub) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-<a href="https://www.coursera.org/learn/jb-build-game-with-ai-agent/" target="_blank">
-<img src="https://img.shields.io/badge/Coursera-0056D2?style=for-the-badge&logo=Coursera&logoColor=white&style=flat" alt="Course%20catalog"></a>
-<a href="https://plugins.jetbrains.com/plugin/30327-build-a-game-with-ai-coding-agent/versions" target="_blank">
-<img src="https://img.shields.io/badge/dynamic/yaml?query=%24.course_version&url=https://raw.githubusercontent.com/jetbrains-academy/game-course/refs/heads/main/course-remote-info.yaml&logo=jetbrains&logoColor=FC801D&label=Marketplace&color=6b59fe&style=flat&prefix=v" alt="Marketplace"></a>
+# 3D Game Challenge
 
-Build a 3D browser game step by step – with the help of an AI coding agent.
+## Credits
 
-In this project-based course, you'll plan, build, and polish a complete game inside IDE, using AI coding agents to turn ideas into working code. Follow the story of Tode the Frog, or customize the visuals and make the game your own. No grades – just hands-on building and your creativity.
-
-## Want to know more?
-If you have questions about the course or the tasks, or if you find any errors, feel free to ask questions and participate 
-in discussions within the repository [issues](https://github.com/jetbrains-academy/game-course/issues).
-
-## Contribution
-Please be sure to review the [project's contributing guidelines](https://github.com/jetbrains-academy/.github/blob/main/contributing_guidelines.md) to learn how to help the project.
+Small House by Jarlan Perez [CC-BY] (https://creativecommons.org/licenses/by/3.0/) via Poly Pizza (https://poly.pizza/m/053kskrV4U_)
+House by Quaternius (https://poly.pizza/m/oJJIRwv6Bo)
+House by Quaternius (https://poly.pizza/m/L7h0SjZX2K)
+House by Quaternius (https://poly.pizza/m/vZ1CLbWmSx)
+Hut by Quaternius (https://poly.pizza/m/wxi3kAu5ey)
+Armabee by Quaternius (https://poly.pizza/m/42djT5zJnx)
+Armabee Evolved by Quaternius (https://poly.pizza/m/GcttdvsqsQ)
+Enemy Flying by Quaternius (https://poly.pizza/m/kzpT6fNmM5)
+Squidle by Quaternius (https://poly.pizza/m/54QyRcsogk)
+Pigeon by Quaternius (https://poly.pizza/m/9NGlBTpDEr)
+Bgm loop (https://opengameart.org/content/music-loop-variations)
+Sfx (https://opengameart.org/content/8-bit-sound-effect-pack)

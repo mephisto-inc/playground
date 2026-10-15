@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { registerCollider, isMoveFree, measureCollisionShape, MAX_MOVE_SUB_STEP } from './Collision.js';
-import { getPlayerMoveSpeed } from './Difficulty.js';
-import { getMoveTarget } from './Input.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {isMoveFree, MAX_MOVE_SUB_STEP, measureCollisionShape, registerCollider} from './Collision.js';
+import {getPlayerMoveSpeed} from './Difficulty.js';
+import {getMoveTarget} from './Input.js';
 
 // Player component: owns the player group, loads/reorients the Tode model, and advances one
 // "hop" at a time toward the pointer's ground position (steered by Input.js; the keyboard was
@@ -55,11 +55,11 @@ player.position.set(0, 0, 0); // center of the scene, resting on the ground plan
 
 // Move state. While `progress` < 1 a hop is in flight; at 1 the player is idle at `target`.
 const move = {
-  direction: new THREE.Vector3(), // world-space unit direction of the current hop
-  start: new THREE.Vector3(),     // group position where the current hop began
-  target: new THREE.Vector3(),    // group position where the current hop ends
-  progress: 1,                    // normalized 0..1 progress through the current hop (1 = idle)
-  yaw: 0,                         // model facing (radians) for the current hop
+    direction: new THREE.Vector3(), // world-space unit direction of the current hop
+    start: new THREE.Vector3(),     // group position where the current hop began
+    target: new THREE.Vector3(),    // group position where the current hop ends
+    progress: 1,                    // normalized 0..1 progress through the current hop (1 = idle)
+    yaw: 0,                         // model facing (radians) for the current hop
 };
 
 // Steering model: while a hop is in flight its direction is locked, so a pointer that swings
@@ -83,10 +83,10 @@ const leanQuaternion = new THREE.Quaternion();
 
 // Points the model at `yaw` and tilts it by `lean` radians. Cheap enough to call per frame.
 function orientModel(yaw, lean) {
-  if (!playerModel) return;
-  baseQuaternion.setFromEuler(baseEuler.set(Math.PI / 2, yaw, 0, 'XYZ'));
-  leanQuaternion.setFromAxisAngle(LEAN_AXIS, lean);
-  playerModel.quaternion.copy(baseQuaternion).multiply(leanQuaternion);
+    if (!playerModel) return;
+    baseQuaternion.setFromEuler(baseEuler.set(Math.PI / 2, yaw, 0, 'XYZ'));
+    leanQuaternion.setFromAxisAngle(LEAN_AXIS, lean);
+    playerModel.quaternion.copy(baseQuaternion).multiply(leanQuaternion);
 }
 
 // The tilt for a hop at `progress`, shaped like a frog's leap. Three phases: (1) snap to nose-up
@@ -96,21 +96,21 @@ function orientModel(yaw, lean) {
 // Positive tilt is nose-down/forward (see orientModel). Magnitude grows with the live hop speed,
 // which the difficulty system raises with the score.
 function currentLean(progress) {
-  const amplitude = Math.min(getPlayerMoveSpeed() * LEAN_PER_SPEED, LEAN_MAX);
+    const amplitude = Math.min(getPlayerMoveSpeed() * LEAN_PER_SPEED, LEAN_MAX);
 
-  if (progress < LEAN_SNAP_UP_FRACTION) {
-    const t = progress / LEAN_SNAP_UP_FRACTION;
-    return -amplitude * (t * t * (3 - 2 * t)); // quick ease, so the snap has no hard kink
-  }
+    if (progress < LEAN_SNAP_UP_FRACTION) {
+        const t = progress / LEAN_SNAP_UP_FRACTION;
+        return -amplitude * (t * t * (3 - 2 * t)); // quick ease, so the snap has no hard kink
+    }
 
-  if (progress < LEAN_ROLL_END_FRACTION) {
-    const span = LEAN_ROLL_END_FRACTION - LEAN_SNAP_UP_FRACTION;
-    const t = (progress - LEAN_SNAP_UP_FRACTION) / span;
-    const s = t * t * (3 - 2 * t);
-    return amplitude * (2 * s - 1); // -amplitude (nose-up) -> +amplitude (nose-down)
-  }
+    if (progress < LEAN_ROLL_END_FRACTION) {
+        const span = LEAN_ROLL_END_FRACTION - LEAN_SNAP_UP_FRACTION;
+        const t = (progress - LEAN_SNAP_UP_FRACTION) / span;
+        const s = t * t * (3 - 2 * t);
+        return amplitude * (2 * s - 1); // -amplitude (nose-up) -> +amplitude (nose-down)
+    }
 
-  return amplitude; // nose-down, held to the floor
+    return amplitude; // nose-down, held to the floor
 }
 
 // Collision volume. Registered right away with a rough guess so enemies already respect the
@@ -121,7 +121,7 @@ let playerCollider = registerCollider(player, player.position, ESTIMATED_RADIUS)
 
 const loader = new GLTFLoader();
 
-// Model characteristics for public/models/tode.glb:
+// Model characteristics for public/assets/tode.glb:
 //   format:      glTF 2.0 binary, exported by THREE.GLTFExporter r174
 //   scene:       "AuxScene" -> node "world" -> node "geometry_0" (all identity transforms)
 //   mesh:        1 primitive, TRIANGLES, 8262 vertices, 10740 triangles
@@ -136,30 +136,30 @@ const loader = new GLTFLoader();
 // Loads the model asynchronously. The group is returned empty and filled in once the load
 // resolves; `playerReady` resolves with the loaded model so callers can wait for it if needed.
 export const playerReady = new Promise((resolve, reject) => {
-  loader.load(
-    '/models/tode.glb',
-    (gltf) => {
-      const model = gltf.scene;
+    loader.load(
+        '/assets/tode.glb',
+        (gltf) => {
+            const model = gltf.scene;
 
-      model.rotation.x = Math.PI / 2; // lay the Y-up model onto our Z-up ground
-      model.scale.setScalar(20);
+            model.rotation.x = Math.PI / 2; // lay the Y-up model onto our Z-up ground
+            model.scale.setScalar(20);
 
-      // Measure the collision shape while the model is still unparented, so the numbers come out
-      // in the player's own frame (the frame `player.position` lives in).
-      // TODO: Z-offset spec is ambiguous. The measured groundOffset lifts the model so its lowest
-      //       point rests on z = 0. Confirm this matches "model height".
-      const shape = measureCollisionShape(model);
-      model.position.z += shape.groundOffset;
+            // Measure the collision shape while the model is still unparented, so the numbers come out
+            // in the player's own frame (the frame `player.position` lives in).
+            // TODO: Z-offset spec is ambiguous. The measured groundOffset lifts the model so its lowest
+            //       point rests on z = 0. Confirm this matches "model height".
+            const shape = measureCollisionShape(model);
+            model.position.z += shape.groundOffset;
 
-      playerCollider = registerCollider(player, player.position, shape.radius);
+            playerCollider = registerCollider(player, player.position, shape.radius);
 
-      playerModel = model;
-      player.add(model);
-      resolve(model);
-    },
-    undefined,
-    reject,
-  );
+            playerModel = model;
+            player.add(model);
+            resolve(model);
+        },
+        undefined,
+        reject,
+    );
 });
 
 // Advances the player by one frame. `delta` is the elapsed time in seconds since the last
@@ -171,107 +171,107 @@ export const playerReady = new Promise((resolve, reject) => {
 // (only the model child yaws), so the world axes stay fixed relative to the camera — though at
 // this isometric angle they run diagonally on the screen rather than up/down/left/right.
 export function updatePlayer(delta) {
-  if (move.progress >= 1) {
-    // Idle: hop toward the pointer if it is outside the deadzone. Input.js returns null while the
-    // pointer is inactive (no pointer seen yet, or a touch has just lifted) or parked inside the
-    // deadzone — which includes the smaller tap-to-attack zone around the hero, so standing on
-    // him to attack never nudges him — so we come to rest here.
-    const target = getMoveTarget(player.position);
+    if (move.progress >= 1) {
+        // Idle: hop toward the pointer if it is outside the deadzone. Input.js returns null while the
+        // pointer is inactive (no pointer seen yet, or a touch has just lifted) or parked inside the
+        // deadzone — which includes the smaller tap-to-attack zone around the hero, so standing on
+        // him to attack never nudges him — so we come to rest here.
+        const target = getMoveTarget(player.position);
 
-    if (target) {
-      const dx = target.x - player.position.x;
-      const dy = target.y - player.position.y;
-      const distance = Math.hypot(dx, dy);
-      move.direction.set(dx / distance, dy / distance, 0);
-      move.start.copy(player.position);
-      // Clamp the hop to what is left of the way, so a deadzone tuned below JUMP_DISTANCE can
-      // still only ever approach the target — never overshoot it and oscillate around it.
-      move.target
-        .copy(move.start)
-        .addScaledVector(move.direction, Math.min(JUMP_DISTANCE, distance));
-      move.progress = 0;
+        if (target) {
+            const dx = target.x - player.position.x;
+            const dy = target.y - player.position.y;
+            const distance = Math.hypot(dx, dy);
+            move.direction.set(dx / distance, dy / distance, 0);
+            move.start.copy(player.position);
+            // Clamp the hop to what is left of the way, so a deadzone tuned below JUMP_DISTANCE can
+            // still only ever approach the target — never overshoot it and oscillate around it.
+            move.target
+                .copy(move.start)
+                .addScaledVector(move.direction, Math.min(JUMP_DISTANCE, distance));
+            move.progress = 0;
 
-      // Record the facing for this hop; orientModel() below applies it (with the dip) every frame.
-      // The yaw is about world Z (rotation.x is already PI/2); a rotation.z here would somersault
-      // about a horizontal axis instead.
-      move.yaw = Math.atan2(move.direction.y, move.direction.x) + MODEL_YAW_OFFSET;
-    }
-  }
-
-  // Advance the hop and look at where it would put the player this frame. Only the ground
-  // position is tested — height is ignored, so a house or wall blocks Tode whether he is on the
-  // ground or mid-hop (bees are passable; contact with them is detected separately). The advance
-  // is resolved in sub-steps of at most MAX_MOVE_SUB_STEP world units so the hero comes to rest
-  // right at an obstacle's boundary rather than up to a whole frame's step short of it: the raw
-  // step scales with the (difficulty-scaled) hop speed, so the old whole-step rule left a gap that
-  // grew as the game sped up.
-  if (move.progress < 1) {
-    const targetProgress = Math.min(move.progress + delta * getPlayerMoveSpeed(), 1);
-
-    // World length of this hop, used to convert the fixed world sub-step into a progress step.
-    // It is 0 for a frozen hop (start == target), in which case the ground is not moving anyway.
-    const hopLength = move.start.distanceTo(move.target);
-    const subProgress =
-      hopLength > 0 ? Math.min(MAX_MOVE_SUB_STEP / hopLength, 1) : 1;
-
-    let blocked = false;
-    while (move.progress < targetProgress) {
-      const nextProgress = Math.min(move.progress + subProgress, targetProgress);
-      const nextX = THREE.MathUtils.lerp(move.start.x, move.target.x, nextProgress);
-      const nextY = THREE.MathUtils.lerp(move.start.y, move.target.y, nextProgress);
-
-      if (!isMoveFree(playerCollider, nextX, nextY)) {
-        // The straight hop line is blocked (a house or wall ahead). Before giving up, try the
-        // step split into its two axis halves — whichever is free lets Tode skim along the
-        // obstacle's face toward the pointer instead of stopping dead against it (the bees slide
-        // the same way; see Enemy.js). The hop path has to follow the slid point, so `start` and
-        // `target` are translated by exactly slid − full: with both endpoints moved by the same
-        // delta the invariant position = lerp(start, target, progress) still holds at the already
-        // advanced progress, which also drives the hop arc and lean — so progress never rewinds
-        // and the sine arc above cannot pop.
-        const slideX = isMoveFree(playerCollider, nextX, player.position.y);
-        const slideY = !slideX && isMoveFree(playerCollider, player.position.x, nextY);
-        if (slideX || slideY) {
-          const slidX = slideX ? nextX : player.position.x;
-          const slidY = slideX ? player.position.y : nextY;
-          const shiftX = slidX - nextX;
-          const shiftY = slidY - nextY;
-          move.start.x += shiftX;
-          move.start.y += shiftY;
-          move.target.x += shiftX;
-          move.target.y += shiftY;
-          move.progress = nextProgress;
-          player.position.x = slidX;
-          player.position.y = slidY;
-          continue;
+            // Record the facing for this hop; orientModel() below applies it (with the dip) every frame.
+            // The yaw is about world Z (rotation.x is already PI/2); a rotation.z here would somersault
+            // about a horizontal axis instead.
+            move.yaw = Math.atan2(move.direction.y, move.direction.x) + MODEL_YAW_OFFSET;
         }
-        blocked = true; // neither axis half is free either — fall through to the freeze below
-        break;
-      }
-      move.progress = nextProgress;
-      player.position.x = nextX;
-      player.position.y = nextY;
     }
 
-    if (blocked) {
-      // Fully blocked — no combined step and no axis half was free. Rather than snapping the hop
-      // to the floor (which teleports the hero down mid-air — the bug this replaced), freeze the
-      // ground path by collapsing start and target onto the current spot, then let `progress` run
-      // on to complete the frame's arc. The ground no longer moves, but the sine arc below
-      // finishes, so Tode lands under his own weight at the last clear position.
-      move.start.copy(player.position);
-      move.target.copy(player.position);
-      move.progress = targetProgress;
+    // Advance the hop and look at where it would put the player this frame. Only the ground
+    // position is tested — height is ignored, so a house or wall blocks Tode whether he is on the
+    // ground or mid-hop (bees are passable; contact with them is detected separately). The advance
+    // is resolved in sub-steps of at most MAX_MOVE_SUB_STEP world units so the hero comes to rest
+    // right at an obstacle's boundary rather than up to a whole frame's step short of it: the raw
+    // step scales with the (difficulty-scaled) hop speed, so the old whole-step rule left a gap that
+    // grew as the game sped up.
+    if (move.progress < 1) {
+        const targetProgress = Math.min(move.progress + delta * getPlayerMoveSpeed(), 1);
+
+        // World length of this hop, used to convert the fixed world sub-step into a progress step.
+        // It is 0 for a frozen hop (start == target), in which case the ground is not moving anyway.
+        const hopLength = move.start.distanceTo(move.target);
+        const subProgress =
+            hopLength > 0 ? Math.min(MAX_MOVE_SUB_STEP / hopLength, 1) : 1;
+
+        let blocked = false;
+        while (move.progress < targetProgress) {
+            const nextProgress = Math.min(move.progress + subProgress, targetProgress);
+            const nextX = THREE.MathUtils.lerp(move.start.x, move.target.x, nextProgress);
+            const nextY = THREE.MathUtils.lerp(move.start.y, move.target.y, nextProgress);
+
+            if (!isMoveFree(playerCollider, nextX, nextY)) {
+                // The straight hop line is blocked (a house or wall ahead). Before giving up, try the
+                // step split into its two axis halves — whichever is free lets Tode skim along the
+                // obstacle's face toward the pointer instead of stopping dead against it (the bees slide
+                // the same way; see Enemy.js). The hop path has to follow the slid point, so `start` and
+                // `target` are translated by exactly slid − full: with both endpoints moved by the same
+                // delta the invariant position = lerp(start, target, progress) still holds at the already
+                // advanced progress, which also drives the hop arc and lean — so progress never rewinds
+                // and the sine arc above cannot pop.
+                const slideX = isMoveFree(playerCollider, nextX, player.position.y);
+                const slideY = !slideX && isMoveFree(playerCollider, player.position.x, nextY);
+                if (slideX || slideY) {
+                    const slidX = slideX ? nextX : player.position.x;
+                    const slidY = slideX ? player.position.y : nextY;
+                    const shiftX = slidX - nextX;
+                    const shiftY = slidY - nextY;
+                    move.start.x += shiftX;
+                    move.start.y += shiftY;
+                    move.target.x += shiftX;
+                    move.target.y += shiftY;
+                    move.progress = nextProgress;
+                    player.position.x = slidX;
+                    player.position.y = slidY;
+                    continue;
+                }
+                blocked = true; // neither axis half is free either — fall through to the freeze below
+                break;
+            }
+            move.progress = nextProgress;
+            player.position.x = nextX;
+            player.position.y = nextY;
+        }
+
+        if (blocked) {
+            // Fully blocked — no combined step and no axis half was free. Rather than snapping the hop
+            // to the floor (which teleports the hero down mid-air — the bug this replaced), freeze the
+            // ground path by collapsing start and target onto the current spot, then let `progress` run
+            // on to complete the frame's arc. The ground no longer moves, but the sine arc below
+            // finishes, so Tode lands under his own weight at the last clear position.
+            move.start.copy(player.position);
+            move.target.copy(player.position);
+            move.progress = targetProgress;
+        }
     }
-  }
 
-  // Vertical motion follows the hop's progress; a hop frozen mid-air lands here as the arc
-  // completes (progress reaches 1 and the sine returns to 0).
-  player.position.z = Math.sin(move.progress * Math.PI) * JUMP_HEIGHT;
+    // Vertical motion follows the hop's progress; a hop frozen mid-air lands here as the arc
+    // completes (progress reaches 1 and the sine returns to 0).
+    player.position.z = Math.sin(move.progress * Math.PI) * JUMP_HEIGHT;
 
-  // Face the travel direction and tilt through the leap (snap nose-up, roll to nose-down, hold it
-  // to the floor). At touchdown the tilt resets to 0, so Tode stands level between hops.
-  orientModel(move.yaw, move.progress < 1 ? currentLean(move.progress) : 0);
+    // Face the travel direction and tilt through the leap (snap nose-up, roll to nose-down, hold it
+    // to the floor). At touchdown the tilt resets to 0, so Tode stands level between hops.
+    orientModel(move.yaw, move.progress < 1 ? currentLean(move.progress) : 0);
 }
 
 // True while no hop is in flight, i.e. Tode is standing on the ground. The attack system uses
@@ -280,27 +280,27 @@ export function updatePlayer(delta) {
 // frame of a hop, so z alone cannot tell "landed" from "just left the ground". `progress` is
 // the single source of truth for that.
 export function isPlayerGrounded() {
-  return move.progress >= 1;
+    return move.progress >= 1;
 }
 
 // Puts the hero back to a clean starting state for a new run. Called by GameState.resetGame().
 // Everything that could have been left mid-flight or buffered while the game was frozen has to
 // be cleared here, or the next run would begin by replaying stale input or a half-finished hop.
 export function resetPlayer() {
-  player.position.set(0, 0, 0); // back to the scene center, resting on the ground
+    player.position.set(0, 0, 0); // back to the scene center, resting on the ground
 
-  // Cancel any hop in flight and forget where it was headed.
-  move.progress = 1;
-  move.direction.set(0, 0, 0);
-  move.start.copy(player.position);
-  move.target.copy(player.position);
+    // Cancel any hop in flight and forget where it was headed.
+    move.progress = 1;
+    move.direction.set(0, 0, 0);
+    move.start.copy(player.position);
+    move.target.copy(player.position);
 
-  // Steering state lives in Input.js and is deliberately untouched here: the pointer is wherever
-  // the player left it, and the deadzone alone decides whether the fresh run starts moving. A
-  // restart double-click usually lands on the overlay near the screen centre — i.e. inside the
-  // deadzone — so the hero does not hop away the instant play resumes.
+    // Steering state lives in Input.js and is deliberately untouched here: the pointer is wherever
+    // the player left it, and the deadzone alone decides whether the fresh run starts moving. A
+    // restart double-click usually lands on the overlay near the screen centre — i.e. inside the
+    // deadzone — so the hero does not hop away the instant play resumes.
 
-  player.visible = true; // the hero reappears
+    player.visible = true; // the hero reappears
 }
 
 export default player;

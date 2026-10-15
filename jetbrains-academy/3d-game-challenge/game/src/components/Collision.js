@@ -21,7 +21,7 @@ import * as THREE from 'three';
 // and a character is blocked by a house no matter how high the hop arc climbs.
 
 // Padding added on top of the two circles, so the "hitbox" can be tuned without touching the
-// models. Raise it for a chunkier feel, lower it to let characters almost touch. Module-local:
+// assets. Raise it for a chunkier feel, lower it to let characters almost touch. Module-local:
 // it is only used by the penetration math below, so it is not exported.
 const COLLISION_DISTANCE = 2;
 
@@ -59,9 +59,9 @@ const colliders = new Map();
 // hand it back to isMoveFree). Registering the same owner twice replaces its collider. `position`
 // is kept by reference to the owner's live Vector3, so the collider tracks the character for free.
 export function registerCollider(owner, position, radius) {
-  const collider = { position, shape: 'circle', radius };
-  colliders.set(owner, collider);
-  return collider;
+    const collider = {position, shape: 'circle', radius};
+    colliders.set(owner, collider);
+    return collider;
 }
 
 // Registers a static, axis-aligned box obstacle (a house or a boundary wall) and returns it.
@@ -71,20 +71,20 @@ export function registerCollider(owner, position, radius) {
 // in for the real walls instead of costing us rotated-box math. Obstacles never move, so unlike a
 // character, `position` here is a fixed point rather than a live reference.
 export function registerBoxCollider(owner, position, halfWidth, halfDepth) {
-  const collider = { position, shape: 'box', halfWidth, halfDepth };
-  colliders.set(owner, collider);
-  return collider;
+    const collider = {position, shape: 'box', halfWidth, halfDepth};
+    colliders.set(owner, collider);
+    return collider;
 }
 
 export function unregisterCollider(owner) {
-  colliders.delete(owner);
+    colliders.delete(owner);
 }
 
 // Read-only lookup for the collider a character registered. GameState and Enemy use it to ask
 // about a *specific* other character (e.g. "does this step touch the player?") without having to
 // re-derive radii or reach into the registry Map directly.
 export function getCollider(owner) {
-  return colliders.get(owner);
+    return colliders.get(owner);
 }
 
 // How much a circle of `radius` centred at (x, y) overlaps `other` on the ground plane, in world
@@ -98,16 +98,16 @@ export function getCollider(owner) {
 //     inside the box therefore always has penetration = radius + padding (a constant), which is
 //     what lets a character that somehow ends up inside back out without deepening the overlap.
 function penetrationOf(x, y, radius, other) {
-  if (other.shape === 'box') {
-    const dx = Math.max(Math.abs(x - other.position.x) - other.halfWidth, 0);
-    const dy = Math.max(Math.abs(y - other.position.y) - other.halfDepth, 0);
-    return Math.max(0, radius + COLLISION_DISTANCE - Math.hypot(dx, dy));
-  }
-  return Math.max(
-    0,
-    radius + other.radius + COLLISION_DISTANCE -
-      Math.hypot(x - other.position.x, y - other.position.y),
-  );
+    if (other.shape === 'box') {
+        const dx = Math.max(Math.abs(x - other.position.x) - other.halfWidth, 0);
+        const dy = Math.max(Math.abs(y - other.position.y) - other.halfDepth, 0);
+        return Math.max(0, radius + COLLISION_DISTANCE - Math.hypot(dx, dy));
+    }
+    return Math.max(
+        0,
+        radius + other.radius + COLLISION_DISTANCE -
+        Math.hypot(x - other.position.x, y - other.position.y),
+    );
 }
 
 // True if placing `mover` at (x, y) would overlap `other` specifically. This is the targeted
@@ -117,7 +117,7 @@ function penetrationOf(x, y, radius, other) {
 // collider for both arguments; `mover` is always a moving character (a circle), while `other`
 // may be a circle or an obstacle box.
 export function wouldOverlap(mover, x, y, other) {
-  return penetrationOf(x, y, mover.radius, other) > EPSILON;
+    return penetrationOf(x, y, mover.radius, other) > EPSILON;
 }
 
 // True if moving `mover` to (x, y) is allowed: the step must land clear of every static obstacle.
@@ -133,26 +133,26 @@ export function wouldOverlap(mover, x, y, other) {
 // This only ever applies once an overlap exists (which the rule above makes impossible in normal
 // play); it is the safety hatch for odd states like a house placed on top of a character.
 export function isMoveFree(mover, x, y) {
-  for (const other of colliders.values()) {
-    if (other === mover) continue;
-    if (other.shape !== 'box') continue; // characters do not block movement
-    const after = penetrationOf(x, y, mover.radius, other);
-    if (after <= EPSILON) continue; // lands clear of this one
-    const before = penetrationOf(mover.position.x, mover.position.y, mover.radius, other);
-    if (before <= EPSILON) return false; // was clear — may not enter now
-    if (after > before + EPSILON) return false; // already inside — may not push deeper
-  }
-  return true;
+    for (const other of colliders.values()) {
+        if (other === mover) continue;
+        if (other.shape !== 'box') continue; // characters do not block movement
+        const after = penetrationOf(x, y, mover.radius, other);
+        if (after <= EPSILON) continue; // lands clear of this one
+        const before = penetrationOf(mover.position.x, mover.position.y, mover.radius, other);
+        if (before <= EPSILON) return false; // was clear — may not enter now
+        if (after > before + EPSILON) return false; // already inside — may not push deeper
+    }
+    return true;
 }
 
 // True if no other character currently overlaps the circle at (x, y). Stricter than
 // isMoveFree: it does not forgive an overlap, which is what placing a brand-new character
 // wants (a fresh spawn has no "current" position worth protecting).
 export function isSpotFree(x, y, radius) {
-  for (const other of colliders.values()) {
-    if (penetrationOf(x, y, radius, other) > EPSILON) return false;
-  }
-  return true;
+    for (const other of colliders.values()) {
+        if (penetrationOf(x, y, radius, other) > EPSILON) return false;
+    }
+    return true;
 }
 
 // Measures a character's collision shape from its own geometry. Call it on the model while it
@@ -168,29 +168,29 @@ export function isSpotFree(x, y, radius) {
 // NOTE: a circle already beats a box for a rounded character; an ellipse would hug the
 //       toad/bee silhouettes better, but it's not worth the extra math for this game.
 export function measureCollisionShape(object) {
-  // Refresh the world matrices BEFORE reading any vertex. SkeletonUtils.clone() leaves the
-  // cloned skeleton's bone matrices stale, and measuring before they refresh is what threw
-  // the enemies 689 units off the map in an earlier bug (the box came out ~100x too large).
-  // With fresh matrices, this walk's lowest point (groundOffset) agrees with Box3.setFromObject's
-  // min.z; the radius is the extra part this walk gives that a bounding box cannot.
-  object.updateMatrixWorld(true);
+    // Refresh the world matrices BEFORE reading any vertex. SkeletonUtils.clone() leaves the
+    // cloned skeleton's bone matrices stale, and measuring before they refresh is what threw
+    // the enemies 689 units off the map in an earlier bug (the box came out ~100x too large).
+    // With fresh matrices, this walk's lowest point (groundOffset) agrees with Box3.setFromObject's
+    // min.z; the radius is the extra part this walk gives that a bounding box cannot.
+    object.updateMatrixWorld(true);
 
-  let radius = 0;
-  let minZ = Infinity;
-  const vertex = new THREE.Vector3();
+    let radius = 0;
+    let minZ = Infinity;
+    const vertex = new THREE.Vector3();
 
-  object.traverse((child) => {
-    if (!child.isMesh) return;
-    const positions = child.geometry.attributes.position;
-    for (let i = 0; i < positions.count; i++) {
-      // getVertexPosition() applies the skinning (bones + inverse bind matrices) for a
-      // SkinnedMesh and the plain geometry for a Mesh; matrixWorld then brings the point
-      // into the character's frame. Doing it once per vertex at load time is cheap.
-      child.getVertexPosition(i, vertex).applyMatrix4(child.matrixWorld);
-      radius = Math.max(radius, Math.hypot(vertex.x, vertex.y));
-      minZ = Math.min(minZ, vertex.z);
-    }
-  });
+    object.traverse((child) => {
+        if (!child.isMesh) return;
+        const positions = child.geometry.attributes.position;
+        for (let i = 0; i < positions.count; i++) {
+            // getVertexPosition() applies the skinning (bones + inverse bind matrices) for a
+            // SkinnedMesh and the plain geometry for a Mesh; matrixWorld then brings the point
+            // into the character's frame. Doing it once per vertex at load time is cheap.
+            child.getVertexPosition(i, vertex).applyMatrix4(child.matrixWorld);
+            radius = Math.max(radius, Math.hypot(vertex.x, vertex.y));
+            minZ = Math.min(minZ, vertex.z);
+        }
+    });
 
-  return { radius, groundOffset: -minZ };
+    return {radius, groundOffset: -minZ};
 }
