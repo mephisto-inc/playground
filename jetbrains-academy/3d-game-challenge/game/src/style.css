@@ -4,8 +4,8 @@ body {
 }
 
 /* Pointer controls (Input.js): touches must steer the hero instead of scrolling/zooming the page,
-   and a double tap must not trigger the browser's double-tap zoom. Set on the body and on the
-   canvas itself, since the canvas is what a touch actually lands on. */
+   and a tap must not trigger the browser's double-tap zoom. Set on the body and on the canvas
+   itself, since the canvas is what a touch actually lands on. */
 body,
 canvas.game {
   touch-action: none;
@@ -30,8 +30,11 @@ canvas.game {
 
 /* Game Over overlay (div.game-over, built in GameState.js). A full-screen, centred stack over the
    frozen scene. The translucent white wash dims the field without hiding it (the canvas is
-   transparent over a white page, so the text stays dark like the score). is-hidden is the
-   state class GameState toggles. */
+   transparent over a white page, so the text stays dark like the score). The overlay is also the
+   restart control: pointer-events stays ON so the whole screen is a forgiving click/tap target
+   (the click handler lives in GameState), the cursor shows it is clickable, and touch-action is
+   off so a restart tap — or an impatient double-tap — cannot trigger the browser's zoom instead.
+   is-hidden is the state class GameState toggles: display:none means zero events while playing. */
 .game-over {
   position: fixed;
   inset: 0;
@@ -46,7 +49,9 @@ canvas.game {
   color: #1a1a1a;
   text-align: center;
   user-select: none;
-  pointer-events: none; /* the overlay is informational; nothing here is clickable */
+  pointer-events: auto; /* the overlay is the restart control — clicks/taps land here */
+  cursor: pointer;
+  touch-action: none; /* restart taps must not pan/zoom the page */
 }
 
 .game-over.is-hidden {

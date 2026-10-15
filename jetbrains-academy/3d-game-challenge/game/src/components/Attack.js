@@ -4,11 +4,11 @@ import { getEnemies, removeEnemy } from './Enemy.js';
 import { addKillScore } from './Score.js';
 import { getAttackCooldown, getAttackRadius } from './Difficulty.js';
 
-// Attack component: the player's close-range "blast". A double click (double tap on touch) fires
-// it, a cooldown limits how often, a yellow ring flashes on the ground as feedback, and every
-// enemy whose body reaches that ring is removed from play. main.js calls initAttack(scene) once
-// and updateAttack(delta) once per animation frame (after updateEnemies, so the sweep sees this
-// frame's positions).
+// Attack component: the player's close-range "blast". A stationary tap/click on the hero fires it
+// (the attack zone in Input.js), a cooldown limits how often, a yellow ring flashes on the ground
+// as feedback, and every enemy whose body reaches that ring is removed from play. main.js calls
+// initAttack(scene) once and updateAttack(delta) once per animation frame (after updateEnemies,
+// so the sweep sees this frame's positions).
 //
 // Like the other systems, all of the per-frame work happens in the update phase: the key
 // listener only *requests* a strike, and updateAttack decides whether it actually happens.
@@ -69,25 +69,25 @@ export function initAttack(scene) {
   scene.add(attackCircle);
 }
 
-// Requests a strike. The guards here reject presses we can never honour (mid-air, still cooling
+// Requests a strike. The guards here reject taps we can never honour (mid-air, still cooling
 // down); everything else is deferred to updateAttack so the actual hit detection runs in the
 // normal update phase.
 //
-// NOTE: this module never listens for input itself. Input.js counts the double click/tap and
-// GameState routes it (the same activation doubles as the "restart" key on the Game Over screen),
-// so a single handler can decide between attacking and restarting. That is deliberate: with two
-// independent handlers, an activation while dead could both queue a stale attack AND trigger the
-// reset, and the stale request would fire on the first live frame. Here, only a live game ever
-// calls this.
+// NOTE: this module never listens for input itself. Input.js judges the stationary tap inside
+// the hero zone and GameState routes it — a single handler, so a tap while dead can never both
+// queue a stale attack AND trigger the reset the way two independent listeners could (a stale
+// request would otherwise fire on the first live frame). The overlay restart is a separate
+// `click` handler, but it runs after Input's pointerup, so the tap is already dropped by the
+// state check. Here, only a live game ever calls this.
 export function requestAttack() {
-  if (!isPlayerGrounded()) return; // spec: no attacking while airborne (the press is dropped)
+  if (!isPlayerGrounded()) return; // spec: no attacking while airborne (the tap is dropped)
   if (cooldownRemaining > 0) return; // still recovering; ignore rather than queue a buffered hit
   attackRequested = true;
 }
 
 // Called every frame. Ticks the cooldown and the ring fade, then resolves a pending request.
 export function updateAttack(delta) {
-  // Count the cooldown down to zero, which is what eventually lets the next activation fire.
+  // Count the cooldown down to zero, which is what eventually lets the next strike fire.
   if (cooldownRemaining > 0) cooldownRemaining = Math.max(0, cooldownRemaining - delta);
 
   // Fade the ring. Colour is constant, so simply ramp opacity from 1 to 0 across the duration.

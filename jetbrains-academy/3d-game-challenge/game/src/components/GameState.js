@@ -2,11 +2,11 @@ import player, { resetPlayer } from './Player.js';
 import { getEnemies, resetEnemies } from './Enemy.js';
 import { resetScore, getScore } from './Score.js';
 import { requestAttack, resetAttack } from './Attack.js';
-import { onDoubleActivation } from './Input.js';
+import { onAttackTap } from './Input.js';
 
 // GameState component: the single owner of "are we playing or is it over?" (spec: Start, play,
 // and Game Over). It watches for a bee touching the hero, flips to a frozen Game Over state with
-// an overlay, and restarts the whole run on a double click / double tap.
+// an overlay, and restarts the whole run when that overlay is clicked or tapped.
 //
 // It is deliberately the *only* module that imports the others' reset functions — the direction
 // is one-way (GameState -> Player/Enemy/Score/Attack), so there is no import cycle. The contact
@@ -25,11 +25,16 @@ let state = STATE_PLAYING;
 let overlayElement = null;
 let overlayScoreElement = null;
 
-// Builds the Game Over overlay (hidden) and takes over the double activation. Called once from
-// main.js. This is where the activation is centralised: on a live game it forwards to the attack,
-// on the Game Over screen it restarts. A single handler avoids the two-listener race where a
-// press while dead could both queue a stale attack AND trigger the reset (see the note in
-// Attack.js).
+// Builds the Game Over overlay (hidden) and takes over the attack tap. Called once from main.js.
+// While a run is live the routed tap forwards to the attack; while the overlay is up it is
+// dropped, because the overlay's own click handler (below) is what restarts the run.
+//
+// Ordering note — why the overlay listens for `click` and not `pointerup`: a tap's pointerup
+// reaches Input's window-level listener first (Input is the sole pointer owner), and only then
+// does the click bubble from this overlay. At that moment the state is still GAME_OVER, so the
+// routed tap no-ops and the restart follows cleanly afterwards. Swapping the overlay to pointerup
+// would invert the order (the overlay is closer to the event target than `window`), the state
+// would already be PLAYING, and the restart tap would fire a free attack on the fresh run.
 export function initGameState() {
   overlayElement = document.createElement('div');
   overlayElement.className = 'game-over is-hidden';
@@ -43,17 +48,30 @@ export function initGameState() {
 
   const hint = document.createElement('div');
   hint.className = 'game-over__hint';
-  hint.textContent = 'Double-click / double-tap to restart';
+  hint.textContent = 'Click or tap anywhere to restart';
 
   overlayElement.append(title, overlayScoreElement, hint);
   document.body.appendChild(overlayElement);
 
-  // Input.js counts the two quick taps/clicks; the routing decision stays here because only this
-  // module knows the state.
-  onDoubleActivation(() => {
+  // The overlay itself is the restart control (pointer-events stays on in style.css), so the
+  // whole screen becomes a forgiving click/tap target.
+  overlayElement.addEventListener('click', () => {
     if (state === STATE_GAME_OVER) resetGame();
-    else requestAttack();
   });
+
+  // Input.js judges the stationary tap inside the hero zone; the routing decision stays here
+  // because only this module knows the state. Taps while dead still reach this handler (window
+  // listeners see events bubbling through the overlay) and are dropped — the click handler above
+  // restarts instead.
+  onAttackTap(() => {
+    if (state === STATE_PLAYING) requestAttack();
+  });
+
+  // TODO (verify): an impatient double-click restart lands its second click after resetGame(),
+  //       i.e. state is PLAYING and the pointer sits at the screen centre — inside the attack
+  //       zone — so the fresh run opens with one cosmetic attack ring. Harmless (the spawn bee
+  //       starts well outside the blast radius) but confirm in the browser; if it annoys,
+  //       suppress attack taps for a moment after a reset.
 }
 
 // True while the run has ended and the player is waiting to restart. main.js uses this to freeze
@@ -91,8 +109,8 @@ function triggerGameOver() {
   showOverlay();
 }
 
-// Restores every subsystem to a fresh starting state and resumes play. Triggered by a double
-// click / double tap while in the Game Over state (see onDoubleActivation in initGameState).
+// Restores every subsystem to a fresh starting state and resumes play. Triggered by the Game Over
+// overlay's click handler (see initGameState); the guard there keeps it dead-state only.
 function resetGame() {
   // Player first: it returns to the origin, which is where the enemies respawn around.
   resetPlayer();

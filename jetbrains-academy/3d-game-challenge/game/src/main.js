@@ -37,9 +37,10 @@ directionalLight.position.set(-100, -100, 200);
 scene.add(directionalLight);
 
 // --- Input -------------------------------------------------------------------
-// Owns every pointer listener: hover/tap steering for the hero plus the double click/tap that
-// routes to attack or restart. Wired up before the systems that consume it.
-initInput();
+// Owns every pointer listener: hover/drag steering for the hero plus the tap-on-hero that
+// GameState routes to the attack. The position provider is read lazily at tap time, so pointing
+// at the Player import above is all the wiring it needs. Set up before the systems that consume it.
+initInput(() => player.position);
 
 // --- Map & houses -----------------------------------------------------------
 initMap(scene);
@@ -54,7 +55,7 @@ await playerReady;
 await initEnemies(scene);
 
 // --- Attack -----------------------------------------------------------------
-// The attack system builds its on-ground ring; the double click/tap reaches it through GameState,
+// The attack system builds its on-ground ring; the tap-on-hero reaches it through GameState,
 // and it is stepped each frame.
 initAttack(scene);
 
@@ -63,9 +64,9 @@ initAttack(scene);
 initScore();
 
 // --- Game state -------------------------------------------------------------
-// Owns the Game Over overlay and the double activation (attack while playing, restart when over).
-// Must
-// come after the systems it resets so their reset functions exist when it is wired up.
+// Owns the Game Over overlay (its click restarts the run) and routes the attack tap while a run
+// is live. Must come after the systems it resets so their reset functions exist when it is
+// wired up.
 initGameState();
 
 // --- Loop -------------------------------------------------------------------

@@ -174,7 +174,8 @@ export function updatePlayer(delta) {
   if (move.progress >= 1) {
     // Idle: hop toward the pointer if it is outside the deadzone. Input.js returns null while the
     // pointer is inactive (no pointer seen yet, or a touch has just lifted) or parked inside the
-    // deadzone, so we come to rest here.
+    // deadzone — which includes the smaller tap-to-attack zone around the hero, so standing on
+    // him to attack never nudges him — so we come to rest here.
     const target = getMoveTarget(player.position);
 
     if (target) {
