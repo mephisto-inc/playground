@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { cloneMaterials, enableShadows, loadGLTF, normalizeModel } from '../core/Assets.js';
 import { isMoveFree, registerCollider, MAX_MOVE_SUB_STEP } from '../core/Collision.js';
 import { getMoveTarget } from '../core/Input.js';
-import { ENEMY, PICKUP, PLAYER } from '../config/tuning.js';
+import { ABILITY, ENEMY, PICKUP, PLAYER } from '../config/tuning.js';
 import { getClass } from '../config/classes.js';
 import { clearMinions, createMinions, updateMinions } from './Minion.js';
 import { spawnTrail } from './Trail.js';
@@ -212,6 +212,7 @@ export function damagePlayer(amount, kind = 'physical') {
             parrySucceeded = true;
             parryBurstPending = true;
             playSfx('parry');
+            playParryImpact(); // VFX: flash + expanding ring
         }
         return 'shielded';
     }
@@ -256,6 +257,7 @@ export function markParrySuccess() {
     parrySucceeded = true;
     parryBurstPending = true;
     playSfx('parry');
+    playParryImpact(); // VFX: flash + expanding ring
 }
 
 // Hands Combat the pending parry shockwave exactly once (null when none is owed). Combat applies
@@ -283,6 +285,7 @@ export function tryActivateAbility() {
         cooldownRemaining = ability.cooldown;
         shieldRemaining = ability.shield;
         parrySucceeded = false;
+        showParryGlow(); // VFX: the shield lights up for its 0.4 s window
     } else if (classId === 'dasher') {
         cooldownRemaining = ability.cooldown;
         performDash(ability);
@@ -389,12 +392,147 @@ function clearDashClones() {
     dashClones.length = 0;
 }
 
+// --- Parry VFX (round 5) -----------------------------------------------------
+
+// The parry has a readable visual now: a pulsing blue glow while the 0.4 s shield is up, a
+// white-blue impact flash plus an expanding shiny-blue ring when a parry actually succeeds, and
+// a quick collapse when the shield expires having parried nothing. Every piece is a flat
+// additive mesh parented to the player group, so it follows Tode's hop and allocates nothing
+// during play. This is presentation only — the shield's behavior never reads any of it.
+const PARRY_GLOW_COLOR = 0x3fa9ff;   // shield glow blue
+const PARRY_IMPACT_COLOR = 0xd6efff; // near-white flash on a successful parry
+const PARRY_RING_COLOR = 0x59b7ff;   // shiny blue of the expanding shockwave ring
+
+// Builds one flat fx mesh in the group's XY plane (this is a Z-up world, so no rotation is
+// needed — the same trick the heart pickups use) and attaches it to the player, hidden.
+function createParryFx(geometry, color, z) {
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+    }));
+    mesh.position.z = z; // slight stacking offsets so the layers never z-fight
+    mesh.visible = false;
+    player.add(mesh);
+    return mesh;
+}
+
+const parryGlow = createParryFx(
+    new THREE.RingGeometry(ABILITY.parryGlowRadius * 0.5, ABILITY.parryGlowRadius, 40),
+    PARRY_GLOW_COLOR,
+    0.12,
+);
+const parryImpact = createParryFx(new THREE.CircleGeometry(0.5, 24), PARRY_IMPACT_COLOR, 0.14);
+// The ring's base outer radius is exactly 1, so the animation scales the mesh by the shockwave
+// radius and the visual reaches precisely as far as the parry AoE really does.
+const parryRing = createParryFx(new THREE.RingGeometry(0.72, 1, 40), PARRY_RING_COLOR, 0.13);
+
+// Parry fx state machine: 'none' | 'glow' | 'impact' | 'ring' | 'fail'.
+let parryFxState = 'none';
+let parryFxTime = 0;  // seconds into the current state
+let parryFxClock = 0; // free-running clock driving the glow's pulse
+
+// Shield activated: show the pulsing glow.
+function showParryGlow() {
+    parryFxState = 'glow';
+    parryFxTime = 0;
+    parryGlow.scale.setScalar(1);
+    parryGlow.visible = true;
+    parryImpact.visible = false;
+    parryRing.visible = false;
+}
+
+// Parry succeeded: the glow gives way to the impact flash, then the expanding ring.
+function playParryImpact() {
+    parryFxState = 'impact';
+    parryFxTime = 0;
+    parryGlow.visible = false;
+    parryImpact.scale.setScalar(0.6);
+    parryImpact.material.opacity = 0.9;
+    parryImpact.visible = true;
+    parryRing.visible = false;
+}
+
+// Shield expired with no parry: the glow collapses inward quickly.
+function playParryFail() {
+    parryFxState = 'fail';
+    parryFxTime = 0;
+    parryGlow.visible = true; // collapses from wherever the glow pulse left it
+    parryImpact.visible = false;
+    parryRing.visible = false;
+}
+
+// Hides every parry fx mesh (death, new run).
+function hideParryFx() {
+    parryFxState = 'none';
+    parryFxTime = 0;
+    parryGlow.visible = false;
+    parryImpact.visible = false;
+    parryRing.visible = false;
+}
+
+// Advances the parry visual state machine. Called every live frame from updatePlayer().
+function updateParryFx(delta) {
+    parryFxClock += delta;
+    const pulse = 0.5 + 0.5 * Math.sin(parryFxClock * 14); // 0..1, ~2.2 Hz heartbeat
+
+    switch (parryFxState) {
+        case 'glow': {
+            parryGlow.material.opacity = 0.3 + 0.3 * pulse;
+            parryGlow.scale.setScalar(1 + 0.06 * pulse);
+            break;
+        }
+        case 'impact': {
+            parryFxTime += delta;
+            const p = Math.min(parryFxTime / ABILITY.parryImpactDuration, 1);
+            parryImpact.scale.setScalar(0.6 + 0.7 * p);
+            parryImpact.material.opacity = 0.9 * (1 - 0.6 * p);
+            if (p >= 1) {
+                parryFxState = 'ring';
+                parryFxTime = 0;
+                parryImpact.visible = false;
+                parryRing.visible = true;
+            }
+            break;
+        }
+        case 'ring': {
+            parryFxTime += delta;
+            const p = Math.min(parryFxTime / ABILITY.parryRingDuration, 1);
+            parryRing.scale.setScalar(1 + (ABILITY.parryShockwaveRadius - 1) * p);
+            parryRing.material.opacity = 0.85 * (1 - p);
+            if (p >= 1) hideParryFx();
+            break;
+        }
+        case 'fail': {
+            parryFxTime += delta;
+            const p = Math.min(parryFxTime / ABILITY.parryFailDuration, 1);
+            parryGlow.scale.setScalar(1 - 0.6 * p);
+            parryGlow.material.opacity = 0.5 * (1 - p);
+            if (p >= 1) hideParryFx();
+            break;
+        }
+        default:
+            break;
+    }
+}
+
 // --- Per-frame update --------------------------------------------------------
 
 // Advances the player by one frame (called from main.js only while WAVE_PLAYING):
 // movement, timers, model orientation, i-frame flash and the minions' orbit/shots.
 export function updatePlayer(delta) {
-    if (dead) return;
+    if (dead) {
+        hideParryFx(); // a run that ended mid-glow leaves no rings burning on the corpse
+        return;
+    }
+
+    // Round 5: frame-start position → ground velocity at the end of the frame. The rangers read
+    // player.userData.velocity when leading their shots (Enemy.js).
+    const frameStartX = player.position.x;
+    const frameStartY = player.position.y;
 
     // Timers.
     if (iframes > 0) iframes = Math.max(0, iframes - delta);
@@ -402,9 +540,13 @@ export function updatePlayer(delta) {
     if (shieldRemaining > 0) {
         shieldRemaining = Math.max(0, shieldRemaining - delta);
         // A parry that blocked nothing by the time the shield drops has failed (GDD 4A sounds).
-        if (shieldRemaining === 0 && !parrySucceeded) playSfx('parry_failed');
+        if (shieldRemaining === 0 && !parrySucceeded) {
+            playSfx('parry_failed');
+            playParryFail(); // VFX: the glow collapses
+        }
     }
     updateDashClones(delta);
+    updateParryFx(delta);
 
     // Hop steering: while idle, aim a new hop at the pointer if it is outside the deadzone.
     if (move.progress >= 1) {
@@ -487,6 +629,13 @@ export function updatePlayer(delta) {
         ? PLAYER.iframeFlashOpacity
         : 1;
     for (const material of modelMaterials) material.opacity = opacity;
+
+    // Ground velocity for this frame (round 5: rangers lead their shots by this). Written after
+    // all position changes so it reflects the hop/dash/slide that actually happened.
+    player.userData.velocity = {
+        x: (player.position.x - frameStartX) / Math.max(delta, 1e-6),
+        y: (player.position.y - frameStartY) / Math.max(delta, 1e-6),
+    };
 
     // Anchor minions: orbit + auto-fire, copying the live stats.
     updateMinions(delta, player.position, stats);
@@ -591,6 +740,10 @@ export function resetPlayer() {
     move.start.copy(player.position);
     move.target.copy(player.position);
     iframes = 0;
+    // Fresh velocity reading: rangers must not lead the first shot of a run by the last run's
+    // movement (velocity is written every live frame in updatePlayer).
+    player.userData.velocity = { x: 0, y: 0 };
+    hideParryFx(); // no leftover glow/flash/ring from the previous run
     player.visible = true;
     if (model) {
         model.rotation.z = 0;

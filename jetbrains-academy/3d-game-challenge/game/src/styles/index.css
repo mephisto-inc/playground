@@ -11,6 +11,8 @@
     --text-dim: #b9c6d4;
     --accent: #7ee2a8;
     --danger: #ff5a5a;
+    /* Screen vignette darkness at the edges (round 4). 0 disables it; tune freely. */
+    --vignette-strength: 0.55;
 }
 
 * {
@@ -45,6 +47,24 @@ canvas.game {
     inset: 0;
     pointer-events: none;
     z-index: 10;
+}
+
+/* Screen vignette (round 4): a pure-CSS radial gradient that darkens the screen edges, giving
+   the orthographic view a soft framing without any renderer work. It is the ::before of the
+   overlay root, so it sits above the 3D canvas (z-index 10) but every HUD element and panel —
+   later children of #ui-root, painted in DOM order — still draws on top of it. Strength comes
+   from --vignette-strength (:root default 0.55 — the "default value" requested; 0 disables). */
+#ui-root::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+        ellipse at center,
+        rgba(0, 0, 0, 0) 55%,
+        rgba(0, 0, 0, calc(var(--vignette-strength) * 0.35)) 80%,
+        rgba(0, 0, 0, var(--vignette-strength)) 100%
+    );
 }
 
 /* --- Shared glass panel + buttons --------------------------------------------------------- */
@@ -248,6 +268,10 @@ canvas.game {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     backdrop-filter: blur(8px);
+    /* Round 5: badges accept pointer events again so they can show their tooltip on hover/tap
+       (the UI root is pointer-events: none, so without this they are inert). */
+    pointer-events: auto;
+    cursor: help;
 }
 
 .build-badge .count {
@@ -255,6 +279,36 @@ canvas.game {
     font-weight: 700;
     margin-left: 2px;
     color: var(--accent);
+}
+
+/* Shared badge/recap tooltip (dom.js attachTooltip). It lives on <body> and never takes pointer
+   events, so it cannot steal the tap that a badge is listening for. Position (left/top) is set
+   from JS against the badge's bounding rect. */
+.badge-tooltip {
+    position: fixed;
+    z-index: 60; /* above the UI root (z-index 10) so it floats over overlays and panels */
+    max-width: 260px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    text-align: left;
+}
+
+.badge-tooltip-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 3px;
+}
+
+.badge-tooltip-body {
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--text-dim);
 }
 
 /* --- Menus --------------------------------------------------------------------------------- */
@@ -267,6 +321,12 @@ canvas.game {
     align-items: center;
     gap: 14px;
     text-align: center;
+}
+
+/* Character select needs room for its three cards side by side (3 x 190px + gaps = 598px);
+   at the default panel width they would wrap into a column. */
+.menu-panel.wide {
+    width: min(700px, 94vw);
 }
 
 .game-title {

@@ -14,8 +14,9 @@ export const CLASSES = [
         icon: '🛡️',
         hearts: PLAYER.baseHearts,
         description: 'Double click/tap: raise a 0.4 s shield that cancels physical damage and '
-            + 'reflects projectiles. On parry, a shockwave deals 3 + current HP, stuns common '
-            + 'enemies for 1.5 s and knocks the Boss back. 4.0 s cooldown.',
+            + 'reflects every projectile around you straight back at whoever fired it (bosses '
+            + 'included). On parry, a shockwave deals 3 + current HP, stuns common enemies for '
+            + '1.5 s and knocks the Boss back. 4.0 s cooldown.',
         ability: {
             // Shield window and cooldown live in tuning.js so balance stays in one place.
             cooldown: ABILITY.parryCooldown,
@@ -53,7 +54,7 @@ export const CLASSES = [
         hearts: PLAYER.baseHearts + 2, // passive: +2 max hearts (user-confirmed; GDD said +1)
         description: 'Passive: +2 max hearts and 2 orbiting Minions that always face the camera. '
             + 'Minions have 50% more vision range and copy every power-up you collect. '
-            + 'Minion damage: 0.5 every 1.2 s.',
+            + 'Minion damage: 1 every 2.4 s.',
         ability: {
             // Anchor has no active ability; these values drive the orbiting companions.
             minionCount: ABILITY.minionCount,

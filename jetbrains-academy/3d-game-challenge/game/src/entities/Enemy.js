@@ -8,6 +8,7 @@ import {
 } from '../core/Assets.js';
 import {
     getCollider,
+    isLineSightClear,
     isMoveFree,
     isSpotFree,
     MAX_MOVE_SUB_STEP,
@@ -15,7 +16,7 @@ import {
     unregisterCollider,
     wouldOverlap,
 } from '../core/Collision.js';
-import { ABILITY, ENEMY } from '../config/tuning.js';
+import { ABILITY, ENEMY, PROJECTILE } from '../config/tuning.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
 import player, { getStats } from './Player.js';
 import { getTrailSpeedFactor } from './Trail.js';
@@ -35,7 +36,7 @@ import { addScore } from '../systems/Score.js';
 // the kill moment — Combat only reports what the projectiles hit.
 
 // --- Steering tuning ---------------------------------------------------------
-// Ported from the old 650-unit arena and divided by ~10 for this 60x40 one (their comment:
+// Ported from the old 650-unit arena and divided by ~10 for the old 60x40 one (their comment:
 // values selected so a wedged enemy is visible as a bug for well under a second).
 const STUCK_ESCAPE_SECONDS = 0.5;    // zero-progress seconds before the detour kicks in
 const ESCAPE_WAYPOINT_DISTANCE = 5;  // lateral offset of the detour waypoint, world units
@@ -120,15 +121,21 @@ export async function initEnemies(scene) {
 
 // Finds a clip by exact name first, then case-insensitively, then by loose substring match —
 // the GDD's names ("HitRecieve" is even misspelled in the model) rarely match byte-for-byte.
+// The exported animations prefix every clip with "CharacterArmature|", so every comparison
+// strips everything up to the last '|' before matching.
 function findClip(animations, name) {
     if (!name || animations.length === 0) return null;
-    const exact = animations.find((clip) => clip.name === name);
+    const base = (clipName) => {
+        const bar = clipName.lastIndexOf('|');
+        return bar >= 0 ? clipName.slice(bar + 1) : clipName;
+    };
+    const exact = animations.find((clip) => clip.name === name || base(clip.name) === name);
     if (exact) return exact;
     const lower = name.toLowerCase();
-    const caseInsensitive = animations.find((clip) => clip.name.toLowerCase() === lower);
+    const caseInsensitive = animations.find((clip) => base(clip.name).toLowerCase() === lower);
     if (caseInsensitive) return caseInsensitive;
     return animations.find((clip) => {
-        const clipName = clip.name.toLowerCase();
+        const clipName = base(clip.name).toLowerCase();
         return clipName.includes(lower) || lower.includes(clipName);
     }) || null;
 }
@@ -199,7 +206,8 @@ export function spawnEnemy(typeId, position) {
 
     const data = group.userData;
     data.typeConfig = type;
-    data.maxHp = type.hp * endlessHpMul; // wave-5 growth bakes into the spawn (GDD 6B)
+    data.maxHp = Math.ceil(type.hp * endlessHpMul); // wave-5 growth bakes into the spawn (GDD 6B);
+    // round 5: health is whole numbers everywhere, so grown HP rounds UP (2.2 -> 3), never down.
     data.hp = data.maxHp;
     data.collider = registerCollider(group, group.position, typePrepared.radius);
     data.touchingPlayer = false;
@@ -556,14 +564,50 @@ export function updateEnemies(delta) {
         }
 
         // --- Ranged behavior: fire at the player (GDD 4B) ---
+        // Round 4: the gate is the same precise line-of-sight test the player's side uses, at the
+        // hostile shot's radius. It replaced the coarse sampled probe, which let shots squeeze
+        // "through" a house corner and die on it with no visible cause.
         if (behavior === 'ranged') {
             data.fireTimer -= delta;
             if (data.fireTimer <= 0) {
                 data.fireTimer = ENEMY.rangedFireInterval;
                 const inRange = playerDistance <= ENEMY.rangedStandoff * 1.6;
-                if (inRange && collider && hasLineOfSight(collider, enemy.position, player.position)) {
-                    const length = Math.max(playerDistance, 1e-6);
-                    spawnEnemyShot(enemy.position.x, enemy.position.y, toPlayerX / length, toPlayerY / length);
+                // Round 5: the visibility check still runs against the player's REAL position —
+                // peeking around a corner should not let the ranger shoot through the house.
+                const clearShot = isLineSightClear(
+                    enemy.position.x, enemy.position.y,
+                    player.position.x, player.position.y, PROJECTILE.enemyRadius,
+                );
+                if (inRange && clearShot) {
+                    // Round 5: lead the shot. Estimate the flight time from the current distance,
+                    // then aim at where the player will be after rangedAimLead of that time
+                    // (0.8 = 80% of the way). Keeping the fraction below 1 makes strafing and
+                    // direction changes beat the guess; standing still still gets hit.
+                    const flightTime = playerDistance / PROJECTILE.enemySpeed;
+                    const playerVelocity = player.userData.velocity || { x: 0, y: 0 };
+                    let aimX = player.position.x
+                        + playerVelocity.x * flightTime * ENEMY.rangedAimLead;
+                    let aimY = player.position.y
+                        + playerVelocity.y * flightTime * ENEMY.rangedAimLead;
+
+                    // Then add a uniformly random miss of up to rangedAimError world units in any
+                    // direction (sqrt keeps the offset even across the disc instead of clustering
+                    // near the bullseye), so shots are threats to dodge rather than homing beams.
+                    const missAngle = Math.random() * Math.PI * 2;
+                    const missDistance = Math.sqrt(Math.random()) * ENEMY.rangedAimError;
+                    aimX += Math.cos(missAngle) * missDistance;
+                    aimY += Math.sin(missAngle) * missDistance;
+
+                    const dirToAimX = aimX - enemy.position.x;
+                    const dirToAimY = aimY - enemy.position.y;
+                    const aimLength = Math.max(Math.hypot(dirToAimX, dirToAimY), 1e-6);
+                    // The enemy object rides along as the bullet's `sender`, so a parry can bounce
+                    // this exact shot back into this exact ranger (round 5).
+                    spawnEnemyShot(
+                        enemy.position.x, enemy.position.y,
+                        dirToAimX / aimLength, dirToAimY / aimLength,
+                        enemy,
+                    );
                     // A short attack animation plays with the shot (same clip as contact attack).
                     if (data.currentAction !== data.actions.attack) {
                         playOneShot(enemy, data.actions.attack);
@@ -580,6 +624,8 @@ export function updateEnemies(delta) {
 // is sampled every ESCAPE_PROBE_SPACING units and every sample must pass isMoveFree, so the
 // probe can never approve a gap the enemy does not fit through. Characters are not obstacles
 // (isMoveFree ignores them), which is correct — they pass through each other.
+// Used ONLY by the escape detour below (waypoint validation); ranged fire uses the precise
+// isLineSightClear from Collision.js instead, which stops at the first box the line touches.
 function hasLineOfSight(collider, from, to) {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
@@ -648,7 +694,7 @@ export function getEnemies() {
 }
 
 // How many enemies are alive (excluding corpses playing their Death clip, and excluding the
-// Boss — the 35-enemy cap counts common enemies only). Waves uses this against ENEMY.maxAlive.
+// Boss — the ENEMY.maxAlive cap counts common enemies only). Waves uses this against ENEMY.maxAlive.
 export function getAliveCount() {
     let count = 0;
     for (const enemy of enemies) {

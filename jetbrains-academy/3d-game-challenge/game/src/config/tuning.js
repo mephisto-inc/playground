@@ -3,28 +3,30 @@
 // hard-coding magic numbers, so a balance pass touches only this file.
 
 // --- Arena (GDD 5) -----------------------------------------------------------
-// The playfield is 60 x 40 world units on the X/Y (ground) plane, everything at Z = 0.
+// The playfield is 97.2 x 64.8 world units on the X/Y (ground) plane, everything at Z = 0.
+// (User history: 4x the GDD's original 60 x 40 area, then -10% per side in rounds 4 and 5.)
 export const ARENA = {
-    width: 60,               // X extent, in world units
-    depth: 40,               // Y extent, in world units
-    area: 60 * 40,           // 2,400 square units — the reference the enemy cap is based on
-    tileSize: 2.5,           // checkerboard square size; not specified by the GDD
+    width: 97.2,             // X extent, in world units
+    depth: 64.8,             // Y extent, in world units
+    area: 97.2 * 64.8,       // ~6,299 square units (the GDD's 2,400 reference x2.62)
+    floorTile: 3,            // world units covered by one PlaneMesh.png repeat; not in the GDD
     wallThickness: 2,        // invisible boundary wall depth (colliders only)
     backdropSize: 4000,      // dark plane under the floor, sized to always fill the view
     backdropZ: -1,           // slightly below the floor so the two never z-fight
     backdropColor: 0x111111, // near-black void beyond the arena
-    checkerDark: '#228B22',  // Dark Green (kept from the previous map look)
-    checkerLight: '#90EE90', // Light Green
 };
 
 // Spawn points (GDD 5: "8 invisible spawn points on the outer edge, behind the houses").
 // Two per corner house: one on the edge beside it and one on the edge behind it, so an enemy
 // entering the arena always steps out from behind a house instead of popping into view.
+// Re-derived for the round-5 97.2 x 64.8 arena with its relocated corner houses: each point
+// sits 3 units beyond the house's worst-case face (footprint cap), keeping at least 3 units of
+// clearance to every obstacle, so even a tank (~1-unit radius) walks out instead of wedging.
 export const SPAWN_POINTS = [
-    { x: 28.5, y: 16 }, { x: 26, y: 18.5 },   // NE corner (house at 26, 16)
-    { x: -28.5, y: 16 }, { x: -26, y: 18.5 }, // NW corner (house at -26, 16)
-    { x: 28.5, y: -16 }, { x: 26, y: -18.5 }, // SE corner (house at 26, -16)
-    { x: -28.5, y: -16 }, { x: -26, y: -18.5 }, // SW corner (house at -26, -16)
+    { x: 41.7, y: 20.8 }, { x: 35.2, y: 27.3 },   // NE corner (house at 35.2, 20.8)
+    { x: -41.7, y: 20.8 }, { x: -35.2, y: 27.3 }, // NW corner (house at -35.2, 20.8)
+    { x: 41.7, y: -20.8 }, { x: 35.2, y: -27.3 }, // SE corner (house at 35.2, -20.8)
+    { x: -41.7, y: -20.8 }, { x: -35.2, y: -27.3 }, // SW corner (house at -35.2, -20.8)
 ];
 
 // --- Camera (GDD 3A) ---------------------------------------------------------
@@ -35,7 +37,7 @@ export const CAMERA = {
     azimuthDeg: -45,
     tiltDeg: 55,          // angle above the floor (GDD 3A)
     height: 38,           // Z height of the camera (GDD 3A)
-    viewWidth: 40,        // camera box width in world units; height follows the screen aspect
+    viewWidth: 40,        // camera box width in world units (user: 2x wider than the previous 20)
     followOffsetMax: 4,   // max units the view leads toward the pointer (GDD 3A)
     followDamping: 5,     // exponential smoothing rate for the follow (higher = tighter)
     near: 0.1,            // near clip; unspecified by the GDD, safe for this scale
@@ -49,9 +51,9 @@ export const LIGHTS = {
     dirColor: 0xffffff,
     dirIntensity: 1.1,
     dirPosition: { x: 15, y: -20, z: 30 },
-    // Shadow camera half-extents: covers the whole 60x40 arena plus a margin so no shadow pops.
-    shadowHalfX: 45,
-    shadowHalfY: 45,
+    // Shadow camera half-extents: covers the whole 97.2x64.8 arena plus a margin so no shadow pops.
+    shadowHalfX: 59,
+    shadowHalfY: 43,
     shadowNear: 1,
     shadowFar: 120,
 };
@@ -60,7 +62,10 @@ export const LIGHTS = {
 export const PLAYER = {
     baseHearts: 3,        // Parry/Dasher start here (user override of the GDD's 5)
     maxHearts: 7,         // global cap for every class (GDD 4A)
-    targetHeight: 2.4,    // Tode's world height once normalized (GDD fixes no scale)
+    // User-confirmed: doubled from 0.5 back to 1.0 while the camera zoomed out 2x (viewWidth
+    // 40), so Tode's on-screen size stays the same while the world around him stays readable.
+    // The collider radius is measured from the model, so it follows the height.
+    targetHeight: 1.0,
     baseSpeed: 4,         // ground units per second at "speed 1.0x" (GDD 4A)
     hopDistance: 1.6,     // ground distance covered by one hop
     hopHeight: 1.1,       // peak of the hop's sine arc, in world units
@@ -86,10 +91,11 @@ export const MOVE = {
 
 // --- Enemy combat (GDD 3C, 4B, 6B) -------------------------------------------
 export const ENEMY = {
-    // Maximum enemies alive at once. Comes from [MAP_SIZE_DEPENDENT] in the GDD: 35 on the
-    // 2,400-square-unit arena (~1 enemy per 68.6 square units). Computed so a future arena
-    // resize keeps the same density instead of a stale literal.
-    maxAlive: Math.round((ARENA.area * 35) / 2400),
+    // Maximum enemies alive at once. The GDD's density formula ([MAP_SIZE_DEPENDENT]: 35 per
+    // 2,400 square units) would now give ~92 on the 97.2 x 64.8 arena. User round 4: "remove the
+    // cap or make it really high" — set to 200, which normal play (x3 spawn rate and all) never
+    // reaches; it only exists as a runaway guard against spawning without bound.
+    maxAlive: 200,
     baseSpeed: 3.2,          // world units per second at "speed 1.0x"
     baseDropChance: 0.02,    // 2% health-drop chance per kill (GDD 4B)
     bloodthirstDropChance: 0.10, // 10% with the Bloodthirst card (GDD 6A)
@@ -105,6 +111,12 @@ export const ENEMY = {
     rangedStandoff: 12,      // preferred distance from the player
     rangedBand: 2,           // +/- band around the standoff where it stops closing
     rangedFireInterval: 2.5, // seconds between projectiles (GDD 4B)
+    // Round 5: shots predict the player's movement instead of aiming at where he stands. The lead
+    // follows a fraction of the travel time (0.8 = 80% as far ahead as he will really have moved),
+    // and the predicted point then gets a uniformly random offset of up to rangedAimError world
+    // units, so a moving player is threatened but a dodging one can still slip the shot.
+    rangedAimLead: 0.8,      // fraction of the player's flight-time travel used as lead
+    rangedAimError: 1.5,     // max random miss offset around the predicted point, world units
     // Speeder behavior: short zig-zag dashes instead of a straight chase.
     speederDashOn: 0.5,      // seconds of dashing
     speederDashOff: 0.3,     // seconds of rest between dashes
@@ -114,13 +126,17 @@ export const ENEMY = {
 
 // --- Boss (GDD 4B) -----------------------------------------------------------
 export const BOSS = {
-    wave3Hp: 50,             // Arena Lord HP in Wave 3
-    wave5Hp: 80,             // Arena Lord HP in Wave 5
-    speedMul: 0.7,           // speed multiplier against ENEMY.baseSpeed
+    // Mirrors of config/waves.js bossHp (the values the game actually reads); keep both in sync.
+    wave3Hp: 250,            // Arena Lord HP in Wave 3 (user: 10x the GDD's 50, halved in round 5)
+    wave5Hp: 400,            // Arena Lord HP in Wave 5 (user: 10x the GDD's 80, halved in round 5)
+    // Base speed multiplier against ENEMY.baseSpeed. Round 5: the wave defs override this —
+    // wave 3 runs this base value, wave 5 uses +10% of it (0.77); see bossSpeedMul in waves.js.
+    speedMul: 0.7,
     targetHeight: 3.5,       // model height in world units (~2.5x a common enemy)
-    // Phase A: pause 1.5 s, then fire 8 orbs in a 360-degree circle.
+    contactDamage: 1,        // round 5: touching the boss always hurts (i-frames still gate it)
+    // Phase A: pause 1.5 s, then fire the orb circle (round 5: 24 orbs — the GDD's 8, tripled).
     chargeTime: 1.5,
-    orbCount: 8,
+    orbCount: 24,
     orbDamage: 1,
     phaseAChase: 3.0,        // seconds of chasing between orb volleys (not specified by the GDD)
     // Phase B: red charging dash that deals 2 physical damage.
@@ -143,7 +159,7 @@ export const PROJECTILE = {
     enemySpeed: 6,         // ranged-enemy projectile speed (slow enough to dodge)
     enemyRadius: 0.3,
     enemyLifetime: 4,      // seconds alive before despawn; houses block them earlier
-    bossOrbSpeed: 5,       // boss orb speed
+    bossOrbSpeed: 15,      // boss orb speed (round 5: 3x the previous 5)
     bossOrbRadius: 0.35,
     bossOrbLifetime: 5,
     multiShotSpreadDeg: 8, // angular spread between extra projectiles of one volley
@@ -155,10 +171,13 @@ export const PROJECTILE = {
 export const PICKUP = {
     magnetRadius: 2.2,   // base attraction radius; Point Magnet doubles it
     collectRadius: 0.8,  // distance at which a heart is consumed
-    bobHeight: 0.3,      // idle bobbing amplitude, purely cosmetic
-    bobHz: 1.6,
+    // Round 5: the heart pulsates its size instead of bobbing up and down. The old vertical bob
+    // dipped the flat mesh below the floor plane at the trough, which read as the heart blinking
+    // out of existence; scale pulsing keeps it always visible from the top-down camera.
+    pulseAmplitude: 0.18, // fraction of the base scale the pulse swings by (0.18 = +-18%)
+    pulseHz: 1.6,
     heal: 1,             // hearts restored per pickup (GDD: 1-2 items drop, each heals 1)
-    lifetime: 30,        // seconds before an uncollected heart fades away (not in the GDD)
+    lifetime: 30,        // seconds before an uncollected heart is removed (not in the GDD)
 };
 
 // --- Power-up draft (GDD 6A) -------------------------------------------------
@@ -188,6 +207,11 @@ export const ABILITY = {
     parryShockwaveRadius: 8,   // not specified by the GDD; sized to catch nearby enemies
     parryShockwaveBaseDamage: 3, // shockwave damage is 3 + current HP
     parryStun: ENEMY.stunDuration,
+    // Round-5 parry visual timings (cosmetic only — shield/reflect behavior never reads these):
+    parryGlowRadius: 0.9,      // soft blue glow ring's outer radius while the shield is up
+    parryImpactDuration: 0.12, // white-blue impact flash right when a parry succeeds
+    parryRingDuration: 0.4,    // shiny-blue ring expanding to the shockwave radius after the flash
+    parryFailDuration: 0.15,   // quick collapse of the glow when the shield expires with no parry
     // Dasher
     dashCooldown: 3.0,         // seconds
     dashDistance: 6,           // world units covered instantly
@@ -204,7 +228,8 @@ export const ABILITY = {
     minionOrbitRadius: 1.7,    // world units from the player
     minionOrbitSpeed: 1.6,     // radians per second
     minionHeight: 1.2,         // Z height of the orbit (they float)
-    minionDamage: 0.5,         // base damage per shot
-    minionInterval: 1.2,       // seconds between shots
+    minionDamage: 1,           // damage per shot (round 5: integer; was 0.5)
+    minionInterval: 2.4,       // seconds between shots (doubled alongside the damage change,
+                               // so each minion's DPS is identical to the old 0.5 per 1.2 s)
     minionRangeMul: 1.5,       // 50% more vision range than the player
 };

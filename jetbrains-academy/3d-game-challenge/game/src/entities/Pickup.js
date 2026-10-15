@@ -32,20 +32,21 @@ const heartMaterial = new THREE.MeshBasicMaterial({
 // Every live pickup: { mesh, age }.
 const pickups = [];
 let sceneRef = null;
-let elapsed = 0; // shared clock for the cosmetic bobbing
+let elapsed = 0; // shared clock for the cosmetic heartbeat pulse
 
 // Spawns one heart at (x, y) on the ground. Called by Enemy/Boss on kill drops.
 export function spawnHeart(x, y) {
     if (!sceneRef) return;
     const mesh = new THREE.Mesh(heartGeometry, heartMaterial);
-    mesh.scale.setScalar(0.5); // ~1 unit across; readable but not a scene hog
+    // ~0.84 units across, sized against the 1.0-unit player.
+    mesh.scale.setScalar(0.6);
     mesh.position.set(x, y, 0.15);
     mesh.rotation.z = Math.random() * Math.PI * 2; // random spin so drops do not look stamped
     sceneRef.add(mesh);
     pickups.push({ mesh, age: 0, t: Math.random() * Math.PI * 2 });
 }
 
-// Advances every pickup: bobbing, magnet attraction and collection.
+// Advances every pickup: heartbeat pulse, magnet attraction and collection.
 //
 //   * `playerX/playerY` — the hero's ground position.
 //   * `magnetRadius`    — the pickup attraction radius (doubled by the Point Magnet card).
@@ -79,12 +80,16 @@ export function updatePickups(delta, playerX, playerY, magnetRadius) {
             pickup.mesh.position.y += (dy / distance) * pull;
         }
 
-        // Cosmetic bob + slow spin, so drops read as alive on the floor.
-        pickup.mesh.position.z = 0.15 + Math.sin(elapsed * PICKUP.bobHz * Math.PI * 2 + pickup.t)
-            * PICKUP.bobHeight;
+        // Cosmetic heartbeat: the heart stays flat on the floor (z fixed; round 5 removed the
+        // vertical bob, whose trough dipped the flat mesh under the floor plane and read as the
+        // heart blinking out) and instead pulsates its size around the base 0.6 scale, plus a
+        // slow spin so drops still read as alive.
+        const pulse = 1 + PICKUP.pulseAmplitude
+            * Math.sin(elapsed * PICKUP.pulseHz * Math.PI * 2 + pickup.t);
+        pickup.mesh.scale.setScalar(0.6 * pulse);
         pickup.mesh.rotation.z += delta * 0.8;
 
-        // Uncollected hearts eventually fade out, so the floor does not litter over a long run.
+        // Uncollected hearts are eventually removed, so the floor does not litter over a long run.
         if (pickup.age >= PICKUP.lifetime) {
             removePickupAt(i);
         }

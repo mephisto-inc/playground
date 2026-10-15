@@ -41,14 +41,16 @@ const MAX_FRAME_DELTA = 0.1;
 
 // --- Lighting (GDD 5) ---------------------------------------------------------
 // Ambient fill (light blue, 0.75) plus one directional light (15, -20, 30 / 1.1) that casts the
-// soft ground shadows the GDD asks for. The shadow camera covers the whole 60x40 arena.
+// soft ground shadows the GDD asks for. The shadow camera covers the whole 97.2x64.8 arena.
 const ambientLight = new THREE.AmbientLight(LIGHTS.ambientColor, LIGHTS.ambientIntensity);
 scene.add(ambientLight);
 
 const directionalLight = new THREE.DirectionalLight(LIGHTS.dirColor, LIGHTS.dirIntensity);
 directionalLight.position.set(LIGHTS.dirPosition.x, LIGHTS.dirPosition.y, LIGHTS.dirPosition.z);
 directionalLight.castShadow = true;
-directionalLight.shadow.mapSize.set(2048, 2048);
+// 4096 keeps the shadow texels small enough for crisp furnishing-sized shadows across the whole
+// (large) arena; the soft PCF filter smooths the rest.
+directionalLight.shadow.mapSize.set(4096, 4096);
 const shadowCamera = directionalLight.shadow.camera;
 shadowCamera.left = -LIGHTS.shadowHalfX;
 shadowCamera.right = LIGHTS.shadowHalfX;
@@ -67,6 +69,12 @@ onAbility(() => {
     if (getState() === STATE.WAVE_PLAYING) tryActivateAbility();
 });
 
+// --- Audio ----------------------------------------------------------------------
+// Started first, before any asset await: the AudioContext is created now (suspended) and the
+// buffers preload while the models load, so the very first click unlocks the menu music instead
+// of being missed during startup.
+initAudio();
+
 // --- World --------------------------------------------------------------------
 initArena(scene);
 await initHouses(map);
@@ -82,7 +90,6 @@ initPickups(scene);
 initTrails(scene);
 
 // --- Systems and UI ---------------------------------------------------------------
-initAudio(); // subscribes to the state machine; the AudioContext unlocks on the first gesture
 initRun();   // wires death -> run end, wave clear -> draft
 initUI();
 

@@ -9,7 +9,7 @@ import * as THREE from 'three';
 // Shared unit plane: scaled per trail (length x width) so no geometry is built per dash.
 const quadGeometry = new THREE.PlaneGeometry(1, 1);
 
-// Trail color: a cool cyan that reads as "superhero speed" over the green checkerboard.
+// Trail color: a cool cyan that reads as "superhero speed" over the cobblestone floor.
 const TRAIL_COLOR = 0x4dd2ff;
 
 // Every live trail: { mesh, x1, y1, x2, y2, ttl, duration, width }.

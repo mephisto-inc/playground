@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { getEnemies } from './Enemy.js';
 import { spawnMinionShot } from './Projectile.js';
+import { isLineSightClear } from '../core/Collision.js';
 import { playSfx } from '../systems/Audio.js';
 import { ABILITY, PLAYER, PROJECTILE } from '../config/tuning.js';
 
@@ -67,7 +68,8 @@ export async function createMinions(scene, count) {
             depthWrite: false, // translucent billboards must not fight other transparent draws
         });
         const sprite = new THREE.Sprite(material);
-        sprite.scale.setScalar(0.9); // ~1-world-unit tall floating companion
+        // Sized against the 1.0-unit player so the companion reads about Tode-sized.
+        sprite.scale.setScalar(0.9);
         const group = new THREE.Group();
         group.add(sprite);
         scene.add(group);
@@ -116,7 +118,11 @@ export function updateMinions(delta, playerPos, stats) {
     }
 }
 
-// Finds the closest enemy (circle centres on the ground plane) within `range` of a position.
+// Finds the closest enemy (circle centres on the ground plane) within `range` of a position,
+// skipping corpses and enemies with no clear shot: the line from the minion's orbit point must
+// stay clear of every house/wall box for the shot's radius (round 4, same gate as the player's
+// auto-shooter), so minions never fire into a house wall. A farther visible enemy wins over a
+// nearer hidden one.
 function findNearestEnemy(enemies, position, range) {
     let best = null;
     let bestDistanceSq = range * range;
@@ -125,10 +131,12 @@ function findNearestEnemy(enemies, position, range) {
         const dx = enemy.position.x - position.x;
         const dy = enemy.position.y - position.y;
         const distanceSq = dx * dx + dy * dy;
-        if (distanceSq < bestDistanceSq) {
-            bestDistanceSq = distanceSq;
-            best = enemy;
+        if (distanceSq >= bestDistanceSq) continue;
+        if (!isLineSightClear(position.x, position.y, enemy.position.x, enemy.position.y, PROJECTILE.playerRadius)) {
+            continue;
         }
+        bestDistanceSq = distanceSq;
+        best = enemy;
     }
     return best;
 }
@@ -137,7 +145,8 @@ function findNearestEnemy(enemies, position, range) {
 // the minion's damage and the player's pierce. Aim leads the target's velocity, mirroring the
 // player's auto-shooter (see Combat.js).
 function fireVolley(origin, target, stats) {
-    // Damage copy: base 0.5 plus whatever Heavy Ammo added to the player.
+    // Damage copy: base 1 (round 5: integer; was 0.5 at twice the fire rate — same DPS) plus
+    // whatever Heavy Ammo added to the player.
     const damage = ABILITY.minionDamage + (stats.damage - PLAYER.baseDamage);
     const count = Math.max(1, stats.projectiles);
 

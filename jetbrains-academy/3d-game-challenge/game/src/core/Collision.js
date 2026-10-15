@@ -107,6 +107,58 @@ export function isObstacleFree(x, y, radius) {
     return true;
 }
 
+// True if the straight line from (x1, y1) to (x2, y2) stays clear of every static box inflated
+// by `margin` world units. This is the line-of-sight gate checked before firing (player
+// auto-shooter, minions, ranged enemies): a target behind a house is skipped instead of being
+// shot "through" the wall, and passing `margin` = the shooter's projectile radius also rejects
+// lines that would only graze a house corner. Character circles are ignored — they never stop
+// projectiles.
+//
+// Implementation: the slab method clips the segment against each inflated AABB; if any part of
+// the segment (t in [0, 1]) falls inside one, the line is blocked.
+export function isLineSightClear(x1, y1, x2, y2, margin) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    for (const other of colliders.values()) {
+        if (other.shape !== 'box') continue;
+
+        const minX = other.position.x - other.halfWidth - margin;
+        const maxX = other.position.x + other.halfWidth + margin;
+        const minY = other.position.y - other.halfDepth - margin;
+        const maxY = other.position.y + other.halfDepth + margin;
+
+        let tMin = 0;
+        let tMax = 1;
+
+        // X slab: parallel lines only constrain the test when they start inside the slab.
+        if (Math.abs(dx) < EPSILON) {
+            if (x1 < minX || x1 > maxX) continue;
+        } else {
+            let t1 = (minX - x1) / dx;
+            let t2 = (maxX - x1) / dx;
+            if (t1 > t2) [t1, t2] = [t2, t1];
+            tMin = Math.max(tMin, t1);
+            tMax = Math.min(tMax, t2);
+            if (tMin > tMax) continue;
+        }
+
+        // Y slab, same treatment.
+        if (Math.abs(dy) < EPSILON) {
+            if (y1 < minY || y1 > maxY) continue;
+        } else {
+            let t1 = (minY - y1) / dy;
+            let t2 = (maxY - y1) / dy;
+            if (t1 > t2) [t1, t2] = [t2, t1];
+            tMin = Math.max(tMin, t1);
+            tMax = Math.min(tMax, t2);
+            if (tMin > tMax) continue;
+        }
+
+        return false; // the segment crosses this box — the line is blocked
+    }
+    return true;
+}
+
 // True if no registered collider currently overlaps the circle at (x, y). Used when placing a
 // brand-new character (spawns), where an existing overlap is never acceptable.
 export function isSpotFree(x, y, radius) {

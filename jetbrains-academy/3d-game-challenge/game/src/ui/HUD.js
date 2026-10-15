@@ -1,4 +1,4 @@
-import { el, mount } from './dom.js';
+import { attachTooltip, el, hideTooltip, mount } from './dom.js';
 import { STATE, getState, onStateChange, setState } from '../core/StateMachine.js';
 import { getAbilityInfo, getCollectedCards, getHearts, getStats } from '../entities/Player.js';
 import { getScore } from '../systems/Score.js';
@@ -79,6 +79,7 @@ export function initHUD() {
             || state === STATE.GAME_OVER;
         hudNode.classList.toggle('hidden', !inRun);
         pauseButtonNode.classList.toggle('hidden', state !== STATE.WAVE_PLAYING);
+        hideTooltip(); // never leave a badge tooltip floating across a screen change
     });
     hudNode.classList.add('hidden'); // starts in the main menu
 }
@@ -146,17 +147,28 @@ export function updateHUD() {
         abilityRingNode.style.setProperty('--fill', String(fillRounded));
     }
 
-    // Build badges: collected cards with a count when stacked.
+    // Build badges: collected cards with a count when stacked. Each badge is an element (round 5,
+    // was an innerHTML string) so it can carry a tooltip: hover with a mouse or tap on touch to
+    // see the card's icon, name and description. The cache key is the id:count list.
     const counts = new Map();
     for (const id of getCollectedCards()) counts.set(id, (counts.get(id) || 0) + 1);
-    let badgesText = '';
-    for (const [id, count] of counts) {
-        const powerup = getPowerup(id);
-        const icon = powerup ? powerup.icon : '❔';
-        badgesText += `<span class="build-badge">${icon}${count > 1 ? `<span class="count">x${count}</span>` : ''}</span>`;
-    }
-    if (badgesText !== cache.badges) {
-        cache.badges = badgesText;
-        buildPanelNode.innerHTML = badgesText;
+    let badgesKey = '';
+    for (const [id, count] of counts) badgesKey += `${id}x${count}|`;
+    if (badgesKey !== cache.badges) {
+        cache.badges = badgesKey;
+        hideTooltip(); // the badges it was describing are about to be discarded
+        buildPanelNode.replaceChildren();
+        for (const [id, count] of counts) {
+            const powerup = getPowerup(id);
+            const badge = el('span', 'build-badge', powerup ? powerup.icon : '❔');
+            if (count > 1) badge.appendChild(el('span', 'count', `x${count}`));
+            if (powerup) {
+                const stackNote = count > 1 ? ` (stacked x${count})` : '';
+                attachTooltip(badge, `${powerup.icon} ${powerup.name}`, powerup.description + stackNote);
+            } else {
+                attachTooltip(badge, '❔ Unknown', 'This power-up is no longer in the card pool.');
+            }
+            buildPanelNode.appendChild(badge);
+        }
     }
 }

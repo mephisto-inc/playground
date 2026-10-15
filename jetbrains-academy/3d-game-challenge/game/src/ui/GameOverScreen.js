@@ -1,10 +1,11 @@
-import { el, mount } from './dom.js';
+import { attachTooltip, el, hideTooltip, mount } from './dom.js';
 import { STATE, onStateChange, setState } from '../core/StateMachine.js';
 import { PLAYER } from '../config/tuning.js';
 import { getGameOverSummary } from '../systems/Run.js';
 import { getPowerup } from '../config/powerups.js';
 import { ACHIEVEMENTS } from '../systems/Achievements.js';
 import { openAchievements } from './AchievementsPanel.js';
+import { createCreditsButton } from './credits.js';
 
 // Game-over screen (GDD 1 state 6 + GDD 7): appears after the defeat animation finishes, showing
 // the final score, the record status, a recap of the collected power-up cards and the
@@ -52,6 +53,9 @@ export function initGameOverScreen() {
     achievementsButton.addEventListener('click', () => openAchievements());
     panel.appendChild(achievementsButton);
 
+    // Credits (round 5): same link as the menus.
+    panel.appendChild(createCreditsButton());
+
     overlay.appendChild(panel);
     mount(overlay);
 
@@ -67,6 +71,7 @@ export function initGameOverScreen() {
         } else {
             clearTimeout(revealTimer);
             overlay.classList.remove('visible', 'revealed');
+            hideTooltip(); // no badge tooltip survives leaving this screen
         }
     });
 }
@@ -79,14 +84,23 @@ function render() {
     bestNode.textContent = `Best: ${summary.best.toLocaleString()}`;
     recordNode.textContent = summary.isRecord ? '🏆 NEW RECORD!' : '';
 
-    // Cards recap: one badge per collected card, in pickup order.
+    // Cards recap: one badge per collected card, in pickup order. Each carries the same tooltip
+    // as the HUD badges (round 5), so the recap explains what was picked without leaving the
+    // screen.
+    hideTooltip(); // the badges it was describing are about to be discarded
     cardsNode.innerHTML = '';
     if (summary.cards.length === 0) {
         cardsNode.appendChild(el('span', 'summary-label', '— none —'));
     } else {
         for (const id of summary.cards) {
             const powerup = getPowerup(id);
-            cardsNode.appendChild(el('span', 'build-badge', powerup ? powerup.icon : '❔'));
+            const badge = el('span', 'build-badge', powerup ? powerup.icon : '❔');
+            if (powerup) {
+                attachTooltip(badge, `${powerup.icon} ${powerup.name}`, powerup.description);
+            } else {
+                attachTooltip(badge, '❔ Unknown', 'This power-up is no longer in the card pool.');
+            }
+            cardsNode.appendChild(badge);
         }
     }
 

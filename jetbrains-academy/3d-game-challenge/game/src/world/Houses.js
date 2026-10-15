@@ -14,21 +14,26 @@ import { registerBoxCollider } from '../core/Collision.js';
 //     keeps every footprint axis-aligned so the AABB collider is exact.
 
 // One entry per GDD house: id, model, position, and the GDD "role" kept as a comment trail.
+// Positions: the GDD's original table, pulled toward the centre for the round-5 97.2 x 64.8
+// arena (each round-4 coordinate x0.8 — the "closer to the centre by 20%" request). The big
+// wall gaps this opens are documented in the footprint note below.
 const HOUSES = [
-    { asset: '053kskrV4U_', x: -26, y: 16 },  // House 1 — Mansion (Northwest corner)
-    { asset: 'oJJIRwv6Bo', x: 26, y: 16 },    // House 2 — Townhouse (Northeast corner)
-    { asset: 'L7h0SjZX2K', x: -26, y: -16 },  // House 3 — Residence (Southwest corner)
-    { asset: 'vZ1CLbWmSx', x: 26, y: -16 },   // House 4 — Building (Southeast corner)
-    { asset: 'wxi3kAu5ey', x: -6, y: 4 },     // House 5 — Hut (offset cover near the centre)
+    { asset: '053kskrV4U_', x: -35.2, y: 20.8 },  // House 1 — Mansion (Northwest corner)
+    { asset: 'oJJIRwv6Bo', x: 35.2, y: 20.8 },    // House 2 — Townhouse (Northeast corner)
+    { asset: 'L7h0SjZX2K', x: -35.2, y: -20.8 },  // House 3 — Residence (Southwest corner)
+    { asset: 'vZ1CLbWmSx', x: 35.2, y: -20.8 },   // House 4 — Building (Southeast corner)
+    { asset: 'wxi3kAu5ey', x: -11, y: 7 },        // House 5 — Hut (offset cover near the centre)
 ];
 
 // Target height of every house, in world units. The GDD fixes the positions but not the scale;
-// 5.5 units tall reads as a proper building against a 60 x 40 arena and a ~2.4-unit player.
+// 5.5 units tall reads as a proper building against the 97.2 x 64.8 arena and the ~1-unit player.
 const HOUSE_HEIGHT = 5.5;
 
 // Maximum footprint (the longer of the two ground-plane extents) a house may occupy. Corners
-// sit 4 units inside the walls (±26 vs ±30), so a footprint wider than ~7 units would poke
-// through the boundary. Central house is unaffected by this cap in practice.
+// sit 13.4 units inside the walls on X (35.2 vs 48.6) and 11.6 on Y (20.8 vs 32.4), so even a
+// full 7-unit footprint leaves 9.9 units (X) / 8.1 units (Y) of walking room between the house
+// and the wall — more than enough for the spawn-point enemies to walk out instead of wedging.
+// Central house is untouched by this cap.
 const HOUSE_MAX_FOOTPRINT = 7;
 
 // Loads one house template and places it. The template is cloned per instance; houses are static
@@ -100,6 +105,6 @@ export async function initHouses(mapGroup) {
     }
 }
 
-// Sanity note for future edits: houses must not overlap each other or the arena walls. The GDD
-// positions guarantee this at the current footprint cap; if positions or scales change, verify
-// with a quick visual pass before shipping.
+// Sanity note for future edits: houses must not overlap each other or the arena walls. The
+// positions above guarantee this at the current footprint cap (each corner house keeps ≥6.5
+// units to the walls); if positions or scales change, verify with a quick visual pass.

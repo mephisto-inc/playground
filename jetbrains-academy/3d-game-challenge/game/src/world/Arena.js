@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { registerBoxCollider } from '../core/Collision.js';
+import renderer from '../core/Renderer.js';
 import { ARENA } from '../config/tuning.js';
 
-// Arena component (GDD 5): builds the 60 x 40 playfield — a checkerboard floor, a dark backdrop
+// Arena component (GDD 5): builds the 97.2 x 64.8 playfield — a cobblestone floor, a dark backdrop
 // plane under it, and four invisible boundary-wall colliders. Exposes the whole thing as one
 // group so the main menu can spin the arena slowly in the background and a run can reset it.
 //
@@ -17,38 +18,23 @@ export const map = new THREE.Group();
 // Degrees per second the arena drifts in the main menu (GDD 1: "arena rotates slowly").
 const MENU_ROTATION_SPEED = 0.12;
 
-// A 2x2 texel checker texture: diagonally matching texels so one repeat makes a proper check.
-// NearestFilter keeps squares crisp when magnified; the default mipmapping avoids shimmer at
-// distance. (Identical technique to the previous map, retuned for the smaller arena.)
-function makeCheckerTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 2;
-    canvas.height = 2;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = ARENA.checkerLight;
-    ctx.fillRect(0, 0, 2, 2);
-    ctx.fillStyle = ARENA.checkerDark;
-    ctx.fillRect(0, 0, 1, 1);
-    ctx.fillRect(1, 1, 1, 1);
-
-    const texture = new THREE.CanvasTexture(canvas);
+// Builds the cobblestone floor from PlaneMesh.png (the GDD's floor asset), tiled so one repeat
+// always covers ARENA.floorTile world units. PlaneGeometry already lies in the XY plane facing
+// +Z — exactly this scene's ground — so no rotation is needed. Lit (MeshStandardMaterial) on
+// purpose: an unlit floor cannot receive the soft ground shadows (GDD 5).
+function makeFloor() {
+    // TextureLoader is asynchronous, so the floor may render untextured for a frame or two —
+    // acceptable for a local PNG, and it avoids threading a promise through arena startup.
+    const texture = new THREE.TextureLoader().load('/assets/PlaneMesh.png');
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
-    texture.magFilter = THREE.NearestFilter;
-    // The hex colours are CSS/sRGB values; tag the texture so three converts them correctly.
-    texture.colorSpace = THREE.SRGBColorSpace;
-    // Each texture repeat covers 2x2 grid squares, i.e. 2 * tileSize world units.
-    texture.repeat.set(ARENA.width / (2 * ARENA.tileSize), ARENA.depth / (2 * ARENA.tileSize));
-    return texture;
-}
+    texture.repeat.set(ARENA.width / ARENA.floorTile, ARENA.depth / ARENA.floorTile);
+    texture.colorSpace = THREE.SRGBColorSpace; // the PNG is a color map
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); // crisp at grazing angles
 
-// Builds the checkerboard floor as one textured plane. PlaneGeometry already lies in the XY
-// plane facing +Z — exactly this scene's ground — so no rotation is needed. Unlit
-// (MeshBasicMaterial) so the two greens stay exact regardless of the lighting.
-function makeFloor() {
     const floor = new THREE.Mesh(
         new THREE.PlaneGeometry(ARENA.width, ARENA.depth),
-        new THREE.MeshBasicMaterial({ map: makeCheckerTexture() }),
+        new THREE.MeshStandardMaterial({ map: texture, roughness: 1, metalness: 0 }),
     );
     floor.receiveShadow = true; // houses and characters drop soft shadows on it (GDD 5)
     return floor;

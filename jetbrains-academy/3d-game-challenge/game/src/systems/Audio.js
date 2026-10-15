@@ -18,9 +18,11 @@ import { STATE, getState, onStateChange } from '../core/StateMachine.js';
 // and "position modulo 9" coming back to a 9 s track. Swaps into or out of `bgm_boss_step3`
 // crossfade over AUDIO.crossfadeLong, every other swap over the snappier AUDIO.crossfadeSnappy.
 //
-// The AudioContext is created on the first user gesture (browsers refuse to start audio before
-// one). Until then every call is a silent no-op, and the unlock handler syncs whatever state
-// the game is already in.
+// The AudioContext is created at startup and immediately tries to run on its own; browsers that
+// block audio before a gesture keep it suspended (buffers still fetch and decode while
+// suspended). In that case the first real interaction resumes playback and syncs the music to
+// whatever state the game is already in — the menu music starts as early as the browser allows,
+// never waiting for a later menu change.
 
 // Short track ids -> asset file names (GDD 8B table).
 const TRACK_FILES = {
@@ -44,7 +46,7 @@ function trackLength(id) {
     return id === 'boss_step3' ? AUDIO.bossStep3Length : AUDIO.trackLength;
 }
 
-let ctx = null;           // AudioContext, created on first gesture
+let ctx = null;           // AudioContext, created at startup (suspended until the first gesture)
 let masterGain = null;
 let sfxBus = null;        // unfiltered branch
 let musicBus = null;      // filtered branch input
@@ -61,30 +63,70 @@ const buffers = new Map();
 // track position (seconds) the source began at; `startedAt` is the context time it began.
 let current = null;
 
-// Desired track while the context is still locked (before the first gesture).
-let desiredTrack = 'main_step1';
+// Bumped by every setMusic() call. A buffer fetch that resolves after a newer swap (even one
+// back to the same track) is stale and must not start its source — otherwise a quick A→B→A
+// sequence could start two copies of A on top of each other.
+let swapToken = 0;
 
 // Wave/boss stage reported by Waves, used when (re)picking the music step.
 let waveStage = { wave: 0, bossAlive: false };
 
 // --- Lifecycle ---------------------------------------------------------------
 
-// Called once from main.js at startup. Installs the gesture unlock and subscribes to the state
-// machine; the AudioContext itself waits for the gesture.
+// Every event that counts as a user gesture for audio unlocking. Browsers only accept a real
+// activation, so several kinds are armed as the fallback.
+const UNLOCK_EVENTS = ['pointerdown', 'keydown', 'pointerup', 'touchend'];
+
+// Called once from main.js at startup, before the model loads — the context and graph exist (and
+// the buffers preload) while everything else is still loading, so no early gesture is missed.
+// The same call subscribes to the state machine and tries to start audio right away.
 export function initAudio() {
     onStateChange(handleStateChange);
-    const unlock = () => {
-        window.removeEventListener('pointerdown', unlock, true);
-        window.removeEventListener('keydown', unlock, true);
-        startAudio().catch(() => { /* audio is optional; the game plays silently */ });
+
+    createContext(); // suspended in strict browsers; resume() needs a gesture there
+    if (!ctx) return; // no Web Audio support: every call stays a silent no-op
+
+    // Runs once, from whichever path wins the race (autoplay or the first gesture): syncs the
+    // graph to the live state and loads the remaining tracks. The `started` guard makes the two
+    // paths idempotent even when both fire around the same time.
+    let started = false;
+    const start = () => {
+        if (started) return;
+        started = true;
+        for (const event of UNLOCK_EVENTS) window.removeEventListener(event, unlock, true);
+        handleStateChange(getState(), null);
+        preloadMusic();
     };
-    window.addEventListener('pointerdown', unlock, true);
-    window.addEventListener('keydown', unlock, true);
+
+    // Fallback path for browsers that block audio before a gesture: resume on the first real
+    // interaction and let start() take over.
+    const unlock = () => {
+        ctx.resume().then(() => {
+            if (ctx.state === 'running') start(); // not running yet: stay armed for the next event
+        }).catch(() => { /* audio is optional; the game plays silently */ });
+    };
+
+    // Best-effort autoplay: environments that allow sound without an interaction (embedded
+    // previews, high-engagement sites) start the music on their own here. Everywhere else the
+    // resume stays pending / rejects and the unlock listeners below handle the first gesture.
+    if (ctx.state === 'running') {
+        start();
+    } else {
+        ctx.resume().then(() => {
+            if (ctx.state === 'running') start();
+        }).catch(() => { /* blocked until a gesture */ });
+    }
+
+    // Skip arming the fallback when autoplay already won (started would be true here).
+    if (!started) {
+        for (const event of UNLOCK_EVENTS) window.addEventListener(event, unlock, true);
+    }
 }
 
-// Builds the context and graph after the first gesture, then syncs the graph to whatever is
-// happening in the game right now (the menu may have been open for a while).
-async function startAudio() {
+// Creates the AudioContext and the fixed graph: music branch through the 400 Hz low-pass, SFX
+// branch unfiltered, master gain at the end. The context starts suspended (browsers block audio
+// before a gesture) but decoding works while suspended. Safe to call once; later calls no-op.
+function createContext() {
     if (ctx) return;
     const AudioCtor = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtor) return;
@@ -106,12 +148,10 @@ async function startAudio() {
     musicBus = ctx.createGain();
     musicBus.connect(musicFilter);
 
-    if (ctx.state === 'suspended') await ctx.resume();
-
-    // Preload every SFX and the track the current state wants, in the background.
+    // Preload the tiny SFX and the menu track — the first one any unlock will ask for. The
+    // remaining tracks load after the unlock, so startup never eats the whole soundtrack.
     for (const name of SFX_NAMES) getBuffer(`sfx_${name}.wav`).catch(() => {});
-    handleStateChange(getState(), null); // sync filter + music with the live state
-    preloadMusic();
+    getBuffer(TRACK_FILES.main_step1).catch(() => {});
 }
 
 // Warms the buffers of all music tracks (each is 9-19 s; decoding early avoids a silent gap on
@@ -165,7 +205,10 @@ function currentPosition() {
 // Switches to track `id`, keeping the playing position per the GDD rules (see the header).
 // Called by the state handler and by Waves (setWaveStage).
 export function setMusic(id) {
-    desiredTrack = id;
+    // Token for this swap, bumped before any early return: even a "no change" call invalidates
+    // an older in-flight fetch, so a newer intent always wins.
+    const token = ++swapToken;
+
     if (!ctx || ctx.state !== 'running' || !musicBus) return; // starts on the unlock sync
     if (current && current.id === id) return;
 
@@ -180,7 +223,7 @@ export function setMusic(id) {
 
     getBuffer(TRACK_FILES[id])
         .then((buffer) => {
-            if (!buffer || ctx.state !== 'running' || desiredTrack !== id) return; // a newer swap won
+            if (!buffer || ctx.state !== 'running' || token !== swapToken) return; // a newer swap won
             const source = ctx.createBufferSource();
             source.buffer = buffer;
             source.loop = true;
@@ -253,7 +296,7 @@ function applyWaveMusic() {
 // POWERUP_DRAFT / PAUSE_MENU; only the filter changes. GAME_OVER keeps the current music except
 // in waves 3 and 4, where it switches to bgm_boss_step1 (GDD 2A).
 function handleStateChange(state) {
-    if (!ctx) return; // context not unlocked yet; startAudio() re-runs this
+    if (!ctx) return; // no Web Audio support; the unlock sync re-runs this
     if (state === STATE.POWERUP_DRAFT || state === STATE.PAUSE_MENU) {
         setLowPass(true);
         return;

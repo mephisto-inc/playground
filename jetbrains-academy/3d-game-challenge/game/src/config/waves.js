@@ -1,5 +1,7 @@
 // Wave definitions (GDD 6B). Pure data: durations, enemy pools, spawn pacing and the two boss
 // waves. Waves.js runs these; the values the GDD leaves open (spawn intervals) are tuning TODOs.
+// Round 4: every spawn interval (wave 5's ramp minimum included) was tripled in rate (x3) — the
+// user's "+200%" — so the arena keeps constant pressure.
 
 // Each wave entry:
 //   wave           — 1-based number (the GDD calls the last one "Wave 5 (Endless)")
@@ -7,7 +9,11 @@
 //   pool           — enemy type ids that may spawn
 //   spawnInterval  — seconds between spawn attempts (not specified by the GDD; tunable)
 //   boss           — 'start' when the Arena Lord appears at wave start
-//   bossHp         — HP for that wave's boss (GDD 4B: 50 in wave 3, 80 in wave 5)
+//   bossHp         — HP for that wave's boss (GDD 4B says 50/80; user override: 10x = 500/800,
+//                    halved in round 5 to 250/400)
+//   bossSpeedMul   — the boss's speed multiplier that wave (round 5: wave 5 runs 10% faster than
+//                    wave 3; BOSS.speedMul in tuning.js is the wave-3 base)
+//   bossOrbSpeedMul — multiplier on the boss's orb speed that wave (round 5: wave 5 = 1.1x wave 3)
 //   bossSpawnRate  — spawn-rate multiplier while the boss lives (GDD: -70% in wave 3)
 //   bossRespawnScore — wave 5: score earned after the boss dies before the next one spawns
 //   rampTo         — wave 5 only: spawn interval it ramps down to (endless pressure)
@@ -18,14 +24,14 @@ export const WAVES = [
         wave: 1,
         duration: 45,
         pool: ['runner', 'ranged'],
-        spawnInterval: 2.5,
+        spawnInterval: 0.83,
         clearBonusMul: 500,
     },
     {
         wave: 2,
         duration: 60,
         pool: ['runner', 'ranged', 'speeder'],
-        spawnInterval: 2.0,
+        spawnInterval: 0.67,
         clearBonusMul: 500,
     },
     {
@@ -33,9 +39,11 @@ export const WAVES = [
         // Ends when the boss dies, not on a timer (duration = Infinity marks that).
         duration: Infinity,
         pool: ['runner', 'ranged', 'speeder'],
-        spawnInterval: 1.8,
+        spawnInterval: 0.6,
         boss: 'start',
-        bossHp: 50,
+        bossHp: 250, // GDD's 50 x5 (user: 10x, then halved in round 5 — the fight felt long)
+        bossSpeedMul: 0.7,    // base boss speed (mirrors BOSS.speedMul in tuning.js)
+        bossOrbSpeedMul: 1.0, // orb speed reference: wave 5 fires 10% faster than this
         // GDD: enemy spawn rate goes down by 70% during the boss fight (30% of normal).
         bossSpawnRate: 0.3,
         clearBonusMul: 500,
@@ -44,18 +52,20 @@ export const WAVES = [
         wave: 4,
         duration: 75,
         pool: ['runner', 'ranged', 'speeder', 'tank'],
-        spawnInterval: 1.2,
+        spawnInterval: 0.4,
         clearBonusMul: 500,
     },
     {
         wave: 5,
         duration: Infinity,
         pool: ['runner', 'ranged', 'speeder', 'tank'],
-        spawnInterval: 1.2,
-        spawnIntervalMin: 0.6, // ramps down over `rampSeconds` for endless pressure
+        spawnInterval: 0.4,
+        spawnIntervalMin: 0.2, // ramps down over `rampSeconds` for endless pressure
         rampSeconds: 300,
         boss: 'start',
-        bossHp: 80,
+        bossHp: 400, // GDD's 80 x5 (user: 10x, then halved in round 5; growth can raise it 3x more)
+        bossSpeedMul: 0.77,   // round 5: +10% over wave 3's 0.7
+        bossOrbSpeedMul: 1.1, // round 5: +10% over wave 3's orbs (which already run at 15)
         // GDD: after the boss dies, the next one spawns once 1,000 score is earned.
         bossRespawnScore: 1000,
         clearBonusMul: 0, // wave 5 never ends, so it has no clear bonus

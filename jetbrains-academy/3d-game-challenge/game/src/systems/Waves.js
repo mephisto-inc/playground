@@ -136,7 +136,13 @@ export function updateWaves(delta) {
         const gateOpen = scoreCheckpoint === null
             || getScore() - scoreCheckpoint >= definition.bossRespawnScore;
         if (gateOpen) {
-            const boss = spawnBoss(definition.bossHp * growthHpMul);
+            // Round 5: the wave definition also carries the boss's speed and orb-speed
+            // multipliers (wave 5 runs 10% faster than wave 3).
+            const boss = spawnBoss(
+                definition.bossHp * growthHpMul,
+                definition.bossSpeedMul,
+                definition.bossOrbSpeedMul,
+            );
             if (boss) {
                 bossPending = false;
                 bossWasAlive = true;
@@ -181,8 +187,9 @@ export function updateWaves(delta) {
     }
 }
 
-// Attempts one spawn: skipped at the 35-enemy cap, and retried spawn points are limited to the
-// free ones (shuffled so consecutive spawns do not all use the same corner).
+// Attempts one spawn: skipped at the ENEMY.maxAlive cap (round 4: raised to 200 — a runaway
+// guard only, since the x3 spawn rate is what paces the arena), and retried spawn points are
+// limited to the free ones (shuffled so consecutive spawns do not all use the same corner).
 function spawnOneEnemy(pool) {
     if (getAliveCount() >= ENEMY.maxAlive) return;
 

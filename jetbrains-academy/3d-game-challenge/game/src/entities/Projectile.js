@@ -30,14 +30,16 @@ const materials = {
 };
 
 // Every live bullet. Each entry: { mesh, owner, damage, radius, speedX, speedY, life, pierce,
-// hitSet } where owner is 'player' | 'minion' | 'enemy' | 'boss' and hitSet remembers enemies a
-// piercing shot already damaged (so one bullet never damages the same body twice).
+// hitSet, sender } where owner is 'player' | 'minion' | 'enemy' | 'boss' and hitSet remembers
+// enemies a piercing shot already damaged (so one bullet never damages the same body twice).
+// sender (round 5) is the enemy/boss object that fired a hostile bullet; parry reflections aim
+// at its last position, which stays readable even after the sender died.
 const bullets = [];
 let sceneRef = null;
 
 // Creates a bullet at (x, y, z) flying in the unit direction (dirX, dirY) at `speed` units per
 // second. `owner` picks the visual color; `damage`/`radius` are carried for Combat to read.
-function spawnBullet({ owner, x, y, z, dirX, dirY, speed, damage, radius, life, pierce = 0 }) {
+function spawnBullet({ owner, x, y, z, dirX, dirY, speed, damage, radius, life, pierce = 0, sender = null }) {
     if (!sceneRef) return null;
 
     const mesh = new THREE.Mesh(bulletGeometry, materials[owner]);
@@ -55,6 +57,7 @@ function spawnBullet({ owner, x, y, z, dirX, dirY, speed, damage, radius, life, 
         life,
         pierce,
         hitSet: new Set(),
+        sender,
     };
     bullets.push(bullet);
     return bullet;
@@ -63,7 +66,7 @@ function spawnBullet({ owner, x, y, z, dirX, dirY, speed, damage, radius, life, 
 // --- Spawn APIs (called by Combat for player/volley shots and by Enemy/Boss for hostile ones) --
 
 // Fires one player-owned shot. (x, y) is the muzzle on the ground plane; the bullet flies at a
-// small fixed height so it is visible above the checkerboard.
+// small fixed height so it is visible above the floor.
 export function spawnPlayerShot(x, y, dirX, dirY, { damage, speed }) {
     return spawnBullet({
         owner: 'player',
@@ -95,8 +98,9 @@ export function spawnMinionShot(x, y, dirX, dirY, { damage, speed }) {
     });
 }
 
-// Fires one ranged-enemy projectile.
-export function spawnEnemyShot(x, y, dirX, dirY) {
+// Fires one ranged-enemy projectile. `sender` is the enemy object, so a parry can send the shot
+// back at it (round 5).
+export function spawnEnemyShot(x, y, dirX, dirY, sender = null) {
     return spawnBullet({
         owner: 'enemy',
         x,
@@ -108,11 +112,13 @@ export function spawnEnemyShot(x, y, dirX, dirY) {
         damage: PROJECTILE.damage,
         radius: PROJECTILE.enemyRadius,
         life: PROJECTILE.enemyLifetime,
+        sender,
     });
 }
 
-// Fires one boss orb.
-export function spawnBossOrb(x, y, dirX, dirY) {
+// Fires one boss orb. `speedMul` scales the orb speed for this wave (round 5: wave 5 bosses fire
+// 10% faster than wave 3), and `sender` lets parries reflect the orb back at the boss.
+export function spawnBossOrb(x, y, dirX, dirY, speedMul = 1, sender = null) {
     return spawnBullet({
         owner: 'boss',
         x,
@@ -120,16 +126,19 @@ export function spawnBossOrb(x, y, dirX, dirY) {
         z: 0.7,
         dirX,
         dirY,
-        speed: PROJECTILE.bossOrbSpeed,
+        speed: PROJECTILE.bossOrbSpeed * speedMul,
         damage: PROJECTILE.damage, // boss orbs deal 1 damage each (GDD 3C)
         radius: PROJECTILE.bossOrbRadius,
         life: PROJECTILE.bossOrbLifetime,
+        sender,
     });
 }
 
 // Turns every hostile bullet currently overlapping the parry shield circle back into a
-// player-owned bullet: ownership flips, the direction reverses and the shot accelerates to
-// player speed (a reflected orb that then crawls across the field would not feel like a parry).
+// player-owned bullet: ownership flips, the shot accelerates to player speed and it flies
+// straight at its sender (round 5: "reflect it back into the enemy that sent it" — bosses
+// included), using the sender's position at parry time, so even a dying enemy gets hit where it
+// last stood. Bullets without a sender (none in practice) just reverse direction.
 // Returns how many projectiles were reflected, so the parry can decide success/failure sound.
 export function reflectProjectilesNear(x, y, radius) {
     let reflected = 0;
@@ -141,12 +150,26 @@ export function reflectProjectilesNear(x, y, radius) {
 
         const speed = Math.hypot(bullet.speedX, bullet.speedY);
         if (speed < 1e-6) continue;
+
+        // Default: reverse the flight direction. With a sender, aim exactly at it instead.
+        let dirX = -bullet.speedX / speed;
+        let dirY = -bullet.speedY / speed;
+        if (bullet.sender) {
+            const toSenderX = bullet.sender.position.x - bullet.mesh.position.x;
+            const toSenderY = bullet.sender.position.y - bullet.mesh.position.y;
+            const toSender = Math.hypot(toSenderX, toSenderY);
+            if (toSender > 1e-6) {
+                dirX = toSenderX / toSender;
+                dirY = toSenderY / toSender;
+            }
+        }
+
         bullet.owner = 'player';
         bullet.damage = PROJECTILE.damage;
         bullet.pierce = 0;
         bullet.hitSet.clear();
-        bullet.speedX = (-bullet.speedX / speed) * PROJECTILE.playerSpeed;
-        bullet.speedY = (-bullet.speedY / speed) * PROJECTILE.playerSpeed;
+        bullet.speedX = dirX * PROJECTILE.playerSpeed;
+        bullet.speedY = dirY * PROJECTILE.playerSpeed;
         bullet.life = PROJECTILE.playerLifetime;
         bullet.mesh.material = materials.player;
         reflected++;

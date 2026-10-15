@@ -2,6 +2,7 @@ import { el, mount } from './dom.js';
 import { STATE, getState, onStateChange, setState } from '../core/StateMachine.js';
 import { getMasterVolume, setMasterVolume } from '../systems/Audio.js';
 import { openAchievements } from './AchievementsPanel.js';
+import { createCreditsButton } from './credits.js';
 
 // Pause menu (GDD 1 state 4): freezes the world and muffles the music (the Audio system reacts to
 // the state), with Continue, a master-volume slider (GDD 1: "options (includes master volume)"),
@@ -34,6 +35,9 @@ export function initPauseMenu() {
     const achievementsButton = el('button', 'btn', '🏆 ACHIEVEMENTS');
     achievementsButton.addEventListener('click', () => openAchievements());
     panel.appendChild(achievementsButton);
+
+    // Credits (round 5): same link as the main menu.
+    panel.appendChild(createCreditsButton());
 
     const quitButton = el('button', 'btn', '✖ QUIT TO MENU');
     quitButton.addEventListener('click', () => setState(STATE.MAIN_MENU));

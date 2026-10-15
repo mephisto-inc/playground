@@ -11,7 +11,8 @@ let overlay = null;
 
 export function initCharacterSelect() {
     overlay = el('div', 'overlay');
-    const panel = el('div', 'panel menu-panel');
+    // `wide` widens the panel so the three class cards fit side by side (see index.css).
+    const panel = el('div', 'panel menu-panel wide');
     panel.appendChild(el('div', 'game-title', 'CHOOSE YOUR FROG'));
 
     const cardsRow = el('div', 'class-cards');

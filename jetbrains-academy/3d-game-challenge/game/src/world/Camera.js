@@ -12,7 +12,7 @@ import { CAMERA } from '../config/tuning.js';
 // updateCameraProjection() on resize.
 
 // The camera box is a fixed width in world units; its height follows the window aspect ratio
-// (about 22.5 units tall on a 16:9 screen — GDD 3A).
+// (about 22.5 units tall on a 16:9 screen with the current 40-unit width — GDD 3A).
 const FRUSTUM_WIDTH = CAMERA.viewWidth;
 
 const aspect = window.innerWidth / window.innerHeight;

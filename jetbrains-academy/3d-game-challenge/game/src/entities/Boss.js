@@ -28,13 +28,14 @@ import { addScore } from '../systems/Score.js';
 // Boss component (GDD 4B): the Arena Lord (Pigeon). One instance at most. Spawns at a random
 // one of the 8 spawn points, chasing the player through a two-phase cycle:
 //
-//   chaseA -> chargeA (stands still 1.5 s) -> volley (8 orbs in a 360-degree circle)
+//   chaseA -> chargeA (stands still 1.5 s) -> volley (24 orbs in a 360-degree circle)
 //   chaseB -> telegraph (stands still, turns red 0.7 s) -> dash (fast, 2 physical damage)
 //   ... and back to chaseA. The extra durations the GDD leaves open live in tuning.js (BOSS).
 //
 // The boss lives in Enemy.js's shared enemy list (addToEnemyList) so player shots, minions and
 // hit detection all see it, but it runs its own AI here — Enemy.updateEnemies skips it. Body
-// contact only pushes the player away (GDD 3C); damage comes from orbs and the dash.
+// contact pushes the player away (GDD 3C) and now deals BOSS.contactDamage (round 5); the bigger
+// hits come from orbs and the dash.
 
 // Animation one-shot fades — same values/pattern as Enemy.js (the two modules stay independent
 // because their state machines differ; the shared logic is a dozen lines, duplication is fine).
@@ -63,13 +64,20 @@ export async function initBoss(scene) {
     const probe = cloneModel(template);
     const shape = normalizeModel(probe, { targetHeight: BOSS_TYPE.targetHeight });
 
+    // Clip lookup: the exported animations prefix every name with "CharacterArmature|", so the
+    // comparison strips everything up to the last '|' before matching (exact, then lowercase,
+    // then substring — same tolerance as Enemy.js).
     const findClip = (name) => {
         if (!name) return null;
+        const base = (clipName) => {
+            const bar = clipName.lastIndexOf('|');
+            return bar >= 0 ? clipName.slice(bar + 1) : clipName;
+        };
         const lower = name.toLowerCase();
-        return gltf.animations.find((clip) => clip.name === name)
-            || gltf.animations.find((clip) => clip.name.toLowerCase() === lower)
+        return gltf.animations.find((clip) => clip.name === name || base(clip.name) === name)
+            || gltf.animations.find((clip) => base(clip.name).toLowerCase() === lower)
             || gltf.animations.find((clip) => {
-                const clipName = clip.name.toLowerCase();
+                const clipName = base(clip.name).toLowerCase();
                 return clipName.includes(lower) || lower.includes(clipName);
             })
             || null;
@@ -78,6 +86,7 @@ export async function initBoss(scene) {
         move: findClip(BOSS_TYPE.moveClip),
         idle: findClip(BOSS_TYPE.idleClip),
         attack: findClip(BOSS_TYPE.attackClip),
+        volley: findClip(BOSS_TYPE.volleyClip),
         hit: findClip(BOSS_TYPE.hitClip),
         death: findClip(BOSS_TYPE.deathClip),
     };
@@ -100,10 +109,12 @@ export async function initBoss(scene) {
 
 // --- Spawning ----------------------------------------------------------------
 
-// Spawns the boss with `hp` HP (50 in wave 3, 80 in wave 5 — Waves applies the endless growth
-// multiplier before calling). Picks a random free one of the 8 spawn points; returns the boss,
-// or null when every spawn point is occupied (Waves retries on a later frame).
-export function spawnBoss(hp) {
+// Spawns the boss with `hp` HP (250 in wave 3, 400 in wave 5 — Waves applies the endless growth
+// multiplier before calling and this rounds the result UP so health stays whole). `speedMul` and
+// `orbSpeedMul` come from the wave definition (round 5: wave 5 runs 10% faster in movement and
+// orb speed than wave 3). Picks a random free one of the 8 spawn points; returns the boss, or
+// null when every spawn point is occupied (Waves retries on a later frame).
+export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1) {
     if (!prepared || !sceneRef || boss) return null;
 
     const point = pickSpawnPoint();
@@ -140,6 +151,7 @@ export function spawnBoss(hp) {
         move: makeAction(prepared.clips.move, false),
         idle: makeAction(prepared.clips.idle, false),
         attack: makeAction(prepared.clips.attack, true),
+        volley: makeAction(prepared.clips.volley, true),
         hit: makeAction(prepared.clips.hit, true),
         death: makeAction(prepared.clips.death, true),
     };
@@ -148,8 +160,10 @@ export function spawnBoss(hp) {
 
     const data = group.userData;
     data.isBoss = true; // Enemy.updateEnemies and getAliveCount() honor this flag
-    data.maxHp = hp;
-    data.hp = hp;
+    data.maxHp = Math.ceil(hp); // integer health even after wave-5 growth multipliers
+    data.hp = data.maxHp;
+    data.speedMul = speedMul;       // per-wave chase speed (read in the chaseA/chaseB branch)
+    data.orbSpeedMul = orbSpeedMul; // per-wave orb speed (passed to spawnBossOrb in the volley)
     data.collider = registerCollider(group, group.position, prepared.radius);
     data.dying = false;
     data.dyingTimer = 0;
@@ -159,7 +173,7 @@ export function spawnBoss(hp) {
     data.actions = actions;
     data.currentAction = actions.move || actions.idle;
     data.oneShotRemaining = 0;
-    data.touchingPlayer = false; // body contact pushes instead of damaging (Boss.js handles it)
+    data.touchingPlayer = false; // contact damage is applied in updateBoss, not by Combat
     data.velocity = { x: 0, y: 0 };
     // Phase cycle state: starts chasing, per the GDD's "Phase A: pauses 1.5 s, then fires".
     data.state = 'chaseA';
@@ -313,9 +327,10 @@ export function updateBoss(delta) {
     let moving = false;
 
     if (data.state === 'chaseA' || data.state === 'chaseB') {
-        // Chase: walk toward the player, slowed 25% inside a Dasher trail (GDD 4A).
+        // Chase: walk toward the player, slowed 25% inside a Dasher trail (GDD 4A). The per-wave
+        // speed multiplier rides in data.speedMul (round 5: wave 5 is 10% faster than wave 3).
         const trailFactor = getTrailSpeedFactor(boss.position.x, boss.position.y, ABILITY.trailSlowBoss);
-        const speed = ENEMY.baseSpeed * BOSS.speedMul * endlessSpeedMul * trailFactor;
+        const speed = ENEMY.baseSpeed * data.speedMul * endlessSpeedMul * trailFactor;
         moveBoss(collider, dirToPlayerX, dirToPlayerY, speed, delta);
         faceBoss(dirToPlayerX, dirToPlayerY);
         moving = true;
@@ -338,8 +353,9 @@ export function updateBoss(delta) {
         // Standing still, charging the volley: face the player so the circle looks deliberate.
         faceBoss(dirToPlayerX, dirToPlayerY);
         if (data.stateTimer <= 0) {
+            // The volley starts a one-shot (Bite_Front); its timer blends back to the walk loop
+            // by itself, so no resumeLoopAction() here — that would cut the bite short.
             fireOrbVolley();
-            resumeLoopAction();
             data.state = 'chaseB';
             data.stateTimer = BOSS.phaseBChase;
         }
@@ -385,10 +401,14 @@ export function updateBoss(delta) {
         }
     }
 
-    // Body contact: pushes the player away (GDD 3C), never damages. Skipped during the player's
-    // i-frames so ghosting works, and while dashing (the dash has its own hit response).
+    // Body contact: pushes the player away (GDD 3C) and hurts for contactDamage (round 5: the
+    // push alone felt toothless — the boss is a walking hazard). The push helper returns whether
+    // it actually touched; i-frames are honored inside it (no push and no damage while ghosting),
+    // and it is skipped entirely while dashing (the dash has its own 2-damage hit response).
     if (data.state !== 'dash' && collider) {
-        pushPlayerOut(collider);
+        if (pushPlayerOut(collider)) {
+            damagePlayer(BOSS.contactDamage, 'physical');
+        }
     }
 
     // Velocity for aiming lead (minions/auto-shooter aim at the boss like at any target).
@@ -449,17 +469,19 @@ function faceBoss(dirX, dirY) {
 // Shoves the player out of the boss's body: a short push directly away from the boss centre,
 // cancelled by anything solid behind the player ("unless their back is against an obstacle",
 // GDD 3C) — isMoveFree stops at walls, and the push is skipped entirely during i-frames.
+// Returns true when the bodies were actually overlapping (round 5: the caller applies the
+// contact damage on that signal); false when there was no contact or the player is invulnerable.
 function pushPlayerOut(bossCollider) {
-    if (isInvulnerable()) return; // ghosting
+    if (isInvulnerable()) return false; // ghosting
     const playerCollider = getCollider(player);
-    if (!playerCollider) return;
+    if (!playerCollider) return false;
 
     const dx = player.position.x - boss.position.x;
     const dy = player.position.y - boss.position.y;
     const distance = Math.hypot(dx, dy);
     const reach = playerCollider.radius + bossCollider.radius;
 
-    if (distance >= reach) return; // not touching
+    if (distance >= reach) return false; // not touching
 
     const ux = distance > 1e-6 ? dx / distance : 1;
     const uy = distance > 1e-6 ? dy / distance : 0;
@@ -473,12 +495,17 @@ function pushPlayerOut(bossCollider) {
         player.position.y = ny;
         remaining -= step;
     }
+    return true;
 }
 
-// Fires the 8-orb circle (GDD 4B: "fires 8 orbs in a 360-degree circle").
+// Fires the orb circle (GDD 4B: "fires 8 orbs in a 360-degree circle"; round 5 tripled it to
+// 24, so the ring is tighter and dodging needs real movement). The Bite_Front clip plays as the
+// one-shot; the attack (Jump) clip is only the fallback when the volley clip is missing. The
+// one-shot timer resumes the walk loop by itself once the clip ends. The boss object is passed
+// as each orb's sender so parries can reflect orbs back into it.
 function fireOrbVolley() {
     if (!boss) return;
-    playOneShot(boss, boss.userData.actions.attack);
+    playOneShot(boss, boss.userData.actions.volley || boss.userData.actions.attack);
     for (let i = 0; i < BOSS.orbCount; i++) {
         const angle = (i / BOSS.orbCount) * Math.PI * 2;
         spawnBossOrb(
@@ -486,6 +513,8 @@ function fireOrbVolley() {
             boss.position.y,
             Math.cos(angle),
             Math.sin(angle),
+            boss.userData.orbSpeedMul,
+            boss,
         );
     }
 }

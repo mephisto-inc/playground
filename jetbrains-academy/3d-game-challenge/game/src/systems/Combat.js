@@ -27,7 +27,7 @@ import { updatePickups } from '../entities/Pickup.js';
 import { updateTrails } from '../entities/Trail.js';
 import { playSfx } from './Audio.js';
 import { markPlayerDamaged } from './Achievements.js';
-import { getCollider } from '../core/Collision.js';
+import { getCollider, isLineSightClear } from '../core/Collision.js';
 
 // Combat system: the per-frame conductor for everything that fights while WAVE_PLAYING. It owns
 // the ORDER of a frame — move the player, move the enemies and boss, fire the auto-shooter,
@@ -38,9 +38,10 @@ import { getCollider } from '../core/Collision.js';
 // drops and death clips are Enemy.js/Boss.js's business; i-frames and the parry are Player.js's;
 // projectile flight is Projectile.js's.
 
-// The auto-shooter's timing: one volley every stats.fireCooldown seconds while a target is in
-// range. `fireTimer` counts down only while a target exists, so a long target-less stretch
-// leaves it at "ready" and the next engagement starts with an instant shot.
+// The auto-shooter's timing: one volley every stats.fireCooldown seconds while a VISIBLE target
+// is in range (round 4: findNearestTarget also requires a clear line of sight). `fireTimer`
+// counts down only while such a target exists, so hiding behind a house holds the shot instead
+// of wasting it on the wall — and the next clear engagement starts with an instant shot.
 let fireTimer = 0;
 
 // Set by Run.beginRun(): called exactly once when the player's HP reaches zero.
@@ -113,19 +114,26 @@ function updateAutoShooter(delta) {
     fireVolley(target);
 }
 
-// Nearest enemy (boss included) within `range` of the player, skipping corpses.
+// Nearest enemy (boss included) within `range` of the player, skipping corpses and enemies the
+// player cannot actually shoot: a target behind a house (no clear line of sight, tested against
+// the same static boxes projectiles collide with, at shot radius) is filtered out, so the volley
+// never pours into a wall. A farther visible enemy wins over a nearer hidden one.
 function findNearestTarget(range) {
     let best = null;
     let bestDistanceSq = range * range;
+    const originX = player.position.x;
+    const originY = player.position.y;
     for (const enemy of getEnemies()) {
         if (enemy.userData.dying) continue;
-        const dx = enemy.position.x - player.position.x;
-        const dy = enemy.position.y - player.position.y;
+        const dx = enemy.position.x - originX;
+        const dy = enemy.position.y - originY;
         const distanceSq = dx * dx + dy * dy;
-        if (distanceSq < bestDistanceSq) {
-            bestDistanceSq = distanceSq;
-            best = enemy;
+        if (distanceSq >= bestDistanceSq) continue;
+        if (!isLineSightClear(originX, originY, enemy.position.x, enemy.position.y, PROJECTILE.playerRadius)) {
+            continue;
         }
+        bestDistanceSq = distanceSq;
+        best = enemy;
     }
     return best;
 }
