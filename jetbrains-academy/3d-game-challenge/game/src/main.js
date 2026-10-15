@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 
 import player, {playerReady, updatePlayer} from './components/Player.js';
-import camera from './components/Camera.js';
+import camera, {updateCamera} from './components/Camera.js';
 import renderer from './components/Renderer.js';
 import {initMap, map} from './components/Map.js';
 import {initHouses} from './components/House.js';
@@ -41,7 +41,7 @@ await initHouses(map);
 
 // --- Player & camera --------------------------------------------------------
 scene.add(player);
-player.add(camera); // camera rides along with the player group (follow-cam)
+updateCamera(player); // settle the orthographic camera over the hero's ground position
 await playerReady;
 
 // --- Enemies ----------------------------------------------------------------
@@ -87,5 +87,6 @@ renderer.setAnimationLoop(() => {
             updateScore();
         }
     }
+    updateCamera(player); // follow the hero's ground position (x/y), never the hop height
     renderer.render(scene, camera);
 });

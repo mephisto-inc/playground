@@ -86,16 +86,20 @@ let enemyShape = null; // measured collision shape, shared by every clone (they 
 // Positioning mirrors the player: rotation.x = +PI/2 lays the model onto the Z-up ground,
 // then the measured groundOffset lifts it so its lowest point rests on z = 0.
 
-// The four ground points where the camera's view frustum edges meet z = 0, expressed
-// relative to the player. Fire-and-forget inverse projection: one point per screen corner.
+// The four ground points where the camera's view frustum edges meet z = 0, expressed relative to
+// the player. Each screen corner is unprojected at both clip depths to build that corner's view
+// ray — the two-point form is correct for both perspective AND orthographic cameras (for an
+// orthographic camera the rays are parallel, so the single-point form would fan wrongly) — then
+// intersected with the ground plane.
 function computeSpawnCorners() {
   camera.updateWorldMatrix(true, false); // refresh matrixWorld + matrixWorldInverse
-  const camPos = camera.getWorldPosition(new THREE.Vector3());
   const corners = [];
   for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-    const dir = new THREE.Vector3(x, y, 0.5).unproject(camera).sub(camPos).normalize();
-    const t = -camPos.z / dir.z; // distance along the ray until it hits the ground plane
-    corners.push(camPos.clone().addScaledVector(dir, t).sub(player.position));
+    const nearPoint = new THREE.Vector3(x, y, -1).unproject(camera);
+    const farPoint = new THREE.Vector3(x, y, 1).unproject(camera);
+    const dir = farPoint.clone().sub(nearPoint).normalize();
+    const t = -nearPoint.z / dir.z; // distance along the ray until it hits the ground plane
+    corners.push(nearPoint.clone().addScaledVector(dir, t).sub(player.position));
   }
   return corners;
 }

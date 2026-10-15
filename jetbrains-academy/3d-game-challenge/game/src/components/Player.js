@@ -12,17 +12,34 @@ import { getPlayerMoveSpeed } from './Difficulty.js';
 // PLAYER_MOVE_SPEED_WEIGHT in Difficulty.js); it is read fresh each frame. Raising the speed makes
 // each hop finish sooner, so Tode covers ground faster without changing the hop's size.
 //
-// The hop is deliberately short and low: on the compact arena the old 50-unit leap overshot whole
-// tiles and made Tode hard to steer around houses. Distance is the size of the step, height the
-// peak of its sine arc — a lower arc keeps the ground path the readable part of the motion.
+// Tode is a static mesh (tode.glb ships no animations), so the whole "alive" feel comes from code:
+// a short, low hop plus a frog-like tilt through the leap (see the lean block below). The hop
+// is deliberately small — on the compact arena the old 50-unit leap overshot whole tiles and made
+// Tode hard to steer around houses. Distance is the size of the step, height the peak of its sine
+// arc; a short, quick hop reads as a snappy character motion rather than a floating mesh.
 //
 // NOTE: hop *duration* is set by the move speed (progress advances 0..1 at that rate), not by the
-// distance, so shortening the distance also shortens how far Tode travels per second. The
-// difficulty scaling above still applies on top of this, unchanged.
+// distance. The values below keep ground speed (distance / duration) near its old level:
+// 18 / (1 / 3.3) ~= 60 units per second. The difficulty scaling above still applies on top of
+// this, unchanged, so hops get quicker (and the dip below deeper) as the score climbs.
 // TODO (tuning): constants are placeholders — verify they are customizable later per task.md
-//       ("Customize it your way": jump speed/height/distance).
-const JUMP_HEIGHT = 18;   // peak height (world Z) of the hop's sine arc
-const JUMP_DISTANCE = 30; // ground distance (world XY) covered per hop
+//       ("Customize it your way": jump speed/height/distance) and tune the dip feel.
+const JUMP_HEIGHT = 14;   // peak height (world Z) of the hop's sine arc
+const JUMP_DISTANCE = 18; // ground distance (world XY) covered per hop
+
+// --- Leap lean ("frog" tilt) -------------------------------------------------
+// With no animation clips, tilting the body through the hop is what sells the motion. It is shaped
+// like a frog's leap: a near-instant snap to nose-up on launch, a forward roll to nose-down by the
+// apex, and that nose-down held all the way down to the floor before it resets on touchdown (see
+// currentLean). The magnitude is proportional to the live hop speed, so the tilt grows
+// automatically as the difficulty raises the tempo; LEAN_MAX caps it so a very high score cannot
+// tip Tode over.
+const LEAN_PER_SPEED = 0.08; // radians of tilt per unit of hop speed
+const LEAN_MAX = 0.5;        // radians; hard cap on the tilt
+// Hop progress (0..1) marks for the tilt: snap up almost immediately, finish rolling nose-down by
+// the apex, then hold that pose until the hop ends.
+const LEAN_SNAP_UP_FRACTION = 0.1;
+const LEAN_ROLL_END_FRACTION = 0.45;
 
 // The model's forward points along its local +Z (see the model characteristics block).
 // Combined with the model's built-in rotation.x = PI/2, yaw 0 points the face at world -Y,
@@ -40,6 +57,7 @@ const move = {
   start: new THREE.Vector3(),     // group position where the current hop began
   target: new THREE.Vector3(),    // group position where the current hop ends
   progress: 1,                    // normalized 0..1 progress through the current hop (1 = idle)
+  yaw: 0,                         // model facing (radians) for the current hop
 };
 
 // Input model: pressing a movement key queues one hop; holding it keeps hopping (see
@@ -48,6 +66,50 @@ const inputQueue = [];      // pending hops in press order: { key, direction }
 const heldKeys = new Set(); // movement keys currently held down
 
 let playerModel = null; // the loaded mesh, used for facing rotation once available
+
+// Orientation helpers. The model is authored Y-up; it is laid onto this Z-up ground with a
+// rotation.x of +PI/2, then yawed to face the travel direction, then dipped forward. These are
+// composed as quaternions rather than raw Euler angles because the dip must be applied about the
+// model's *local* lateral axis (so it always leans the way it faces), which a single Euler triple
+// cannot express once yaw is involved. Rotating the player *group* instead is not an option — it
+// carries the hero's world position (which the camera tracks) and must stay axis-aligned, so the
+// model child does all the turning.
+const baseEuler = new THREE.Euler(Math.PI / 2, 0, 0, 'XYZ');
+const LEAN_AXIS = new THREE.Vector3(1, 0, 0); // model-local lateral axis (its left/right)
+const baseQuaternion = new THREE.Quaternion();
+const leanQuaternion = new THREE.Quaternion();
+
+// Points the model at `yaw` and tilts it by `lean` radians. Cheap enough to call per frame.
+function orientModel(yaw, lean) {
+  if (!playerModel) return;
+  baseQuaternion.setFromEuler(baseEuler.set(Math.PI / 2, yaw, 0, 'XYZ'));
+  leanQuaternion.setFromAxisAngle(LEAN_AXIS, lean);
+  playerModel.quaternion.copy(baseQuaternion).multiply(leanQuaternion);
+}
+
+// The tilt for a hop at `progress`, shaped like a frog's leap. Three phases: (1) snap to nose-up
+// almost immediately after leaving the ground; (2) roll forward from nose-up to nose-down by the
+// apex; (3) hold that nose-down all the way down, so it hangs until the hop reaches the floor. The
+// hop's end (progress 1) returns 0 (see updatePlayer), which is the instant reset on touchdown.
+// Positive tilt is nose-down/forward (see orientModel). Magnitude grows with the live hop speed,
+// which the difficulty system raises with the score.
+function currentLean(progress) {
+  const amplitude = Math.min(getPlayerMoveSpeed() * LEAN_PER_SPEED, LEAN_MAX);
+
+  if (progress < LEAN_SNAP_UP_FRACTION) {
+    const t = progress / LEAN_SNAP_UP_FRACTION;
+    return -amplitude * (t * t * (3 - 2 * t)); // quick ease, so the snap has no hard kink
+  }
+
+  if (progress < LEAN_ROLL_END_FRACTION) {
+    const span = LEAN_ROLL_END_FRACTION - LEAN_SNAP_UP_FRACTION;
+    const t = (progress - LEAN_SNAP_UP_FRACTION) / span;
+    const s = t * t * (3 - 2 * t);
+    return amplitude * (2 * s - 1); // -amplitude (nose-up) -> +amplitude (nose-down)
+  }
+
+  return amplitude; // nose-down, held to the floor
+}
 
 // Collision volume. Registered right away with a rough guess so enemies already respect the
 // hero while the model is still loading, then overwritten with a value measured from the real
@@ -131,9 +193,10 @@ window.addEventListener('keyup', (event) => {
 // Advances the player by one frame. `delta` is the elapsed time in seconds since the last
 // call. Called from the renderer's animation loop in main.js.
 //
-// Movement is map-relative (Up = +Y) and that matches the view: the camera rides on the player
-// group, and the group itself never rotates (only the model child yaws), so the camera keeps a
-// fixed world orientation and the world axes line up with the screen.
+// Movement is map-relative (Up = +Y). The camera is a fixed-orientation orthographic view that
+// follows the hero's ground position, and the group itself never rotates (only the model child
+// yaws), so the world axes stay fixed relative to the camera — though at this isometric angle they
+// run diagonally on the screen rather than up/down/left/right.
 export function updatePlayer(delta) {
   if (move.progress >= 1) {
     // Idle: start a new hop from the queue, or — if a key is still held — keep moving so
@@ -150,12 +213,10 @@ export function updatePlayer(delta) {
         .add(move.direction.clone().normalize().multiplyScalar(JUMP_DISTANCE));
       move.progress = 0;
 
-      // Facing yaws about world Z via rotation.y (rotation.x is already PI/2). Using
-      // rotation.z here would somersault about a horizontal axis instead.
-      if (playerModel) {
-        playerModel.rotation.y =
-          Math.atan2(move.direction.y, move.direction.x) + MODEL_YAW_OFFSET;
-      }
+      // Record the facing for this hop; orientModel() below applies it (with the dip) every frame.
+      // The yaw is about world Z (rotation.x is already PI/2); a rotation.z here would somersault
+      // about a horizontal axis instead.
+      move.yaw = Math.atan2(move.direction.y, move.direction.x) + MODEL_YAW_OFFSET;
     }
   }
 
@@ -205,6 +266,10 @@ export function updatePlayer(delta) {
   // Vertical motion follows the hop's progress; a hop frozen mid-air lands here as the arc
   // completes (progress reaches 1 and the sine returns to 0).
   player.position.z = Math.sin(move.progress * Math.PI) * JUMP_HEIGHT;
+
+  // Face the travel direction and tilt through the leap (snap nose-up, roll to nose-down, hold it
+  // to the floor). At touchdown the tilt resets to 0, so Tode stands level between hops.
+  orientModel(move.yaw, move.progress < 1 ? currentLean(move.progress) : 0);
 }
 
 // True while no hop is in flight, i.e. Tode is standing on the ground. The attack system uses

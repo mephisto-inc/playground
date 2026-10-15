@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import camera from './Camera.js';
+import { updateCameraProjection } from './Camera.js';
 
 // Renderer component: wraps THREE.WebGLRenderer for the page's <canvas class="game">.
 
@@ -15,8 +15,8 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+  // Orthographic cameras have no `aspect` field, so the frustum is rebuilt instead.
+  updateCameraProjection();
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
 });

@@ -31,7 +31,7 @@ export const COMPLEXITY_GROWTH_RATE = 0.01;
 //   TODO (tuning): the absolute feel at score 0 — the baseline the scaling grows away from.
 const BASE_ENEMY_SPEED = 30;         // world units per second (was Enemy.ENEMY_SPEED)
 const BASE_ENEMY_SPAWN_DELAY = 3;    // seconds between spawns (was Enemy.ENEMY_SPAWN_DELAY)
-const BASE_PLAYER_MOVE_SPEED = 2;    // hop progress per second (was Player.MOVE_SPEED)
+const BASE_PLAYER_MOVE_SPEED = 3.3;  // hop progress per second (~0.3s hop; was Player.MOVE_SPEED)
 const BASE_ATTACK_COOLDOWN = 1;      // seconds between strikes (was Attack.ATTACK_COOLDOWN)
 const BASE_ATTACK_RADIUS = 50;       // attack ring radius (was Attack.ATTACK_RADIUS)
 

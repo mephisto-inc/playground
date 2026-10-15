@@ -77,10 +77,9 @@ export function updateGameState() {
 function triggerGameOver() {
   state = STATE_GAME_OVER;
 
-  // Settle the hero onto the ground *before* hiding him. The camera rides on the player group,
-  // so a hit taken mid-hop would otherwise freeze the view at whatever height the hop was at.
-  player.position.z = 0;
-  player.visible = false; // spec: remove or make invisible — invisible keeps the camera parent
+  // The camera follows only the hero's ground position, so a hit taken mid-hop no longer needs
+  // settling. Just hide him (spec: remove or make invisible); resetPlayer() restores him.
+  player.visible = false;
 
   // Dismiss any attack ring caught mid-fade, since the loop stops updating the attack now and
   // the fading mesh would otherwise sit frozen on the ground.
