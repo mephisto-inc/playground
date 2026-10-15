@@ -3,6 +3,14 @@ body {
   overflow: hidden;
 }
 
+/* Pointer controls (Input.js): touches must steer the hero instead of scrolling/zooming the page,
+   and a double tap must not trigger the browser's double-tap zoom. Set on the body and on the
+   canvas itself, since the canvas is what a touch actually lands on. */
+body,
+canvas.game {
+  touch-action: none;
+}
+
 /* Score readout (div.score, built in Score.js). Pinned to the top of the screen and centred.
    Dark text because the canvas is transparent (Renderer uses alpha:true) over the default white
    page, so a light colour would wash out against the background. */

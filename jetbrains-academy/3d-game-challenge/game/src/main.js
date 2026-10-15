@@ -11,6 +11,7 @@ import {initAttack, updateAttack} from './components/Attack.js';
 import {initScore, updateScore} from './components/Score.js';
 import {initGameState, isGameOver, updateGameState} from './components/GameState.js';
 import {updateDifficulty} from './components/Difficulty.js';
+import {initInput} from './components/Input.js';
 
 // Main entry point: assembles the scene from the component modules and drives the
 // update/render loop.
@@ -35,6 +36,11 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
 directionalLight.position.set(-100, -100, 200);
 scene.add(directionalLight);
 
+// --- Input -------------------------------------------------------------------
+// Owns every pointer listener: hover/tap steering for the hero plus the double click/tap that
+// routes to attack or restart. Wired up before the systems that consume it.
+initInput();
+
 // --- Map & houses -----------------------------------------------------------
 initMap(scene);
 await initHouses(map);
@@ -48,7 +54,8 @@ await playerReady;
 await initEnemies(scene);
 
 // --- Attack -----------------------------------------------------------------
-// The attack system builds its on-ground ring and listens for Space; it is stepped each frame.
+// The attack system builds its on-ground ring; the double click/tap reaches it through GameState,
+// and it is stepped each frame.
 initAttack(scene);
 
 // --- Score ------------------------------------------------------------------
@@ -56,7 +63,8 @@ initAttack(scene);
 initScore();
 
 // --- Game state -------------------------------------------------------------
-// Owns the Game Over overlay and the Space key (attack while playing, restart when over). Must
+// Owns the Game Over overlay and the double activation (attack while playing, restart when over).
+// Must
 // come after the systems it resets so their reset functions exist when it is wired up.
 initGameState();
 

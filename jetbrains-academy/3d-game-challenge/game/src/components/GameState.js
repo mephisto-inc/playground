@@ -2,10 +2,11 @@ import player, { resetPlayer } from './Player.js';
 import { getEnemies, resetEnemies } from './Enemy.js';
 import { resetScore, getScore } from './Score.js';
 import { requestAttack, resetAttack } from './Attack.js';
+import { onDoubleActivation } from './Input.js';
 
 // GameState component: the single owner of "are we playing or is it over?" (spec: Start, play,
 // and Game Over). It watches for a bee touching the hero, flips to a frozen Game Over state with
-// an overlay, and restarts the whole run when Space is pressed.
+// an overlay, and restarts the whole run on a double click / double tap.
 //
 // It is deliberately the *only* module that imports the others' reset functions — the direction
 // is one-way (GameState -> Player/Enemy/Score/Attack), so there is no import cycle. The contact
@@ -24,10 +25,11 @@ let state = STATE_PLAYING;
 let overlayElement = null;
 let overlayScoreElement = null;
 
-// Builds the Game Over overlay (hidden) and takes over the Space key. Called once from main.js.
-// This is where Space is centralised: on a live game it forwards to the attack, on the Game Over
-// screen it restarts. A single listener avoids the two-listener race where a press while dead
-// could both queue a stale attack and trigger the reset (see the note in Attack.js).
+// Builds the Game Over overlay (hidden) and takes over the double activation. Called once from
+// main.js. This is where the activation is centralised: on a live game it forwards to the attack,
+// on the Game Over screen it restarts. A single handler avoids the two-listener race where a
+// press while dead could both queue a stale attack AND trigger the reset (see the note in
+// Attack.js).
 export function initGameState() {
   overlayElement = document.createElement('div');
   overlayElement.className = 'game-over is-hidden';
@@ -41,13 +43,14 @@ export function initGameState() {
 
   const hint = document.createElement('div');
   hint.className = 'game-over__hint';
-  hint.textContent = 'Press Space to restart';
+  hint.textContent = 'Double-click / double-tap to restart';
 
   overlayElement.append(title, overlayScoreElement, hint);
   document.body.appendChild(overlayElement);
 
-  window.addEventListener('keydown', (event) => {
-    if (event.code !== 'Space' || event.repeat) return; // only Space, and only real presses
+  // Input.js counts the two quick taps/clicks; the routing decision stays here because only this
+  // module knows the state.
+  onDoubleActivation(() => {
     if (state === STATE_GAME_OVER) resetGame();
     else requestAttack();
   });
@@ -88,8 +91,8 @@ function triggerGameOver() {
   showOverlay();
 }
 
-// Restores every subsystem to a fresh starting state and resumes play. Triggered by Space while
-// in the Game Over state (see the listener in initGameState).
+// Restores every subsystem to a fresh starting state and resumes play. Triggered by a double
+// click / double tap while in the Game Over state (see onDoubleActivation in initGameState).
 function resetGame() {
   // Player first: it returns to the origin, which is where the enemies respawn around.
   resetPlayer();

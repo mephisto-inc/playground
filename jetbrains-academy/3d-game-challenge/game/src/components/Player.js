@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { registerCollider, isMoveFree, measureCollisionShape, MAX_MOVE_SUB_STEP } from './Collision.js';
 import { getPlayerMoveSpeed } from './Difficulty.js';
+import { getMoveTarget } from './Input.js';
 
-// Player component: owns the player group, loads/reorients the Tode model, collects
-// keyboard input into a queue, and advances one "hop" at a time toward the requested
-// direction. main.js calls updatePlayer(delta) once per animation frame.
+// Player component: owns the player group, loads/reorients the Tode model, and advances one
+// "hop" at a time toward the pointer's ground position (steered by Input.js; the keyboard was
+// removed in favour of pointer controls). main.js calls updatePlayer(delta) once per animation
+// frame.
 
 // --- Movement tuning ---------------------------------------------------------
 // Hop speed is score-scaled by the difficulty system (tune BASE_PLAYER_MOVE_SPEED and
@@ -60,10 +62,10 @@ const move = {
   yaw: 0,                         // model facing (radians) for the current hop
 };
 
-// Input model: pressing a movement key queues one hop; holding it keeps hopping (see
-// updatePlayer); releasing it stops after the hop currently in flight.
-const inputQueue = [];      // pending hops in press order: { key, direction }
-const heldKeys = new Set(); // movement keys currently held down
+// Steering model: while a hop is in flight its direction is locked, so a pointer that swings
+// around mid-air cannot fight the arc; once it lands, updatePlayer re-reads the pointer and starts
+// the next hop toward it (see the idle branch below). There is no input queue — the pointer is a
+// position, not a press — so a hero resting inside the deadzone simply stays put.
 
 let playerModel = null; // the loaded mesh, used for facing rotation once available
 
@@ -160,57 +162,32 @@ export const playerReady = new Promise((resolve, reject) => {
   );
 });
 
-// Arrow keys and WASD both map to the same four map-relative directions.
-const keyDirections = {
-  arrowup: new THREE.Vector3(0, 1, 0),
-  w: new THREE.Vector3(0, 1, 0),
-  arrowdown: new THREE.Vector3(0, -1, 0),
-  s: new THREE.Vector3(0, -1, 0),
-  arrowleft: new THREE.Vector3(-1, 0, 0),
-  a: new THREE.Vector3(-1, 0, 0),
-  arrowright: new THREE.Vector3(1, 0, 0),
-  d: new THREE.Vector3(1, 0, 0),
-};
-
-window.addEventListener('keydown', (event) => {
-  const key = event.key.toLowerCase();
-  const direction = keyDirections[key];
-  if (!direction || event.repeat) return; // ignore non-movement keys and OS key auto-repeat
-  heldKeys.add(key);
-  inputQueue.push({ key, direction: direction.clone() });
-});
-
-window.addEventListener('keyup', (event) => {
-  const key = event.key.toLowerCase();
-  if (!keyDirections[key]) return;
-  heldKeys.delete(key);
-  // Drop this key's not-yet-started hops so the player stops right after the in-flight hop.
-  for (let i = inputQueue.length - 1; i >= 0; i--) {
-    if (inputQueue[i].key === key) inputQueue.splice(i, 1);
-  }
-});
-
 // Advances the player by one frame. `delta` is the elapsed time in seconds since the last
 // call. Called from the renderer's animation loop in main.js.
 //
-// Movement is map-relative (Up = +Y). The camera is a fixed-orientation orthographic view that
-// follows the hero's ground position, and the group itself never rotates (only the model child
-// yaws), so the world axes stay fixed relative to the camera — though at this isometric angle they
-// run diagonally on the screen rather than up/down/left/right.
+// Steering follows the pointer: hops point from the hero toward the ground point Input.js derives
+// from it, while that point sits outside the deadzone. The camera is a fixed-orientation
+// orthographic view that follows the hero's ground position, and the group itself never rotates
+// (only the model child yaws), so the world axes stay fixed relative to the camera — though at
+// this isometric angle they run diagonally on the screen rather than up/down/left/right.
 export function updatePlayer(delta) {
   if (move.progress >= 1) {
-    // Idle: start a new hop from the queue, or — if a key is still held — keep moving so
-    // held keys feel continuous. Releasing the key empties both, so we come to rest here.
-    let next = null;
-    if (inputQueue.length > 0) next = inputQueue.shift().direction;
-    else if (heldKeys.size > 0) next = keyDirections[[...heldKeys][heldKeys.size - 1]];
+    // Idle: hop toward the pointer if it is outside the deadzone. Input.js returns null while the
+    // pointer is inactive (no pointer seen yet, or a touch has just lifted) or parked inside the
+    // deadzone, so we come to rest here.
+    const target = getMoveTarget(player.position);
 
-    if (next) {
-      move.direction.copy(next);
+    if (target) {
+      const dx = target.x - player.position.x;
+      const dy = target.y - player.position.y;
+      const distance = Math.hypot(dx, dy);
+      move.direction.set(dx / distance, dy / distance, 0);
       move.start.copy(player.position);
+      // Clamp the hop to what is left of the way, so a deadzone tuned below JUMP_DISTANCE can
+      // still only ever approach the target — never overshoot it and oscillate around it.
       move.target
         .copy(move.start)
-        .add(move.direction.clone().normalize().multiplyScalar(JUMP_DISTANCE));
+        .addScaledVector(move.direction, Math.min(JUMP_DISTANCE, distance));
       move.progress = 0;
 
       // Record the facing for this hop; orientModel() below applies it (with the dip) every frame.
@@ -293,11 +270,10 @@ export function resetPlayer() {
   move.start.copy(player.position);
   move.target.copy(player.position);
 
-  // Drop queued/held movement keys. While the Game Over state is up, updatePlayer() is not
-  // called, so held keys would otherwise have piled up jumps ready to fire on the first live
-  // frame (and a key held across the reset would keep moving the player with no fresh press).
-  inputQueue.length = 0;
-  heldKeys.clear();
+  // Steering state lives in Input.js and is deliberately untouched here: the pointer is wherever
+  // the player left it, and the deadzone alone decides whether the fresh run starts moving. A
+  // restart double-click usually lands on the overlay near the screen centre — i.e. inside the
+  // deadzone — so the hero does not hop away the instant play resumes.
 
   player.visible = true; // the hero reappears
 }

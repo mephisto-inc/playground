@@ -4,10 +4,11 @@ import { getEnemies, removeEnemy } from './Enemy.js';
 import { addKillScore } from './Score.js';
 import { getAttackCooldown, getAttackRadius } from './Difficulty.js';
 
-// Attack component: the player's close-range "blast". Space fires it, a cooldown limits how
-// often, a yellow ring flashes on the ground as feedback, and every enemy whose body reaches
-// that ring is removed from play. main.js calls initAttack(scene) once and updateAttack(delta)
-// once per animation frame (after updateEnemies, so the sweep sees this frame's positions).
+// Attack component: the player's close-range "blast". A double click (double tap on touch) fires
+// it, a cooldown limits how often, a yellow ring flashes on the ground as feedback, and every
+// enemy whose body reaches that ring is removed from play. main.js calls initAttack(scene) once
+// and updateAttack(delta) once per animation frame (after updateEnemies, so the sweep sees this
+// frame's positions).
 //
 // Like the other systems, all of the per-frame work happens in the update phase: the key
 // listener only *requests* a strike, and updateAttack decides whether it actually happens.
@@ -41,7 +42,7 @@ const ATTACK_CIRCLE_BASE_RADIUS = 1;
 // --- State ------------------------------------------------------------------
 let cooldownRemaining = 0; // seconds until another strike is allowed (0 = ready)
 let flashRemaining = 0;    // seconds left in the ring's fade
-let attackRequested = false; // a Space press that passed the keydown guards, awaiting the update
+let attackRequested = false; // a double activation that passed the guards, awaiting the update
 let attackCircle = null;    // the reusable ring mesh
 
 // Builds the reusable ring and parks it in the scene. One mesh is created and recoloured/
@@ -72,11 +73,12 @@ export function initAttack(scene) {
 // down); everything else is deferred to updateAttack so the actual hit detection runs in the
 // normal update phase.
 //
-// NOTE: this used to be a raw `window` keydown listener for Space. GameState now owns that
-// listener (Space doubles as the "reset" key on the Game Over screen), so a single listener can
-// decide between attacking and restarting. That is deliberate: with two independent Space
-// listeners, a press while dead could both queue a stale attack AND trigger the reset, and the
-// stale request would fire on the first live frame. Here, only a live game ever calls this.
+// NOTE: this module never listens for input itself. Input.js counts the double click/tap and
+// GameState routes it (the same activation doubles as the "restart" key on the Game Over screen),
+// so a single handler can decide between attacking and restarting. That is deliberate: with two
+// independent handlers, an activation while dead could both queue a stale attack AND trigger the
+// reset, and the stale request would fire on the first live frame. Here, only a live game ever
+// calls this.
 export function requestAttack() {
   if (!isPlayerGrounded()) return; // spec: no attacking while airborne (the press is dropped)
   if (cooldownRemaining > 0) return; // still recovering; ignore rather than queue a buffered hit
@@ -85,7 +87,7 @@ export function requestAttack() {
 
 // Called every frame. Ticks the cooldown and the ring fade, then resolves a pending request.
 export function updateAttack(delta) {
-  // Count the cooldown down to zero, which is what eventually re-enables the Space listener.
+  // Count the cooldown down to zero, which is what eventually lets the next activation fire.
   if (cooldownRemaining > 0) cooldownRemaining = Math.max(0, cooldownRemaining - delta);
 
   // Fade the ring. Colour is constant, so simply ramp opacity from 1 to 0 across the duration.
@@ -101,8 +103,8 @@ export function updateAttack(delta) {
   if (!attackRequested) return;
   attackRequested = false;
 
-  // Re-check the guards at fire time. The keydown already filtered these, but the frame runs a
-  // moment later, so the player could have left the ground (or a prior strike could have eked
+  // Re-check the guards at fire time. requestAttack() already filtered these, but the frame runs
+  // a moment later, so the player could have left the ground (or a prior strike could have eked
   // out the cooldown) in between. Cheaper to be sure than to trust the earlier check.
   if (!isPlayerGrounded() || cooldownRemaining > 0) return;
 
