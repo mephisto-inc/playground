@@ -1,19 +1,15 @@
 import { el, mount } from './dom.js';
-import { getAchievementStatus, resetAchievements } from '../systems/Achievements.js';
-import { resetCollection } from '../systems/Collection.js';
+import { getAchievementStatus } from '../systems/Achievements.js';
 
 // Achievements panel: lists every registered achievement with its current state, persisted in
-// localStorage. Reachable from the main menu, the pause menu and the game-over screen (not from
-// character selection or the draft); it is a passive overlay that never changes the game state,
-// so opening it mid-pause keeps the world frozen. Only the list scrolls — the title and the buttons stay in place — so
-// a long achievement list stays fully browsable.
-
-const RESET_CONFIRM_MS = 3000; // how long the RESET button waits for its confirming click
+// localStorage. Reachable from the main menu ONLY (the pause menu and the game-over screen no
+// longer link here); it is a passive overlay that never changes the game state, so opening it
+// keeps everything wherever it was frozen. Only the list scrolls — the title and the CLOSE
+// button stay in place — so a long achievement list stays fully browsable. The full-save RESET
+// that used to sit in this panel's footer moved to the main menu.
 
 let overlay = null;
 let listNode = null;
-let resetButton = null;
-let resetTimer = 0;
 
 export function initAchievementsPanel() {
     overlay = el('div', 'overlay');
@@ -24,9 +20,6 @@ export function initAchievementsPanel() {
     panel.appendChild(listNode);
 
     const footer = el('div', 'achievements-footer');
-    resetButton = el('button', 'btn', '↺ RESET');
-    resetButton.addEventListener('click', onResetClicked);
-    footer.appendChild(resetButton);
     const closeButton = el('button', 'btn', '✖ CLOSE');
     closeButton.addEventListener('click', closeAchievements);
     footer.appendChild(closeButton);
@@ -51,29 +44,6 @@ export function initAchievementsPanel() {
     mount(overlay);
 }
 
-// Reset is a two-step action (no native dialog): the first click arms the button into "SURE?",
-// a second click within the window wipes every unlock, the lifetime counters AND the compendium
-// collection; letting the window pass disarms it.
-function onResetClicked() {
-    if (!resetButton.classList.contains('confirming')) {
-        resetButton.classList.add('confirming');
-        resetButton.textContent = 'SURE?';
-        resetTimer = setTimeout(disarmReset, RESET_CONFIRM_MS);
-        return;
-    }
-    clearTimeout(resetTimer);
-    disarmReset();
-    resetAchievements();
-    resetCollection();
-    buildList();
-}
-
-// Puts the RESET button back into its idle state.
-function disarmReset() {
-    resetButton.classList.remove('confirming');
-    resetButton.textContent = '↺ RESET';
-}
-
 // Shows the panel, rebuilding the list so unlock states are always fresh.
 export function openAchievements() {
     buildList();
@@ -94,9 +64,7 @@ function buildList() {
     }
 }
 
-// Closes the panel; also disarms a pending reset confirmation.
+// Closes the panel.
 function closeAchievements() {
-    clearTimeout(resetTimer);
-    disarmReset();
     overlay.classList.remove('visible');
 }

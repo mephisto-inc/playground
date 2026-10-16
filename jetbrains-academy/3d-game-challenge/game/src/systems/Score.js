@@ -6,8 +6,9 @@ import { markScore } from './Achievements.js';
 // Points come from exactly two places — Enemy/Boss kills (their own point values) and the wave
 // clear bonus (500 x wave number, waves 1-4). Wave 5 never pays a bonus.
 //
-// The best score is written to localStorage only at game over (commitScore), not on every kill:
-// a crash mid-run then keeps the previous record instead of a partial one.
+// The best score is written to localStorage at game over (commitScore), not on every kill: a
+// crash mid-run then keeps the previous record instead of a partial one. The only other write
+// is the full-save wipe (resetBestScore, called by the main menu's RESET).
 
 let score = 0;
 let bestScore = loadNumber(STORAGE_KEYS.bestScore, 0);
@@ -32,6 +33,14 @@ export function getScore() {
 // The persisted best score (shown on the main menu and the game-over screen).
 export function getBestScore() {
     return bestScore;
+}
+
+// Wipes the record: clears the in-memory best AND the persisted one, so the main menu starts
+// from "Best score: ⭐ 0" and the next run's commitScore() reports first-ever (previousBest 0)
+// instead of a beaten record. Called by the main menu's RESET button only.
+export function resetBestScore() {
+    bestScore = 0;
+    saveNumber(STORAGE_KEYS.bestScore, 0);
 }
 
 // Finishes the run: persists the score when it beats the stored best and reports the outcome.

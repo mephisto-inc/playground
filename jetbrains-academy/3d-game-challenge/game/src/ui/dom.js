@@ -21,6 +21,14 @@ export function mount(...nodes) {
     return nodes[nodes.length - 1];
 }
 
+// Builds a <ul> with one <li> per item — the compact bullet-list form used for the class
+// descriptions (character-select card and compendium class rows both render them this way).
+export function list(className, items) {
+    const node = el('ul', className);
+    for (const item of items) node.appendChild(el('li', '', item));
+    return node;
+}
+
 // --- Tooltips -----------------------------------------------------------------
 
 // One shared tooltip bubble for the whole UI. It is appended to <body> (not the UI root) and

@@ -413,6 +413,22 @@ canvas.game {
     line-height: 1.45;
 }
 
+/* Compact bullet lists for class descriptions: both the character-select card and the
+   compendium class rows render config/classes.js' description arrays through dom.js list().
+   The font/color still come from .class-card .desc / .achievement .a-desc on the same node. */
+.class-card .desc-list,
+.achievement .a-desc-list {
+    margin: 0;
+    padding-left: 16px;
+    list-style: disc outside;
+    text-align: left;
+}
+
+.class-card .desc-list li + li,
+.achievement .a-desc-list li + li {
+    margin-top: 4px;
+}
+
 /* --- Draft modal ------------------------------------------------------------------------------ */
 
 .draft-panel {

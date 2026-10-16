@@ -5,13 +5,12 @@ import { TOTAL_WAVES } from '../config/waves.js';
 import { getGameOverSummary } from '../systems/Run.js';
 import { getPowerup } from '../config/powerups.js';
 import { getAchievement } from '../systems/Achievements.js';
-import { openAchievements } from './AchievementsPanel.js';
-import { createCreditsButton } from './credits.js';
 
 // Game-over screen: appears after the defeat animation finishes, showing the final score, the
 // record status, a recap of the collected power-up cards and the achievements unlocked during
 // the run. Play Again returns to the character-select modal (choosing the class starts the next
-// run); Main Menu returns to the title.
+// run); Main Menu returns to the title. Only those two buttons — the meta entries (achievements,
+// compendium, credits) belong to the main menu alone.
 
 let overlay = null;
 let scoreNode = null;
@@ -51,14 +50,6 @@ export function initGameOverScreen() {
     const menuButton = el('button', 'btn', '⌂ MAIN MENU');
     menuButton.addEventListener('click', () => setState(STATE.MAIN_MENU));
     panel.appendChild(menuButton);
-
-    // The achievements panel is available at any time, including from this screen.
-    const achievementsButton = el('button', 'btn', '🏆 ACHIEVEMENTS');
-    achievementsButton.addEventListener('click', () => openAchievements());
-    panel.appendChild(achievementsButton);
-
-    // Credits link, the same one the menus use.
-    panel.appendChild(createCreditsButton());
 
     overlay.appendChild(panel);
     mount(overlay);

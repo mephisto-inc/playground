@@ -1,4 +1,4 @@
-import { el, mount } from './dom.js';
+import { el, list, mount } from './dom.js';
 import { CLASSES } from '../config/classes.js';
 import { POWERUPS } from '../config/powerups.js';
 import { getPlayedClasses } from '../systems/Achievements.js';
@@ -9,8 +9,8 @@ import { isCollected } from '../systems/Collection.js';
 // obtained (a class ever played, a card ever picked) renders like an unlocked achievement; the
 // rest render dark like a locked achievement (dimmed + grayscaled, 🔒 in place of the icon).
 // It is a passive overlay that never changes the game state. Only the list scrolls, so the
-// title and the close button stay in place. The achievements panel's RESET wipes this record
-// too (resetCollection), so a wiped save starts from a truly clean slate.
+// title and the close button stay in place. The main menu's RESET wipes this record too
+// (resetCollection), so a wiped save starts from a truly clean slate.
 
 let overlay = null;
 let listNode = null;
@@ -75,13 +75,18 @@ function buildList() {
 }
 
 // One compendium row: the shared achievement-row markup (icon, name, description), dark with a
-// lock when the entry has not been obtained yet.
+// lock when the entry has not been obtained yet. Class descriptions are arrays of bullet lines
+// (rendered as a list); power-up descriptions stay single-line prose strings.
 function makeRow(definition, obtained, name) {
     const row = el('div', `achievement${obtained ? '' : ' locked'}`);
     row.appendChild(el('div', 'a-icon', obtained ? definition.icon : '🔒'));
     const text = el('div', '');
     text.appendChild(el('div', 'a-name', name));
-    text.appendChild(el('div', 'a-desc', definition.description));
+    if (Array.isArray(definition.description)) {
+        text.appendChild(list('a-desc a-desc-list', definition.description));
+    } else {
+        text.appendChild(el('div', 'a-desc', definition.description));
+    }
     row.appendChild(text);
     return row;
 }

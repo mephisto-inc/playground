@@ -1,11 +1,10 @@
 import { el, mount } from './dom.js';
 import { STATE, getState, onStateChange, setState } from '../core/StateMachine.js';
 import { getMasterVolume, setMasterVolume } from '../systems/Audio.js';
-import { openAchievements } from './AchievementsPanel.js';
-import { createCreditsButton } from './credits.js';
 
-// Pause menu: freezes the world and muffles the music (the Audio system reacts to the state),
-// with Continue, a master-volume slider, the achievements panel and a quit-to-menu option.
+// Pause menu: freezes the world and muffles the music (the Audio system reacts to the state).
+// Deliberately minimal — ONLY Continue, the master-volume slider and Quit to Menu; every meta
+// entry (achievements, compendium, credits, reset) lives in the main menu alone.
 // Opened by the HUD pause button or Esc.
 
 let overlay = null;
@@ -31,13 +30,6 @@ export function initPauseMenu() {
     volumeSlider.addEventListener('input', () => setMasterVolume(Number(volumeSlider.value)));
     volumeRow.appendChild(volumeSlider);
     panel.appendChild(volumeRow);
-
-    const achievementsButton = el('button', 'btn', '🏆 ACHIEVEMENTS');
-    achievementsButton.addEventListener('click', () => openAchievements());
-    panel.appendChild(achievementsButton);
-
-    // Credits: same link as the main menu.
-    panel.appendChild(createCreditsButton());
 
     const quitButton = el('button', 'btn', '✖ QUIT TO MENU');
     quitButton.addEventListener('click', () => setState(STATE.MAIN_MENU));

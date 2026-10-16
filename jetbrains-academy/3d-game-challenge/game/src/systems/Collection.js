@@ -4,7 +4,7 @@ import { STORAGE_KEYS, loadJSON, saveJSON } from '../core/Storage.js';
 // any run. Backs the compendium panel's POWER-UPS section (the CLASSES section reads the played
 // classes from the achievements counters instead). Persisted in localStorage as an id array, so
 // the compendium survives sessions; a card only ever enters the set, never leaves it until a
-// full reset (the achievements panel's RESET wipes this too).
+// full reset (the main menu's RESET wipes this too).
 
 // The collected card ids, loaded once at startup.
 let collected = new Set(loadJSON(STORAGE_KEYS.collection, []));
@@ -22,7 +22,7 @@ export function isCollected(id) {
     return collected.has(id);
 }
 
-// Wipes the collection (the achievements panel's RESET, for a truly clean slate).
+// Wipes the collection (the main menu's RESET, for a truly clean slate).
 export function resetCollection() {
     collected = new Set();
     saveJSON(STORAGE_KEYS.collection, []);

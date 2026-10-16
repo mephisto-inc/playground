@@ -1,11 +1,12 @@
-import { el, mount } from './dom.js';
+import { el, list, mount } from './dom.js';
 import { STATE, onStateChange, setState } from '../core/StateMachine.js';
 import { CLASSES } from '../config/classes.js';
 import { beginRun } from '../systems/Run.js';
 
 // Character-selection modal: three class cards over the frozen arena. Each card shows the class
-// icon, starting hearts and ability description (all from config/classes.js); clicking one starts
-// the run. A Back button returns to the main menu.
+// icon, starting hearts and the ability description as a compact bullet list (both come from
+// config/classes.js, where descriptions are arrays of lines); clicking one starts the run. A
+// Back button returns to the main menu.
 
 let overlay = null;
 
@@ -21,7 +22,7 @@ export function initCharacterSelect() {
         card.appendChild(el('div', 'icon', definition.icon));
         card.appendChild(el('div', 'name', definition.name));
         card.appendChild(el('div', 'hearts-line', '💖'.repeat(definition.hearts)));
-        card.appendChild(el('div', 'desc', definition.description));
+        card.appendChild(list('desc desc-list', definition.description));
         card.addEventListener('click', () => beginRun(definition.id));
         cardsRow.appendChild(card);
     }
