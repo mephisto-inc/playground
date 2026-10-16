@@ -215,7 +215,7 @@ function fireVolley(target) {
             {
                 damage,
                 speed: PROJECTILE.playerSpeed,
-                radiusMul: stats.bulletRadiusMul, // Big Bullets: wider hit radius only
+                radiusMul: stats.bulletRadiusMul, // Big Bullets: bigger sphere and hit radius
             },
         );
         if (bullet) bullet.pierce = stats.pierce;
@@ -241,7 +241,8 @@ function reflectWithShield() {
 
 // Applies the pending push shockwave once: AoE damage to everything in radius, a stun AND a
 // strong shove for common enemies (tanks are immune to knockback, so they are only stunned),
-// and plain knockback for the boss.
+// and plain knockback for the boss (the wave-5 boss is knockback-immune, so the push only
+// damages it).
 function applyPushBurst() {
     const burst = consumePushBurst();
     if (!burst) return;
@@ -256,13 +257,16 @@ function applyPushBurst() {
         if (distance > reach) continue;
 
         if (enemy.userData.isBoss) {
+            // The wave-5 boss ignores the shove entirely; skip both the knockback and its Power
+            // Shove count (a shove that never happened must not tick the achievement).
+            const shoved = !enemy.userData.knockbackImmune;
             damageBoss(burst.damage, {
-                knockback: BOSS.knockbackDistance,
+                knockback: shoved ? BOSS.knockbackDistance : 0,
                 knockbackX: enemy.position.x - px,
                 knockbackY: enemy.position.y - py,
                 source: 'shockwave',
             });
-            recordPush(); // the boss got shoved too
+            if (shoved) recordPush(); // the boss got shoved too
         } else {
             damageEnemy(enemy, burst.damage, {source: 'shockwave'});
             stunEnemy(enemy, ability.stun);

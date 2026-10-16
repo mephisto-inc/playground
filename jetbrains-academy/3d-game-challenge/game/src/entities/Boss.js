@@ -116,9 +116,11 @@ export async function initBoss(scene) {
 
 // Spawns the boss with `hp` HP (the wave's boss HP; Waves applies the endless growth multiplier
 // before calling, and this rounds the result UP so health stays whole). `speedMul` and
-// `orbSpeedMul` come from the wave definition. Picks a random free one of the 8 spawn points;
-// returns the boss, or null when every spawn point is occupied (Waves retries on a later frame).
-export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1) {
+// `orbSpeedMul` come from the wave definition; `knockbackImmune` marks the wave-5 boss, which
+// ignores the push shockwave's shove (the push still damages it). Picks a random free one of the
+// 8 spawn points; returns the boss, or null when every spawn point is occupied (Waves retries on
+// a later frame).
+export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1, knockbackImmune = false) {
     if (!prepared || !sceneRef || boss) return null;
 
     const point = pickSpawnPoint();
@@ -169,6 +171,7 @@ export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1) {
     data.hp = data.maxHp;
     data.speedMul = speedMul;       // per-wave chase speed (read in the chaseA/chaseB branch)
     data.orbSpeedMul = orbSpeedMul; // per-wave orb speed (passed to spawnBossOrb in the volley)
+    data.knockbackImmune = knockbackImmune; // wave-5 boss: never shoved (Combat skips the shove)
     data.collider = registerCollider(group, group.position, prepared.radius);
     data.dying = false;
     data.dyingTimer = 0;
@@ -247,10 +250,11 @@ export function damageBoss(amount, options = {}) {
 }
 
 // Pushes the boss away, collision-checked step by step (the push shockwave uses this — the
-// boss only ever gets knocked back, never stunned or killed by it). Boundary walls are ignored
-// on purpose: a shove can carry the boss out of the arena (it walks back in as a silhouette).
+// boss only ever gets knocked back, never stunned or killed by it). The wave-5 boss is
+// knockback-immune: it is never shoved at all. Boundary walls are ignored on purpose: a shove
+// can carry the boss out of the arena (it walks back in as a silhouette).
 function knockbackBoss(dirX, dirY, distance) {
-    if (!boss || boss.userData.dying) return;
+    if (!boss || boss.userData.dying || boss.userData.knockbackImmune) return;
     const collider = boss.userData.collider;
     const length = Math.hypot(dirX, dirY);
     if (!collider || length < 1e-6) return;

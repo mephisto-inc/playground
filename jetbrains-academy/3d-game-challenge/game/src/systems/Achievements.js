@@ -183,6 +183,13 @@ export function recordCardCollected(runCardCount) {
     if (runCardCount >= 12) unlockAchievement('deckedOut');
 }
 
+// The run's live score reached the breaking point (The Million). Called by Score.addScore on
+// every gain, so the achievement pops the moment the counter crosses a million mid-run.
+const MILLION_SCORE = 1_000_000;
+export function markScore(total) {
+    if (total >= MILLION_SCORE) unlockAchievement('theMillion');
+}
+
 // --- Run lifecycle hooks (called by Run / Waves / Combat) ---------------------
 
 // Ids unlocked during the run that is ending (game-over screen recap).

@@ -548,6 +548,12 @@ canvas.game {
     letter-spacing: 2px;
 }
 
+.final-time {
+    color: var(--text-dim);
+    font-size: 14px;
+    letter-spacing: 1px;
+}
+
 .summary-label {
     font-size: 13px;
     text-transform: uppercase;
@@ -568,6 +574,11 @@ canvas.game {
     flex-direction: column;
     gap: 4px;
     font-size: 13.5px;
+}
+
+/* One unlocked-achievement row in the game-over recap; hovering shows its description. */
+.recap-achievement {
+    cursor: help;
 }
 
 /* --- Achievements panel ------------------------------------------------------------------------ */
@@ -648,8 +659,8 @@ canvas.game {
 /* --- Achievement toasts ------------------------------------------------------------------- */
 
 /* Top-center stack of unlock banners (ui/Toast.js), parked just below the HUD's top row so it
-   never covers the hearts, the wave banner or the score. The container ignores pointer events,
-   so the banners never block clicks on whatever sits underneath them. */
+   never covers the hearts, the wave banner or the score. The container ignores pointer events;
+   the banner itself opts back in so hovering it can show the achievement's description. */
 .toast-container {
     position: fixed;
     left: 50%;
@@ -680,6 +691,9 @@ canvas.game {
     opacity: 0;
     transform: translateY(-10px) scale(0.96);
     transition: opacity 0.3s ease, transform 0.3s ease;
+    /* Hovering shows the achievement's description (and pauses the auto-dismiss). */
+    pointer-events: auto;
+    cursor: help;
 }
 
 .toast.visible {

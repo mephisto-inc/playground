@@ -89,3 +89,15 @@ export function hideTooltip() {
     tooltipOwner = null;
     tooltip.style.display = 'none';
 }
+
+// --- Formatting ----------------------------------------------------------------
+
+// Formats seconds as a clock string: mm:ss, or h:mm:ss once past an hour. Used by the wave-5
+// survival chronometer (HUD) and the game-over recap. Invalid or negative input reads as 0:00.
+export function formatClock(seconds) {
+    const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+    const hours = Math.floor(total / 3600);
+    const minutes = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+    const secs = String(total % 60).padStart(2, '0');
+    return hours > 0 ? `${hours}:${minutes}:${secs}` : `${minutes}:${secs}`;
+}

@@ -20,7 +20,7 @@
 //   shotKnockback         — world units a shot pushes a common enemy it hits
 //   slowOnHitMul          — speed multiplier applied to enemies hit (0.6 = 40% slow)
 //   slowOnHitDuration     — seconds that slow lasts
-//   bulletRadiusMul       — multiply the hit radius of player/minion shots (visual size fixed)
+//   bulletRadiusMul       — multiply the size (visual sphere + hit radius) of player/minion shots
 //   dodgeChanceAdd        — add to the chance to ignore an incoming hit entirely
 //   trailDurationAdd      — extra seconds of Dasher trail life
 //   trailWidthMul         — multiply the Dasher trail width
@@ -147,8 +147,8 @@ export const POWERUPS = [
         id: 'bigBullets',
         icon: '⚪',
         name: 'Big Bullets',
-        description: '+50% bullet hit size (the visuals stay sleek).',
-        effect: {bulletRadiusMul: 1.5},
+        description: '+150% bullet size (visuals and hitbox).',
+        effect: {bulletRadiusMul: 2.5},
     },
     {
         id: 'evasion',

@@ -8,6 +8,7 @@ export const ACHIEVEMENTS = [
     { id: 'crowdedPond', name: 'Crowded Pond', icon: '🐟', description: 'Clear Wave 4.' },
     { id: 'endlessFrog', name: 'Endless Frog', icon: '🌊', description: 'Reach Wave 5.' },
     { id: 'marathonFrog', name: 'Marathon Frog', icon: '⏱️', description: 'Survive 5 minutes in Wave 5.' },
+    { id: 'theMillion', name: 'The Million', icon: '💰', description: 'Reach 1,000,000 score in a single run.' },
     { id: 'untouchable', name: 'Untouchable', icon: '✨', description: 'Clear any wave without taking damage.' },
     { id: 'fullHearts', name: 'Full Hearts', icon: '💖', description: 'Reach the maximum of 7 hearts.' },
     { id: 'newRecord', name: 'New Record', icon: '🏆', description: 'Beat your own best score.' },

@@ -35,7 +35,8 @@ import { setWaveStage } from './Audio.js';
 let clearHandler = null;
 
 let wave = 0;          // 1-based current wave; 0 before the run starts
-let waveElapsed = 0;   // seconds since the current wave began
+let waveElapsed = 0;   // seconds since the current wave began (wave 5: the survival chronometer)
+let runElapsed = 0;    // seconds since the run began (total survival clock)
 let spawnTimer = 0;    // accumulates to the spawn interval
 let running = false;   // false outside a live run
 let cleared = false;   // true from the clear moment until the next wave starts
@@ -61,6 +62,7 @@ export function resetWaves() {
     running = false;
     wave = 0;
     waveElapsed = 0;
+    runElapsed = 0;
     spawnTimer = 0;
     cleared = false;
     bossPending = false;
@@ -74,13 +76,25 @@ export function advanceAfterDraft() {
     startWave(wave + 1);
 }
 
-// HUD data: current wave number, total, and the boss bar's numbers (null without a live boss).
+// HUD data: current wave number, total, the current wave's elapsed seconds (the HUD shows it
+// as the chronometer during wave 5) and the boss bar's numbers (null without a live boss).
 export function getWaveInfo() {
     return {
         wave,
         total: TOTAL_WAVES,
+        waveElapsed,
         bossAlive: isBossAlive(),
         boss: getBossInfo(),
+    };
+}
+
+// Survival clock for the HUD and the game-over recap: total run time, and the wave-5 time
+// (0 until wave 5 starts). Both freeze while the world is paused or a draft is open, and stop
+// at game over — updateWaves is the only ticker.
+export function getSurvivalTimes() {
+    return {
+        total: runElapsed,
+        wave5: wave === 5 ? waveElapsed : 0,
     };
 }
 
@@ -116,21 +130,20 @@ export function updateWaves(delta) {
     if (!definition) return;
 
     waveElapsed += delta;
+    runElapsed += delta;
 
-    // Wave 5 growth: +10% HP, speed and attack per minute, capped at 3x HP / 1.5x speed /
-    // 2x attack. HP is baked into each new spawn; speed and attack apply live (Enemy/Boss read
-    // them from their setters). Attack scales enemy shot speed, ranged fire rate, boss orb
-    // speed, boss phase pacing and the spawn interval (see the ramp below).
+    // Wave 5 growth: +10% HP, speed and attack per minute. HP and attack are UNCAPPED (the wave
+    // must eventually defeat the player); speed is capped at 1.5x. HP is baked into each new
+    // spawn; speed and attack apply live (Enemy/Boss read them from their setters). Attack
+    // scales enemy shot speed, ranged fire rate, boss orb speed, boss phase pacing and the spawn
+    // interval (see the ramp below).
     let growthHpMul = 1;
     let growthAttackMul = 1;
     if (wave === 5) {
         const minutes = waveElapsed / 60;
-        growthHpMul = Math.min(1 + ENEMY.growthPerMinute * minutes, ENEMY.growthHpCap);
+        growthHpMul = 1 + ENEMY.growthPerMinute * minutes;
         const growthSpeedMul = Math.min(1 + ENEMY.growthPerMinute * minutes, ENEMY.growthSpeedCap);
-        growthAttackMul = Math.min(
-            1 + ENEMY.growthAttackPerMinute * minutes,
-            ENEMY.growthAttackCap,
-        );
+        growthAttackMul = 1 + ENEMY.growthAttackPerMinute * minutes;
         setEndlessScaling(growthHpMul, growthSpeedMul, growthAttackMul);
         setBossEndlessScaling(growthSpeedMul, growthAttackMul);
         onEndlessTime(waveElapsed); // Marathon Frog achievement at 5 minutes
@@ -144,11 +157,12 @@ export function updateWaves(delta) {
             || getScore() - scoreCheckpoint >= definition.bossRespawnScore;
         if (gateOpen) {
             // The wave definition carries the boss's speed and orb-speed multipliers (wave 5
-            // runs 10% faster than wave 3).
+            // runs 10% faster than wave 3) and the knockback-immunity flag.
             const boss = spawnBoss(
                 definition.bossHp * growthHpMul,
                 definition.bossSpeedMul,
                 definition.bossOrbSpeedMul,
+                !!definition.bossKnockbackImmune,
             );
             if (boss) {
                 bossPending = false;

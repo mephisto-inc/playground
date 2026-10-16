@@ -72,7 +72,7 @@ function spawnBullet({ owner, x, y, z, dirX, dirY, speed, damage, radius, life, 
 
 // Fires one player-owned shot. (x, y) is the muzzle on the ground plane; the bullet flies at a
 // small fixed height so it is visible above the floor. `radiusMul` comes from the Big Bullets
-// card (hit radius only — the visual sphere keeps its size).
+// card: the sphere's visual size AND its hit radius both grow with it.
 export function spawnPlayerShot(x, y, dirX, dirY, { damage, speed, radiusMul = 1 }) {
     return spawnBullet({
         owner: 'player',

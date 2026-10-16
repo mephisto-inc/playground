@@ -1,4 +1,5 @@
 import { STORAGE_KEYS, loadNumber, saveNumber } from '../core/Storage.js';
+import { markScore } from './Achievements.js';
 
 // Score system: owns the running score and the persisted best score.
 //
@@ -17,8 +18,11 @@ export function resetScore() {
 }
 
 // Adds points (kills, wave bonus). Fractional values are rounded to keep the HUD integer-clean.
+// Every gain is also offered to the achievements (The Million unlocks the moment the running
+// total crosses its threshold).
 export function addScore(points) {
     score += Math.round(points);
+    markScore(score);
 }
 
 export function getScore() {

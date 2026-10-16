@@ -53,7 +53,7 @@ export const LIGHTS = {
     ambientColor: 0x8fb3ff, // deep blue night fill
     ambientIntensity: 0.45,
     dirColor: 0xbfd4ff,     // moonlight
-    dirIntensity: 0.927,    // moonlight intensity (0.9 raised by 3%)
+    dirIntensity: 0.955,    // moonlight intensity (0.927 raised by 3%)
     dirPosition: {x: 15, y: -20, z: 30},
     // Shadow camera half-extents: covers the whole arena PLUS the forest ring, so tree shadows
     // render from the ring edge inward with no pop. Widening this spreads the fixed 4096 texels
@@ -90,15 +90,15 @@ export const TREES = {
     heightJitterMax: 1.15,
     // Forest ring: random points between ringStart and ringDepth units beyond the wall edge.
     // ringStart keeps the pines right up against the arena walls (the tree line hugs the wall).
-    ringStart: 0.5,
+    ringStart: 0.2,
     ringDepth: 26,
     ringAttempts: 6000,     // candidate tries for ring placement
-    ringCount: 900,         // pines actually placed (min-spacing filtered) — a dense forest
-    minSpacing: 1.7,        // minimum ground distance between any two trees
+    ringCount: 1400,        // pines actually placed (min-spacing filtered) — a dense forest
+    minSpacing: 0.7,        // minimum ground distance between any two trees
     // Inside scatter: twisted trees over the arena floor, avoiding houses, spawn lanes and the
     // center clearing.
-    scatterAttempts: 600,
-    scatterCount: 60,
+    scatterAttempts: 1000,
+    scatterCount: 160,
     houseClearance: 5.5,    // keep this far away from every house center
     spawnLaneClearance: 3.5, // keep this far away from the 8 spawn -> center walking lines
     centerClearance: 6,     // keep the player's starting area open
@@ -168,15 +168,15 @@ export const ENEMY = {
     knockbackDistance: 2.5,  // how far a common enemy is pushed when it touches the player
     hitFlashDuration: 0.08,  // white flash after taking damage, in seconds
     deathLinger: 0.9,        // how long a corpse stays to play its Death clip before removal
-    // Endless wave-5 growth: +10% HP and speed per minute, capped at 3x HP / 1.5x speed.
+    // Endless wave-5 growth: +10% HP and speed per minute. HP is UNCAPPED so the endless wave
+    // eventually overwhelms any build (the run must end); speed stays capped at 1.5x, since
+    // uncapped movement would turn unreactable long before it turns lethal.
     growthPerMinute: 0.10,
-    growthHpCap: 3,
     growthSpeedCap: 1.5,
-    // Independent attack escalation for wave 5: +10% "attack speed" per minute, capped at 2x.
-    // Scales enemy shot speed, ranged fire rate, boss orb speed, boss chase/charge pacing and
-    // the spawn interval (more enemies as the attack ramps).
+    // Independent attack escalation for wave 5: +10% "attack speed" per minute, UNCAPPED like HP
+    // so the pressure keeps rising until the run ends. Scales enemy shot speed, ranged fire rate,
+    // boss orb speed, boss chase/charge pacing and the spawn interval (more enemies as it ramps).
     growthAttackPerMinute: 0.10,
-    growthAttackCap: 2,
     // Spawn-point jitter: every spawn lands within this many units of its point.
     spawnJitter: 1.5,
     // Outside the arena an enemy/boss renders as a near-black silhouette; it blends back to its
@@ -217,7 +217,7 @@ export const BOSS = {
     phaseBChase: 1.5,        // seconds of chasing between dashes
     heartDropsMin: 1,        // boss kills drop this many hearts...
     heartDropsMax: 2,        // ...up to this many (inclusive random range)
-    knockbackDistance: 2.5,  // how far the push shockwave shoves the boss
+    knockbackDistance: 2.5,  // how far the push shockwave shoves the boss (wave-5 boss is immune)
     powerupDropChance: 0.2,  // chance a boss kill also drops a bonus power-up card (0.2 = 20%)
 };
 

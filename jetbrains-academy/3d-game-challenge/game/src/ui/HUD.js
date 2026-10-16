@@ -1,4 +1,4 @@
-import { attachTooltip, el, hideTooltip, mount } from './dom.js';
+import { attachTooltip, el, formatClock, hideTooltip, mount } from './dom.js';
 import { STATE, getState, onStateChange, setState } from '../core/StateMachine.js';
 import { getAbilityInfo, getCollectedCards, getHearts, getStats } from '../entities/Player.js';
 import { getScore } from '../systems/Score.js';
@@ -97,11 +97,15 @@ export function updateHUD() {
         heartsNode.textContent = heartsText;
     }
 
-    // Wave banner: "WAVE n/5" plus the boss warning while one is alive.
+    // Wave banner: "WAVE n/5" plus the boss warning while one is alive. In the endless wave 5
+    // the banner becomes the survival chronometer (⏱ mm:ss) instead of the wave number.
     const waveInfo = getWaveInfo();
-    const waveText = waveInfo.wave > 0
+    let waveText = waveInfo.wave > 0
         ? `WAVE ${waveInfo.wave}/${waveInfo.total}`
         : '';
+    if (waveInfo.wave === 5) {
+        waveText = `⏱ ${formatClock(waveInfo.waveElapsed)}`;
+    }
     const bossTag = waveInfo.bossAlive ? ' <span class="boss-tag">- BOSS ⚠️</span>' : '';
     if (waveText + bossTag !== cache.wave) {
         cache.wave = waveText + bossTag;

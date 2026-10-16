@@ -14,6 +14,7 @@ import { resetBoss } from '../entities/Boss.js';
 import { onPlayerDeath, onPowerupCollected, resetCombat } from './Combat.js';
 import {
     advanceAfterDraft,
+    getSurvivalTimes,
     registerClearHandler,
     resetWaves,
     startRun as startWaves,
@@ -107,8 +108,9 @@ export function resetWorld() {
     resetWaves();
 }
 
-// Everything the game-over screen needs: final score, best, record flag, collected cards and
-// the achievements unlocked during this run. Validity: meaningful after endRun().
+// Everything the game-over screen needs: final score, best, record flag, collected cards, the
+// achievements unlocked during this run and the survival times (total + wave 5). Validity:
+// meaningful after endRun().
 export function getGameOverSummary() {
     return {
         score: lastCommit ? lastCommit.finalScore : 0,
@@ -116,5 +118,6 @@ export function getGameOverSummary() {
         isRecord: lastCommit ? lastCommit.isRecord : false,
         cards: getCollectedCards(),
         unlocked: getRunUnlocks(),
+        times: getSurvivalTimes(),
     };
 }

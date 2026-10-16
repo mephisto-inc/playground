@@ -129,7 +129,7 @@ function updateHitCenter() {
 //   shotKnockback    — world units a shot shoves a common enemy it hits
 //   slowOnHitMul     — speed multiplier a shot applies to the enemy it hits (0 = no slow)
 //   slowOnHitDuration — seconds that slow lasts
-//   bulletRadiusMul  — multiplier on the friendly shots' hit radius (visuals unchanged)
+//   bulletRadiusMul  — multiplier on the friendly shots' size (visual sphere + hit radius)
 //   dodgeChance      — chance to ignore an incoming hit entirely
 //   trailDurationAdd — extra seconds of Dasher trail life
 //   trailWidthMul    — multiplier on the Dasher trail width

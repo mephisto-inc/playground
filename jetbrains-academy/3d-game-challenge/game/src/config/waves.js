@@ -10,6 +10,7 @@
 //   bossSpeedMul     — the boss's speed multiplier that wave (BOSS.speedMul in tuning.js is the
 //                      wave-3 base)
 //   bossOrbSpeedMul  — multiplier on the boss's orb speed that wave
+//   bossKnockbackImmune — wave 5 only: the boss ignores push knockback (never shoved)
 //   bossSpawnRate    — spawn-rate multiplier while the boss lives (enemy pressure during the
 //                      boss fight)
 //   bossRespawnScore — wave 5: score earned after the boss dies before the next one spawns
@@ -54,9 +55,10 @@ export const WAVES = [
         spawnIntervalMin: 0.2, // ramps down over `rampSeconds` for endless pressure
         rampSeconds: 300,
         boss: 'start',
-        bossHp: 180, // the boss also scales with the endless growth (up to 3x)
+        bossHp: 180, // the boss also scales with the endless growth (uncapped)
         bossSpeedMul: 0.77,   // +10% over wave 3's 0.7
         bossOrbSpeedMul: 1.1, // +10% over wave 3's orbs
+        bossKnockbackImmune: true, // the endless boss is unstoppable: pushes only damage it
         // After the boss dies, the next one spawns once this much score is earned.
         bossRespawnScore: 5000,
         clearBonusMul: 0, // wave 5 never ends, so it has no clear bonus

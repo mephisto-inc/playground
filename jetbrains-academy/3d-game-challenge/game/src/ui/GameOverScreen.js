@@ -1,4 +1,4 @@
-import { attachTooltip, el, hideTooltip, mount } from './dom.js';
+import { attachTooltip, el, formatClock, hideTooltip, mount } from './dom.js';
 import { STATE, onStateChange, setState } from '../core/StateMachine.js';
 import { PLAYER } from '../config/tuning.js';
 import { getGameOverSummary } from '../systems/Run.js';
@@ -16,6 +16,7 @@ let overlay = null;
 let scoreNode = null;
 let bestNode = null;
 let recordNode = null;
+let timeNode = null;
 let cardsNode = null;
 let achievementsNode = null;
 let revealTimer = null;
@@ -28,9 +29,11 @@ export function initGameOverScreen() {
     scoreNode = el('div', 'final-score');
     bestNode = el('div', 'best-score');
     recordNode = el('div', 'record-badge');
+    timeNode = el('div', 'final-time');
     panel.appendChild(scoreNode);
     panel.appendChild(bestNode);
     panel.appendChild(recordNode);
+    panel.appendChild(timeNode);
 
     panel.appendChild(el('div', 'summary-label', 'Power-ups collected'));
     cardsNode = el('div', 'recap-cards');
@@ -84,6 +87,12 @@ function render() {
     bestNode.textContent = `Best: ${summary.best.toLocaleString()}`;
     recordNode.textContent = summary.isRecord ? '🏆 NEW RECORD!' : '';
 
+    // Survival times: total run time, plus the wave-5 time once the run reached wave 5.
+    const times = summary.times || {total: 0, wave5: 0};
+    timeNode.textContent = times.wave5 > 0
+        ? `⏱ Total ${formatClock(times.total)} · Wave 5 ${formatClock(times.wave5)}`
+        : `⏱ Total ${formatClock(times.total)}`;
+
     // Cards recap: one badge per collected card, in pickup order. Each carries the same tooltip
     // as the HUD badges, so the recap explains what was picked without leaving the screen.
     hideTooltip(); // the badges it was describing are about to be discarded
@@ -104,7 +113,8 @@ function render() {
     }
 
     // Achievements unlocked during this run (by id, looked up in the live registry for icon
-    // and name; a hit from an achievement unregistered since the run is skipped).
+    // and name; a hit from an achievement unregistered since the run is skipped). Hovering (or
+    // tapping) a row shows what the achievement required, like every other badge in the UI.
     achievementsNode.innerHTML = '';
     if (summary.unlocked.length === 0) {
         achievementsNode.appendChild(el('div', 'summary-label', '— none —'));
@@ -112,9 +122,9 @@ function render() {
         for (const id of summary.unlocked) {
             const definition = getAchievement(id);
             if (!definition) continue;
-            achievementsNode.appendChild(
-                el('div', '', `${definition.icon} ${definition.name}`),
-            );
+            const row = el('div', 'recap-achievement', `${definition.icon} ${definition.name}`);
+            attachTooltip(row, `${definition.icon} ${definition.name}`, definition.description);
+            achievementsNode.appendChild(row);
         }
     }
 }
