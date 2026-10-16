@@ -89,6 +89,23 @@ export const MOVE = {
     deadzone: 4,
 };
 
+// --- Collision (round 6: configurable hit sizes) -----------------------------
+// Every character radius is measured from the real model geometry; these multipliers scale that
+// measurement where it is born, so movement, spawn placement, contact and every hit test agree.
+// The projectile multiplier scales only the bullets' HIT radius — their visual size is
+// deliberately untouched.
+export const COLLISION = {
+    // Extra reach added to every contact test, in world units. Small on purpose: the radius is
+    // measured from the model, so this only smooths over frame-to-frame jitter — it is NOT the
+    // old "chunky hitbox" padding (the old arena's models were 10x larger).
+    padding: 0.1,
+    playerRadiusMul: 1,     // scales Tode's measured hit radius
+    enemyRadiusMul: 1,      // scales every common enemy's measured hit radius
+    bossRadiusMul: 1,       // scales the Arena Lord's measured hit radius
+    houseRadiusMul: 1,      // scales both ground half-extents of every house's footprint box
+    projectileRadiusMul: 1, // scales every bullet's hit radius only (visual size unchanged)
+};
+
 // --- Enemy combat (GDD 3C, 4B, 6B) -------------------------------------------
 export const ENEMY = {
     // Maximum enemies alive at once. The GDD's density formula ([MAP_SIZE_DEPENDENT]: 35 per

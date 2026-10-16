@@ -7,6 +7,7 @@ import {
     normalizeModel,
 } from '../core/Assets.js';
 import {
+    circlesTouch,
     getCollider,
     isLineSightClear,
     isMoveFree,
@@ -14,11 +15,10 @@ import {
     MAX_MOVE_SUB_STEP,
     registerCollider,
     unregisterCollider,
-    wouldOverlap,
 } from '../core/Collision.js';
-import { ABILITY, ENEMY, PROJECTILE } from '../config/tuning.js';
+import { ABILITY, COLLISION, ENEMY, PROJECTILE } from '../config/tuning.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
-import player, { getStats } from './Player.js';
+import player, { getHitCenter, getStats } from './Player.js';
 import { getTrailSpeedFactor } from './Trail.js';
 import { spawnHeart } from './Pickup.js';
 import { spawnEnemyShot } from './Projectile.js';
@@ -111,7 +111,7 @@ export async function initEnemies(scene) {
             template,
             scale: shape.scale,             // scale normalizeModel() derived for the target height
             groundOffset: shape.groundOffset, // z-lift so the lowest vertex rests on the floor
-            radius: shape.radius,           // collision radius at final scale
+            radius: shape.radius * COLLISION.enemyRadiusMul, // hit radius at final scale
             clips,
         };
     });
@@ -374,6 +374,9 @@ export function updateEnemies(delta) {
     if (!ready) return;
 
     const playerCollider = getCollider(player);
+    // Hit tests use Tode's visible centre (the lean shifts his body ahead of his feet), so a
+    // leaning frog is touched where he visibly is (round 6).
+    const playerCenter = getHitCenter();
 
     // Backwards iteration so dying enemies can be removed in place.
     for (let index = enemies.length - 1; index >= 0; index--) {
@@ -553,8 +556,13 @@ export function updateEnemies(delta) {
         }
 
         // --- Contact with the player (polled by Combat for damage) ---
+        // Tested against the player's VISUAL centre, so contact registers where the leaning
+        // frog visibly is rather than at his feet.
         data.touchingPlayer = !!collider && !!playerCollider &&
-            wouldOverlap(collider, enemy.position.x, enemy.position.y, playerCollider);
+            circlesTouch(
+                enemy.position.x, enemy.position.y, collider.radius,
+                playerCenter.x, playerCenter.y, playerCollider.radius,
+            );
 
         // The contact attack animation re-triggers while pushing into the hero.
         data.contactAnimTimer -= delta;
@@ -564,9 +572,10 @@ export function updateEnemies(delta) {
         }
 
         // --- Ranged behavior: fire at the player (GDD 4B) ---
-        // Round 4: the gate is the same precise line-of-sight test the player's side uses, at the
-        // hostile shot's radius. It replaced the coarse sampled probe, which let shots squeeze
-        // "through" a house corner and die on it with no visible cause.
+        // Round 4: the gate is the same precise line-of-sight test the player's side uses, at
+        // the hostile shot's hit radius (round 6: the configurable one, not the visual radius).
+        // It replaced the coarse sampled probe, which let shots squeeze "through" a house corner
+        // and die on it with no visible cause.
         if (behavior === 'ranged') {
             data.fireTimer -= delta;
             if (data.fireTimer <= 0) {
@@ -576,7 +585,8 @@ export function updateEnemies(delta) {
                 // peeking around a corner should not let the ranger shoot through the house.
                 const clearShot = isLineSightClear(
                     enemy.position.x, enemy.position.y,
-                    player.position.x, player.position.y, PROJECTILE.enemyRadius,
+                    player.position.x, player.position.y,
+                    PROJECTILE.enemyRadius * COLLISION.projectileRadiusMul,
                 );
                 if (inRange && clearShot) {
                     // Round 5: lead the shot. Estimate the flight time from the current distance,

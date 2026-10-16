@@ -8,6 +8,7 @@ import player, {
 import { clearProjectiles } from '../entities/Projectile.js';
 import { clearPickups } from '../entities/Pickup.js';
 import { clearTrails } from '../entities/Trail.js';
+import { clearMinions } from '../entities/Minion.js';
 import { resetEnemies } from '../entities/Enemy.js';
 import { resetBoss } from '../entities/Boss.js';
 import { onPlayerDeath, resetCombat } from './Combat.js';
@@ -66,6 +67,9 @@ export function completeDraft(card) {
 // Ends the run: commits the score, evaluates the New Record achievement, freezes into GAME_OVER
 // (main plays the defeat animation there).
 function endRun() {
+    // The Anchor minions vanish with their master, so no companions float around the corpse or
+    // survive into the game-over screen (round 6).
+    clearMinions();
     lastCommit = commitScore();
     checkNewRecord(lastCommit);
     setState(STATE.GAME_OVER);
@@ -76,6 +80,7 @@ export function resetWorld() {
     clearProjectiles();
     clearPickups();
     clearTrails();
+    clearMinions();  // no companions may survive into a menu or a new run
     resetBoss();     // must run before resetEnemies(): the boss lives in the enemy list
     resetEnemies();
     resetCombat();

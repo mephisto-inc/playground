@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { cloneModel, enableShadows, loadGLTF, normalizeModel } from '../core/Assets.js';
 import { registerBoxCollider } from '../core/Collision.js';
+import { COLLISION } from '../config/tuning.js';
 
 // Houses component (GDD 5): places the five fixed houses at their exact GDD positions. Houses
 // block both movement and shots (they register box colliders), and four of them double as cover
@@ -85,9 +86,10 @@ async function placeHouse(definition, mapGroup) {
     mapGroup.add(group);
 
     // Register the collider last: group.position is final now and the collider stores it by
-    // reference. Houses never move, so it stays valid for the whole run.
-    const halfWidth = size.x / 2;
-    const halfDepth = size.y / 2;
+    // reference. Houses never move, so it stays valid for the whole run. Round 6:
+    // COLLISION.houseRadiusMul scales both half-extents (1 keeps the measured footprint exactly).
+    const halfWidth = (size.x / 2) * COLLISION.houseRadiusMul;
+    const halfDepth = (size.y / 2) * COLLISION.houseRadiusMul;
     registerBoxCollider(group, group.position, halfWidth, halfDepth);
 }
 

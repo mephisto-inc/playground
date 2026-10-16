@@ -44,7 +44,9 @@ export const ENEMY_TYPES = {
         hp: 1,
         speedMul: 0.8,
         score: 30,
-        targetHeight: 1.4,
+        // Round 6: +10% on user request (was 1.4). The model and its measured hitbox grow
+        // together, because the hitbox is measured from the model at this height.
+        targetHeight: 1.54,
         yawOffset: Math.PI / 2,
         behavior: 'ranged',
         moveClip: 'Fast_Flying',

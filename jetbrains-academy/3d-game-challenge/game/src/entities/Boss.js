@@ -7,17 +7,17 @@ import {
     normalizeModel,
 } from '../core/Assets.js';
 import {
+    circlesTouch,
     getCollider,
     isMoveFree,
     isSpotFree,
     MAX_MOVE_SUB_STEP,
     registerCollider,
     unregisterCollider,
-    wouldOverlap,
 } from '../core/Collision.js';
-import { ABILITY, BOSS, ENEMY, SPAWN_POINTS } from '../config/tuning.js';
+import { ABILITY, BOSS, COLLISION, ENEMY, SPAWN_POINTS } from '../config/tuning.js';
 import { BOSS_TYPE } from '../config/enemies.js';
-import player, { damagePlayer, isInvulnerable } from './Player.js';
+import player, { damagePlayer, getHitCenter, isInvulnerable } from './Player.js';
 import { addToEnemyList, removeFromEnemyList } from './Enemy.js';
 import { getTrailSpeedFactor } from './Trail.js';
 import { spawnHeart } from './Pickup.js';
@@ -102,7 +102,7 @@ export async function initBoss(scene) {
         template,
         scale: shape.scale,
         groundOffset: shape.groundOffset,
-        radius: shape.radius,
+        radius: shape.radius * COLLISION.bossRadiusMul, // hit radius at final scale
         clips,
     };
 }
@@ -380,10 +380,15 @@ export function updateBoss(delta) {
         faceBoss(data.dashDirection.x, data.dashDirection.y);
 
         // Dash contact: 2 physical damage, once per dash. During the player's i-frames the dash
-        // ghosts through instead (GDD 3C).
+        // ghosts through instead (GDD 3C). Tested against the player's VISUAL centre, so a dash
+        // that visibly clips the leaning frog registers (round 6).
         const playerCollider = getCollider(player);
+        const playerCenter = getHitCenter();
         if (!data.dashHit && playerCollider && collider &&
-            wouldOverlap(collider, boss.position.x, boss.position.y, playerCollider)) {
+            circlesTouch(
+                boss.position.x, boss.position.y, collider.radius,
+                playerCenter.x, playerCenter.y, playerCollider.radius,
+            )) {
             if (!isInvulnerable()) {
                 data.dashHit = true;
                 damagePlayer(BOSS.dashDamage, 'physical');
@@ -471,13 +476,16 @@ function faceBoss(dirX, dirY) {
 // GDD 3C) — isMoveFree stops at walls, and the push is skipped entirely during i-frames.
 // Returns true when the bodies were actually overlapping (round 5: the caller applies the
 // contact damage on that signal); false when there was no contact or the player is invulnerable.
+// Round 6: the overlap is measured to the player's VISUAL centre (the lean shifts his body),
+// while the push itself still moves the feet position.
 function pushPlayerOut(bossCollider) {
     if (isInvulnerable()) return false; // ghosting
     const playerCollider = getCollider(player);
     if (!playerCollider) return false;
 
-    const dx = player.position.x - boss.position.x;
-    const dy = player.position.y - boss.position.y;
+    const playerCenter = getHitCenter();
+    const dx = playerCenter.x - boss.position.x;
+    const dy = playerCenter.y - boss.position.y;
     const distance = Math.hypot(dx, dy);
     const reach = playerCollider.radius + bossCollider.radius;
 

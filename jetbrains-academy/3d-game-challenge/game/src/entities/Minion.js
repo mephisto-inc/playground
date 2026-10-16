@@ -4,7 +4,7 @@ import { spawnMinionShot } from './Projectile.js';
 import { assetUrl } from '../core/Assets.js';
 import { isLineSightClear } from '../core/Collision.js';
 import { playSfx } from '../systems/Audio.js';
-import { ABILITY, PLAYER, PROJECTILE } from '../config/tuning.js';
+import { ABILITY, COLLISION, PLAYER, PROJECTILE } from '../config/tuning.js';
 
 // Minion component (GDD 4A, Anchor class): two translucent sprites that orbit the player, always
 // facing the camera (THREE.Sprite billboards automatically), with 50% more vision range than the
@@ -121,9 +121,10 @@ export function updateMinions(delta, playerPos, stats) {
 
 // Finds the closest enemy (circle centres on the ground plane) within `range` of a position,
 // skipping corpses and enemies with no clear shot: the line from the minion's orbit point must
-// stay clear of every house/wall box for the shot's radius (round 4, same gate as the player's
-// auto-shooter), so minions never fire into a house wall. A farther visible enemy wins over a
-// nearer hidden one.
+// stay clear of every house/wall box for the shot's hit radius (round 4, same gate as the
+// player's auto-shooter; round 6: the configurable hit radius, matching what really stops the
+// bullet), so minions never fire into a house wall. A farther visible enemy wins over a nearer
+// hidden one.
 function findNearestEnemy(enemies, position, range) {
     let best = null;
     let bestDistanceSq = range * range;
@@ -133,7 +134,10 @@ function findNearestEnemy(enemies, position, range) {
         const dy = enemy.position.y - position.y;
         const distanceSq = dx * dx + dy * dy;
         if (distanceSq >= bestDistanceSq) continue;
-        if (!isLineSightClear(position.x, position.y, enemy.position.x, enemy.position.y, PROJECTILE.playerRadius)) {
+        if (!isLineSightClear(
+            position.x, position.y, enemy.position.x, enemy.position.y,
+            PROJECTILE.playerRadius * COLLISION.projectileRadiusMul,
+        )) {
             continue;
         }
         bestDistanceSq = distanceSq;

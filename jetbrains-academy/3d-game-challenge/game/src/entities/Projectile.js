@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { isObstacleFree } from '../core/Collision.js';
-import { ABILITY, PROJECTILE } from '../config/tuning.js';
+import { ABILITY, COLLISION, PROJECTILE } from '../config/tuning.js';
 
 // Projectile component: one pool for every shot in the game — player shots (and Anchor minion
 // shots, which behave identically) and enemy shots (ranged projectiles and boss orbs).
@@ -29,11 +29,13 @@ const materials = {
     boss: new THREE.MeshBasicMaterial({ color: COLORS.boss }),
 };
 
-// Every live bullet. Each entry: { mesh, owner, damage, radius, speedX, speedY, life, pierce,
-// hitSet, sender } where owner is 'player' | 'minion' | 'enemy' | 'boss' and hitSet remembers
-// enemies a piercing shot already damaged (so one bullet never damages the same body twice).
-// sender (round 5) is the enemy/boss object that fired a hostile bullet; parry reflections aim
-// back at it while it is alive (see reflectProjectilesNear).
+// Every live bullet. Each entry: { mesh, owner, damage, radius, hitRadius, speedX, speedY, life,
+// pierce, hitSet, sender } where owner is 'player' | 'minion' | 'enemy' | 'boss' and hitSet
+// remembers enemies a piercing shot already damaged (so one bullet never damages the same body
+// twice). `radius` drives the mesh's visual size; `hitRadius` (= radius x
+// COLLISION.projectileRadiusMul) drives every collision test, so tuning the hitbox never
+// changes how big bullets look. sender (round 5) is the enemy/boss object that fired a hostile
+// bullet; parry reflections aim back at it while it is alive (see reflectProjectilesNear).
 const bullets = [];
 let sceneRef = null;
 
@@ -52,6 +54,7 @@ function spawnBullet({ owner, x, y, z, dirX, dirY, speed, damage, radius, life, 
         owner,
         damage,
         radius,
+        hitRadius: radius * COLLISION.projectileRadiusMul,
         speedX: dirX * speed,
         speedY: dirY * speed,
         life,
@@ -148,7 +151,7 @@ export function reflectProjectilesNear(x, y, radius) {
         if (bullet.owner !== 'enemy' && bullet.owner !== 'boss') continue;
         const dx = bullet.mesh.position.x - x;
         const dy = bullet.mesh.position.y - y;
-        if (Math.hypot(dx, dy) > radius + bullet.radius) continue;
+        if (Math.hypot(dx, dy) > radius + bullet.hitRadius) continue;
 
         const speed = Math.hypot(bullet.speedX, bullet.speedY);
         if (speed < 1e-6) continue;
@@ -217,7 +220,7 @@ export function updateProjectiles(delta, enemies, playerInfo) {
             bullet.mesh.position.y += stepY / subSteps;
 
             // Houses and walls block every shot (GDD 5: houses block shots).
-            if (!isObstacleFree(bullet.mesh.position.x, bullet.mesh.position.y, bullet.radius)) {
+            if (!isObstacleFree(bullet.mesh.position.x, bullet.mesh.position.y, bullet.hitRadius)) {
                 dead = true;
                 break;
             }
@@ -232,7 +235,7 @@ export function updateProjectiles(delta, enemies, playerInfo) {
                     if (bullet.hitSet.has(enemy)) continue; // never damage one body twice
                     const dx = enemy.position.x - bullet.mesh.position.x;
                     const dy = enemy.position.y - bullet.mesh.position.y;
-                    const reach = enemy.userData.collider.radius + bullet.radius;
+                    const reach = enemy.userData.collider.radius + bullet.hitRadius;
                     if (dx * dx + dy * dy > reach * reach) continue;
 
                     // The enemy OBJECT is remembered (not its index), because kill bookkeeping
@@ -254,7 +257,7 @@ export function updateProjectiles(delta, enemies, playerInfo) {
                 // Hostile bullet vs player: report the hit; Combat applies damage and i-frames.
                 const dx = playerInfo.x - bullet.mesh.position.x;
                 const dy = playerInfo.y - bullet.mesh.position.y;
-                const reach = playerInfo.radius + bullet.radius;
+                const reach = playerInfo.radius + bullet.hitRadius;
                 if (dx * dx + dy * dy <= reach * reach) {
                     events.playerHits.push(bullet);
                     dead = true;

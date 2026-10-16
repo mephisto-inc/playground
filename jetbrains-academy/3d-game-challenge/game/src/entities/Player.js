@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { cloneMaterials, enableShadows, loadGLTF, normalizeModel } from '../core/Assets.js';
 import { isMoveFree, registerCollider, MAX_MOVE_SUB_STEP } from '../core/Collision.js';
 import { getMoveTarget } from '../core/Input.js';
-import { ABILITY, ENEMY, PICKUP, PLAYER } from '../config/tuning.js';
+import { ABILITY, COLLISION, ENEMY, PICKUP, PLAYER } from '../config/tuning.js';
 import { getClass } from '../config/classes.js';
 import { clearMinions, createMinions, updateMinions } from './Minion.js';
 import { spawnTrail } from './Trail.js';
@@ -56,7 +56,8 @@ async function load() {
 
     player.add(model);
     player.visible = false; // starts hidden behind the main menu
-    playerCollider = registerCollider(player, player.position, measureRadius(model));
+    // COLLISION.playerRadiusMul grows/shrinks the measured hit circle without touching the model.
+    playerCollider = registerCollider(player, player.position, measureRadius(model) * COLLISION.playerRadiusMul);
     return model;
 }
 
@@ -74,6 +75,31 @@ function measureRadius(object) {
         }
     });
     return radius;
+}
+
+// --- Visual hit centre -------------------------------------------------------
+
+// The ground-plane centre of the model's current world bounds. While Tode leans through a hop,
+// the visible body shifts ahead of his feet, so hostile-bullet hits, parry reflections and body
+// contact all test against this point (via getHitCenter()) instead of player.position — they
+// register where the frog visibly is. Recomputed once per live frame in updatePlayer().
+const hitCenter = new THREE.Vector2();
+const hitCenterBox = new THREE.Box3();
+const hitCenterPoint = new THREE.Vector3();
+
+function updateHitCenter() {
+    if (model) {
+        // Refresh world matrices so the box reads this frame's lean and yaw, not last frame's.
+        player.updateMatrixWorld(true);
+        hitCenterBox.setFromObject(model);
+        hitCenterBox.getCenter(hitCenterPoint);
+        // An empty box (no meshes) would give Infinity/NaN coordinates; fall through instead.
+        if (Number.isFinite(hitCenterPoint.x) && Number.isFinite(hitCenterPoint.y)) {
+            hitCenter.set(hitCenterPoint.x, hitCenterPoint.y);
+            return;
+        }
+    }
+    hitCenter.set(player.position.x, player.position.y);
 }
 
 // --- Live run state ----------------------------------------------------------
@@ -623,6 +649,7 @@ export function updatePlayer(delta) {
 
     // Model orientation: face the travel direction, tilt through the leap, reset on touch-down.
     orientModel(move.yaw, move.progress < 1 ? currentLean() : 0);
+    updateHitCenter(); // refresh the visual hit centre for this frame's hit tests
 
     // I-frame flash: toggle opacity between 50% and 100% while invulnerable (GDD 3C).
     const opacity = iframes > 0 && Math.floor(iframes * 10) % 2 === 0
@@ -729,12 +756,20 @@ export function getCollectedCards() {
     return collectedCards.slice();
 }
 
+// The player's visual hit centre (see the "Visual hit centre" section): the ground-plane centre
+// of the model's current world bounds, refreshed every live frame by updatePlayer(). Returned
+// live — callers read x/y in the same frame and must not keep or mutate the object.
+export function getHitCenter() {
+    return hitCenter;
+}
+
 // --- Reset -------------------------------------------------------------------
 
-// Puts Tode back at the arena centre, visible and level, with no hop in flight. Called on every
-// new run (configureClass calls it) and by Run.resetWorld().
+// Puts Tode back at the arena centre, visible and level, with no hop in flight. Called by
+// configureClass() on every new run and by main.js when returning to character selection.
 export function resetPlayer() {
     player.position.set(0, 0, 0);
+    hitCenter.set(player.position.x, player.position.y); // hit tests start on the feet again
     move.progress = 1;
     move.direction.set(0, 0, 0);
     move.start.copy(player.position);

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { COLLISION } from '../config/tuning.js';
 
 // Collision module: two shared responsibilities, split as before —
 //
@@ -6,16 +7,16 @@ import * as THREE from 'three';
 //     boxes block movement/shots: houses and the arena's boundary walls. Characters pass
 //     through each other; contact between them is a separate overlap test.
 //
-//   * DETECTION (wouldOverlap / isSpotFree) — "do these two circles touch?" / "is this spawn
-//     spot clear of everything?".
+//   * DETECTION (circlesTouch / isSpotFree) — "do these two circles touch?" / "is this spawn
+//     spot clear of everything?". circlesTouch takes both centres explicitly, so player-facing
+//     tests can use the player's VISUAL centre (which follows the hop's lean) instead of the
+//     feet position his collider stores.
 //
 // Everything is 2D on the ground plane: height is ignored, so a hopping player is still blocked
 // by a house and an airborne enemy still touches Tode.
 
-// Extra reach added to every contact test, in world units. Small on purpose: the collider radius
-// is measured from the real model geometry, so this only smooths over frame-to-frame jitter —
-// it is NOT the old "chunky hitbox" padding (the old arena's models were 10x larger).
-const COLLISION_PADDING = 0.1;
+// The size multipliers and the contact padding live in config/tuning.js (COLLISION); radii are
+// scaled where they are measured so every consumer reads one consistent number.
 
 // The largest world-space increment a mover may advance per collision check. Both characters and
 // projectiles advance in sub-steps of at most this size, so fast movement cannot tunnel through a
@@ -63,19 +64,20 @@ function penetrationOf(x, y, radius, other) {
     if (other.shape === 'box') {
         const dx = Math.max(Math.abs(x - other.position.x) - other.halfWidth, 0);
         const dy = Math.max(Math.abs(y - other.position.y) - other.halfDepth, 0);
-        return Math.max(0, radius + COLLISION_PADDING - Math.hypot(dx, dy));
+        return Math.max(0, radius + COLLISION.padding - Math.hypot(dx, dy));
     }
     return Math.max(
         0,
-        radius + other.radius + COLLISION_PADDING -
+        radius + other.radius + COLLISION.padding -
             Math.hypot(x - other.position.x, y - other.position.y),
     );
 }
 
-// True if placing `mover` at (x, y) would overlap `other` specifically. `mover` is always a
-// character circle; `other` may be a circle (another character) or an obstacle box.
-export function wouldOverlap(mover, x, y, other) {
-    return penetrationOf(x, y, mover.radius, other) > EPSILON;
+// True when two character circles touch. Both centres are explicit (unlike the direction of a
+// wouldOverlap-style call), so a test can pass the player's visual centre (Player.getHitCenter)
+// instead of the feet position his own collider stores. The padding matches penetrationOf.
+export function circlesTouch(x1, y1, r1, x2, y2, r2) {
+    return r1 + r2 + COLLISION.padding - Math.hypot(x2 - x1, y2 - y1) > EPSILON;
 }
 
 // True if moving `mover` to (x, y) is allowed: it must land clear of every static box. Characters

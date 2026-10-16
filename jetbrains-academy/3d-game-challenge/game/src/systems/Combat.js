@@ -1,7 +1,8 @@
-import { ABILITY, BOSS, ENEMY, PROJECTILE } from '../config/tuning.js';
+import { ABILITY, BOSS, COLLISION, ENEMY, PROJECTILE } from '../config/tuning.js';
 import player, {
     consumeParryBurst,
     damagePlayer,
+    getHitCenter,
     getStats,
     healPlayer,
     isDead,
@@ -116,8 +117,9 @@ function updateAutoShooter(delta) {
 
 // Nearest enemy (boss included) within `range` of the player, skipping corpses and enemies the
 // player cannot actually shoot: a target behind a house (no clear line of sight, tested against
-// the same static boxes projectiles collide with, at shot radius) is filtered out, so the volley
-// never pours into a wall. A farther visible enemy wins over a nearer hidden one.
+// the same static boxes projectiles collide with, at the shot's real hit radius) is filtered
+// out, so the volley never pours into a wall. A farther visible enemy wins over a nearer hidden
+// one.
 function findNearestTarget(range) {
     let best = null;
     let bestDistanceSq = range * range;
@@ -129,7 +131,10 @@ function findNearestTarget(range) {
         const dy = enemy.position.y - originY;
         const distanceSq = dx * dx + dy * dy;
         if (distanceSq >= bestDistanceSq) continue;
-        if (!isLineSightClear(originX, originY, enemy.position.x, enemy.position.y, PROJECTILE.playerRadius)) {
+        if (!isLineSightClear(
+            originX, originY, enemy.position.x, enemy.position.y,
+            PROJECTILE.playerRadius * COLLISION.projectileRadiusMul,
+        )) {
             continue;
         }
         bestDistanceSq = distanceSq;
@@ -175,12 +180,13 @@ function fireVolley(target) {
 // --- Parry interactions (GDD 4A) ------------------------------------------------
 
 // While the shield is up, any hostile projectile that enters its circle is reflected back at
-// player speed (Projectile.reflectProjectilesNear). A reflection is a successful parry.
+// player speed (Projectile.reflectProjectilesNear). Round 6: the circle is centred on Tode's
+// VISUAL position (the lean shifts his body), so the parry catches what visually touches him.
+// A reflection is a successful parry.
 function reflectWithShield() {
     if (!isShieldActive()) return;
-    const reflected = reflectProjectilesNear(
-        player.position.x, player.position.y, ABILITY.parryReflectRadius,
-    );
+    const center = getHitCenter();
+    const reflected = reflectProjectilesNear(center.x, center.y, ABILITY.parryReflectRadius);
     if (reflected > 0) markParrySuccess(); // plays sfx_parry once and arms the shockwave
 }
 
@@ -258,12 +264,14 @@ function resolveContactDamage() {
 
 // --- Helpers -------------------------------------------------------------------------
 
-// The player's circle for hostile-bullet collision: centre + measured collider radius.
+// The player's circle for hostile-bullet collision: the VISUAL centre (the hop's lean shifts
+// the body ahead of the feet) plus the measured collider radius.
 function playerHitShape() {
     const collider = getCollider(player);
+    const center = getHitCenter();
     return {
-        x: player.position.x,
-        y: player.position.y,
+        x: center.x,
+        y: center.y,
         radius: collider ? collider.radius : 0.6,
     };
 }
