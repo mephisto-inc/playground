@@ -22,26 +22,26 @@
 export const WAVES = [
     {
         wave: 1,
-        duration: 45,
-        pool: ['runner', 'ranged'],
-        spawnInterval: 0.83,
+        duration: 20,
+        pool: ['fighter', 'ranged'],
+        spawnInterval: 0.5,
         clearBonusMul: 500,
     },
     {
         wave: 2,
-        duration: 60,
-        pool: ['runner', 'ranged', 'speeder'],
-        spawnInterval: 0.67,
+        duration: 30,
+        pool: ['fighter', 'ranged', 'speeder'],
+        spawnInterval: 0.5,
         clearBonusMul: 500,
     },
     {
         wave: 3,
         // Ends when the boss dies, not on a timer (duration = Infinity marks that).
         duration: Infinity,
-        pool: ['runner', 'ranged', 'speeder'],
-        spawnInterval: 0.6,
+        pool: ['fighter', 'ranged', 'speeder'],
+        spawnInterval: 0.5,
         boss: 'start',
-        bossHp: 250, // GDD's 50 x5 (user: 10x, then halved in round 5 — the fight felt long)
+        bossHp: 80, // GDD's 50 x5 (user: 10x, then halved in round 5 — the fight felt long)
         bossSpeedMul: 0.7,    // base boss speed (mirrors BOSS.speedMul in tuning.js)
         bossOrbSpeedMul: 1.0, // orb speed reference: wave 5 fires 10% faster than this
         // GDD: enemy spawn rate goes down by 70% during the boss fight (30% of normal).
@@ -50,20 +50,20 @@ export const WAVES = [
     },
     {
         wave: 4,
-        duration: 75,
-        pool: ['runner', 'ranged', 'speeder', 'tank'],
-        spawnInterval: 0.4,
+        duration: 30,
+        pool: ['fighter', 'ranged', 'speeder', 'tank'],
+        spawnInterval: 0.3,
         clearBonusMul: 500,
     },
     {
         wave: 5,
         duration: Infinity,
-        pool: ['runner', 'ranged', 'speeder', 'tank'],
-        spawnInterval: 0.4,
+        pool: ['fighter', 'ranged', 'speeder', 'tank'],
+        spawnInterval: 0.3,
         spawnIntervalMin: 0.2, // ramps down over `rampSeconds` for endless pressure
         rampSeconds: 300,
         boss: 'start',
-        bossHp: 400, // GDD's 80 x5 (user: 10x, then halved in round 5; growth can raise it 3x more)
+        bossHp: 180, // GDD's 80 x5 (user: 10x, then halved in round 5; growth can raise it 3x more)
         bossSpeedMul: 0.77,   // round 5: +10% over wave 3's 0.7
         bossOrbSpeedMul: 1.1, // round 5: +10% over wave 3's orbs (which already run at 15)
         // GDD: after the boss dies, the next one spawns once 1,000 score is earned.

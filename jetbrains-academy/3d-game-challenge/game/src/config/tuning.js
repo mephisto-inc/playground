@@ -60,7 +60,7 @@ export const LIGHTS = {
 
 // --- Player (GDD 4A + user-confirmed heart values) ---------------------------
 export const PLAYER = {
-    baseHearts: 3,        // Parry/Dasher start here (user override of the GDD's 5)
+    baseHearts: 5,        // Parry/Dasher start here (user override of the GDD's 5)
     maxHearts: 7,         // global cap for every class (GDD 4A)
     // User-confirmed: doubled from 0.5 back to 1.0 while the camera zoomed out 2x (viewWidth
     // 40), so Tode's on-screen size stays the same while the world around him stays readable.
@@ -97,8 +97,8 @@ export const ENEMY = {
     // reaches; it only exists as a runaway guard against spawning without bound.
     maxAlive: 200,
     baseSpeed: 3.2,          // world units per second at "speed 1.0x"
-    baseDropChance: 0.02,    // 2% health-drop chance per kill (GDD 4B)
-    bloodthirstDropChance: 0.10, // 10% with the Bloodthirst card (GDD 6A)
+    baseDropChance: 0.2,    // 2% health-drop chance per kill (GDD 4B)
+    HealthyDropChance: 0.5, // 10% with the Bloodthirst card (GDD 6A)
     stunDuration: 1.5,       // seconds common enemies stay stunned after a Parry shockwave
     knockbackDistance: 2.5,  // how far a common enemy is pushed when it touches the player
     hitFlashDuration: 0.08,  // white flash after taking damage, in seconds (GDD 3C)
@@ -153,10 +153,10 @@ export const BOSS = {
 // --- Projectiles -------------------------------------------------------------
 // The GDD fixes the damage (1 for ranged shots and boss orbs) but not the speeds or sizes.
 export const PROJECTILE = {
-    playerSpeed: 26,       // player/minion shot speed, world units per second
+    playerSpeed: 30,       // player/minion shot speed, world units per second
     playerRadius: 0.35,    // hit radius of a player shot
     playerLifetime: 1.2,   // seconds before a missed shot despawns (range ~31 units)
-    enemySpeed: 6,         // ranged-enemy projectile speed (slow enough to dodge)
+    enemySpeed: 4,         // ranged-enemy projectile speed (slow enough to dodge)
     enemyRadius: 0.3,
     enemyLifetime: 4,      // seconds alive before despawn; houses block them earlier
     bossOrbSpeed: 15,      // boss orb speed (round 5: 3x the previous 5)
@@ -189,7 +189,7 @@ export const DRAFT = {
 // --- Audio (GDD 2 + 9) -------------------------------------------------------
 export const AUDIO = {
     masterVolumeDefault: 0.5, // initial master volume; persisted in localStorage
-    lowPassHz: 400,           // the "muffled" filter frequency (GDD 2)
+    lowPassHz: 1200,           // the "muffled" filter frequency (GDD 2)
     // GDD 9 leaves the boss_step3 fade length to the editor. Two constants: a snappy crossfade
     // for ordinary step changes (user-approved) and the longer one for bgm_boss_step3 swaps.
     crossfadeSnappy: 0.15,
@@ -226,7 +226,7 @@ export const ABILITY = {
     trailSlowCommon: 0.5,      // common enemy speed multiplier inside the trail (50% slow)
     trailSlowBoss: 0.75,       // boss speed multiplier inside the trail (25% slow)
     // Anchor
-    minionCount: 2,            // two orbiting minions
+    minionCount: 3,            // two orbiting minions
     minionOrbitRadius: 1.7,    // world units from the player
     minionOrbitSpeed: 1.3,     // radians per second
     minionHeight: 1.2,         // Z height of the orbit (they float)

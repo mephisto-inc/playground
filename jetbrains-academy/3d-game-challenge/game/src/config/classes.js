@@ -1,7 +1,7 @@
 // Class definitions (GDD 4A). Pure data: each entry describes one starter class and the numbers
 // its ability runs on. Player.js turns these into live stats; the UI reads name/icon/description.
 
-import { ABILITY, PLAYER } from './tuning.js';
+import {ABILITY, PLAYER} from './tuning.js';
 
 // The three starter classes. `hearts` is the starting HP for the class:
 //   Parry/Dasher: 3 (the base — user-confirmed change from the GDD's 5).
@@ -55,8 +55,8 @@ export const CLASSES = [
         id: 'anchor',
         name: 'Anchor',
         icon: '🤖',
-        hearts: PLAYER.baseHearts + 2, // passive: +2 max hearts (user-confirmed; GDD said +1)
-        description: 'Passive: +2 max hearts and 2 orbiting Minions that always face the camera. '
+        hearts: PLAYER.baseHearts - 2, // passive: +2 max hearts (user-confirmed; GDD said +1)
+        description: 'Passive: 3 orbiting Minions that always face the camera. '
             + 'Minions have 50% more vision range and copy every power-up you collect. '
             + 'Minion damage: 1 every 2.4 s.',
         ability: {
