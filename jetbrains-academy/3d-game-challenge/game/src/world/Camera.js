@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { CAMERA } from '../config/tuning.js';
 
-// Camera component (GDD 3A): a fixed-orientation orthographic camera looking down at the arena
-// from a 55-degree tilt, 38 units up, with a diagonal (isometric-style) heading. The projection
-// is orthographic, so distance does not change apparent size — position only fixes direction.
+// Camera component: a fixed-orientation orthographic camera looking down at the arena from the
+// tuned tilt and height, with a diagonal (isometric-style) heading. The projection is
+// orthographic, so distance does not change apparent size — position only fixes direction.
 //
 // The camera leads the player slightly toward the pointer (up to CAMERA.followOffsetMax units)
 // and smooths every move, so the view glides instead of snapping.
@@ -12,7 +12,7 @@ import { CAMERA } from '../config/tuning.js';
 // updateCameraProjection() on resize.
 
 // The camera box is a fixed width in world units; its height follows the window aspect ratio
-// (about 22.5 units tall on a 16:9 screen with the current 40-unit width — GDD 3A).
+// (a 40-unit width is about 22.5 units tall on a 16:9 screen).
 const FRUSTUM_WIDTH = CAMERA.viewWidth;
 
 const aspect = window.innerWidth / window.innerHeight;

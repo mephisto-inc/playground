@@ -9,6 +9,7 @@ import { initDraftModal } from './DraftModal.js';
 import { initPauseMenu } from './PauseMenu.js';
 import { initGameOverScreen } from './GameOverScreen.js';
 import { initAchievementsPanel } from './AchievementsPanel.js';
+import { initToast } from './Toast.js';
 
 export function initUI() {
     initHUD();
@@ -18,6 +19,7 @@ export function initUI() {
     initPauseMenu();
     initGameOverScreen();
     initAchievementsPanel();
+    initToast();
 }
 
 export { updateHUD };

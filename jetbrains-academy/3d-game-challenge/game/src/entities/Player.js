@@ -10,9 +10,9 @@ import { addPierceToPlayerShots } from './Projectile.js';
 import { playSfx } from '../systems/Audio.js';
 import { unlockAchievement } from '../systems/Achievements.js';
 
-// Player component (GDD 3B, 3C, 4A): owns Tode the Frog — the model, the pointer-steered hop,
-// the heart/HP stats every power-up mutates, i-frames and hit flash, and the class ability
-// (Parry shield, Dasher dash, Anchor minions).
+// Player component: owns Tode the Frog — the model, the pointer-steered hop, the heart/HP
+// stats every power-up mutates, i-frames and hit flash, and the class ability (Parry shield,
+// Dasher dash, Anchor minions).
 //
 // The player group carries only the ground position; the model child carries facing and the
 // hop's frog-lean. Movement is a sequence of short hops toward the pointer (Input.js provides
@@ -120,7 +120,7 @@ let classId = 'parry';
 let collectedCards = []; // card ids in pickup order (HUD badges + game-over recap)
 let dead = false;
 let iframes = 0;         // remaining invulnerability seconds
-let deathAnimTime = 0;   // progress through the defeat animation (GDD state 6)
+let deathAnimTime = 0;   // progress through the defeat animation
 
 // Ability state (only one class is active per run, so one set of timers is enough).
 let cooldownRemaining = 0;
@@ -140,7 +140,7 @@ const move = {
     yaw: 0,
 };
 
-// Base stats at "fresh run, no cards": values from GDD 4A via tuning.js.
+// Base stats at "fresh run, no cards": values from tuning.js.
 function makeBaseStats() {
     return {
         maxHearts: PLAYER.baseHearts,
@@ -185,11 +185,18 @@ export function configureClass(nextClassId) {
 
     resetPlayer();
     if (definition.ability.minionCount) {
-        createMinions(sceneRef, definition.ability.minionCount);
+        // The Minion module reads its orbit/damage numbers from the class's ability block.
+        createMinions(sceneRef, definition.ability);
     }
 }
 
-// --- Power-up application (GDD 6A) -------------------------------------------
+// The active class's ability block (config/classes.js). Combat, Projectile, Enemy, Boss and the
+// minions read their numbers through this, so each class retunes its ability in one place.
+export function getAbilityValues() {
+    return getClass(classId).ability;
+}
+
+// --- Power-up application ----------------------------------------------------
 
 // Applies a draft card's effect descriptor to the live stats. The card data is declarative
 // (config/powerups.js), so this is the single place that interprets every descriptor field.
@@ -209,7 +216,7 @@ export function applyCard(card) {
     if (effect.rangeMul) stats.range *= effect.rangeMul;
     if (effect.maxHeartsAdd) {
         stats.maxHearts = Math.min(PLAYER.maxHearts, stats.maxHearts + effect.maxHeartsAdd);
-        // "Full Hearts" achievement (GDD 7): reaching the global 7-heart cap.
+        // "Full Hearts" achievement: reaching the global 7-heart cap.
         if (stats.maxHearts >= PLAYER.maxHearts) unlockAchievement('fullHearts');
     }
     if (effect.heal) healPlayer(effect.heal);
@@ -229,7 +236,7 @@ export function applyCard(card) {
 //   'hit'      — damage landed
 //   'dead'     — damage landed and killed the player
 // `kind` is 'physical' (enemy contact, boss dash) or 'projectile' — the shield cancels only
-// physical damage; projectiles are supposed to be reflected before they arrive (GDD 4A).
+// physical damage; projectiles are supposed to be reflected before they arrive.
 export function damagePlayer(amount, kind = 'physical') {
     if (dead) return 'dead';
     if (kind === 'physical' && shieldRemaining > 0) {
@@ -266,8 +273,8 @@ export function isDead() {
     return dead;
 }
 
-// True while i-frames are running. The Boss uses this for the GDD's "ghosting": during i-frames
-// the player passes through the Boss's hitbox with no push and no damage.
+// True while i-frames are running. The Boss uses this for "ghosting": during i-frames the
+// player passes through the Boss's hitbox with no push and no damage.
 export function isInvulnerable() {
     return iframes > 0;
 }
@@ -291,27 +298,26 @@ export function markParrySuccess() {
 export function consumeParryBurst() {
     if (!parryBurstPending) return null;
     parryBurstPending = false;
-    const definition = getClass(classId);
+    const ability = getAbilityValues();
     return {
-        radius: definition.ability.shockwaveRadius,
-        // Shockwave damage is 3 + current HP (GDD 4A).
-        damage: definition.ability.shockwaveBaseDamage + stats.hearts,
+        radius: ability.shockwaveRadius,
+        // Shockwave damage is the class's base plus current HP.
+        damage: ability.shockwaveBaseDamage + stats.hearts,
     };
 }
 
-// --- Abilities (GDD 4A) ------------------------------------------------------
+// --- Abilities ---------------------------------------------------------------
 
 // Double click/tap handler: activates the class ability. Anchor is passive and does nothing.
 export function tryActivateAbility() {
     if (dead || cooldownRemaining > 0 || !model) return;
-    const definition = getClass(classId);
-    const ability = definition.ability;
+    const ability = getAbilityValues();
 
     if (classId === 'parry') {
         cooldownRemaining = ability.cooldown;
         shieldRemaining = ability.shield;
         parrySucceeded = false;
-        showParryGlow(); // VFX: the shield lights up for its 0.4 s window
+        showParryGlow(); // VFX: the shield lights up for its shield window
     } else if (classId === 'dasher') {
         cooldownRemaining = ability.cooldown;
         performDash(ability);
@@ -346,13 +352,13 @@ function performDash(ability) {
     move.start.copy(player.position);
     move.target.copy(player.position);
 
-    // Trail lifetime scales with current HP (GDD 4A: 2.0 s + 0.5 s per heart).
+    // Trail lifetime scales with current HP (base + per-heart bonus from the class ability).
     const duration = ability.trailBaseDuration + ability.trailPerHeart * stats.hearts;
     spawnTrail(startX, startY, player.position.x, player.position.y, duration, ability.trailWidth);
 
     spawnDashClones(startX, startY, player.position.x, player.position.y, ability);
 
-    // 0.5 s of extra invulnerability (never shortens an i-frame window that is already running).
+    // The ability's extra invulnerability (never shortens an i-frame window already running).
     iframes = Math.max(iframes, ability.extraIFrames);
     playSfx('dash');
 }
@@ -418,13 +424,13 @@ function clearDashClones() {
     dashClones.length = 0;
 }
 
-// --- Parry VFX (round 5) -----------------------------------------------------
+// --- Parry VFX -----------------------------------------------------------------
 
-// The parry has a readable visual now: a pulsing blue glow while the 0.4 s shield is up, a
-// white-blue impact flash plus an expanding shiny-blue ring when a parry actually succeeds, and
-// a quick collapse when the shield expires having parried nothing. Every piece is a flat
-// additive mesh parented to the player group, so it follows Tode's hop and allocates nothing
-// during play. This is presentation only — the shield's behavior never reads any of it.
+// The parry has a readable visual: a pulsing blue glow while the shield is up, a white-blue
+// impact flash plus an expanding shiny-blue ring when a parry actually succeeds, and a quick
+// collapse when the shield expires having parried nothing. Every piece is a flat additive mesh
+// parented to the player group, so it follows Tode's hop and allocates nothing during play.
+// This is presentation only — the shield's behavior never reads any of it.
 const PARRY_GLOW_COLOR = 0x3fa9ff;   // shield glow blue
 const PARRY_IMPACT_COLOR = 0xd6efff; // near-white flash on a successful parry
 const PARRY_RING_COLOR = 0x59b7ff;   // shiny blue of the expanding shockwave ring
@@ -452,8 +458,8 @@ const parryGlow = createParryFx(
     0.12,
 );
 const parryImpact = createParryFx(new THREE.CircleGeometry(0.5, 24), PARRY_IMPACT_COLOR, 0.14);
-// The ring's base outer radius is exactly 1, so the animation scales the mesh by the shockwave
-// radius and the visual reaches precisely as far as the parry AoE really does.
+// The ring's base outer radius is exactly 1, so the animation scales the mesh by the active
+// class's shockwave radius and the visual reaches precisely as far as the parry AoE really does.
 const parryRing = createParryFx(new THREE.RingGeometry(0.72, 1, 40), PARRY_RING_COLOR, 0.13);
 
 // Parry fx state machine: 'none' | 'glow' | 'impact' | 'ring' | 'fail'.
@@ -527,7 +533,7 @@ function updateParryFx(delta) {
         case 'ring': {
             parryFxTime += delta;
             const p = Math.min(parryFxTime / ABILITY.parryRingDuration, 1);
-            parryRing.scale.setScalar(1 + (ABILITY.parryShockwaveRadius - 1) * p);
+            parryRing.scale.setScalar(1 + (getAbilityValues().shockwaveRadius - 1) * p);
             parryRing.material.opacity = 0.85 * (1 - p);
             if (p >= 1) hideParryFx();
             break;
@@ -555,7 +561,7 @@ export function updatePlayer(delta) {
         return;
     }
 
-    // Round 5: frame-start position → ground velocity at the end of the frame. The rangers read
+    // Frame-start position → ground velocity at the end of the frame. The rangers read
     // player.userData.velocity when leading their shots (Enemy.js).
     const frameStartX = player.position.x;
     const frameStartY = player.position.y;
@@ -565,7 +571,7 @@ export function updatePlayer(delta) {
     if (cooldownRemaining > 0) cooldownRemaining = Math.max(0, cooldownRemaining - delta);
     if (shieldRemaining > 0) {
         shieldRemaining = Math.max(0, shieldRemaining - delta);
-        // A parry that blocked nothing by the time the shield drops has failed (GDD 4A sounds).
+        // A parry that blocked nothing by the time the shield drops has failed.
         if (shieldRemaining === 0 && !parrySucceeded) {
             playSfx('parry_failed');
             playParryFail(); // VFX: the glow collapses
@@ -589,7 +595,7 @@ export function updatePlayer(delta) {
                 .addScaledVector(move.direction, Math.min(PLAYER.hopDistance, distance));
             move.progress = 0;
             move.yaw = Math.atan2(move.direction.y, move.direction.x) + MODEL_YAW_OFFSET;
-            playSfx('jump'); // one hop, one jump sound (GDD 3B)
+            playSfx('jump'); // one hop, one jump sound
         }
     }
 
@@ -651,21 +657,21 @@ export function updatePlayer(delta) {
     orientModel(move.yaw, move.progress < 1 ? currentLean() : 0);
     updateHitCenter(); // refresh the visual hit centre for this frame's hit tests
 
-    // I-frame flash: toggle opacity between 50% and 100% while invulnerable (GDD 3C).
+    // I-frame flash: toggle opacity between the flash opacity and 100% while invulnerable.
     const opacity = iframes > 0 && Math.floor(iframes * 10) % 2 === 0
         ? PLAYER.iframeFlashOpacity
         : 1;
     for (const material of modelMaterials) material.opacity = opacity;
 
-    // Ground velocity for this frame (round 5: rangers lead their shots by this). Written after
-    // all position changes so it reflects the hop/dash/slide that actually happened.
+    // Ground velocity for this frame (the rangers lead their shots by this). Written after all
+    // position changes so it reflects the hop/dash/slide that actually happened.
     player.userData.velocity = {
         x: (player.position.x - frameStartX) / Math.max(delta, 1e-6),
         y: (player.position.y - frameStartY) / Math.max(delta, 1e-6),
     };
 
-    // Anchor minions: orbit + auto-fire, copying the live stats.
-    updateMinions(delta, player.position, stats);
+    // Anchor minions: orbit + auto-fire, reading the live stats and class ability values.
+    updateMinions(delta, player.position, stats, getAbilityValues());
 }
 
 // --- Model orientation helpers ----------------------------------------------
@@ -686,8 +692,7 @@ function orientModel(yaw, lean) {
 }
 
 // The frog-lean for the current hop state: snap nose-up, roll to nose-down by the apex, hold
-// that nose-down until touch-down. Magnitude grows with hop speed (the difficulty system of the
-// GDD no longer scales it, but faster Sneaker hops still lean a little more via baseSpeed).
+// that nose-down until touch-down. Magnitude grows with hop speed, so faster hops lean more.
 function currentLean() {
     const amplitude = Math.min(
         PLAYER.baseSpeed * stats.speedMul * PLAYER.leanPerSpeed,
@@ -707,7 +712,7 @@ function currentLean() {
     return amplitude;
 }
 
-// --- Defeat animation (GDD state 6) -----------------------------------------
+// --- Defeat animation --------------------------------------------------------
 
 // Plays the code-made defeat animation: Tode spins and sinks into the ground while fading out.
 // Returns true while the animation is still running (main.js keeps calling it in GAME_OVER).
@@ -733,10 +738,6 @@ export function getStats() {
 
 export function getHearts() {
     return stats.hearts;
-}
-
-export function getClassId() {
-    return classId;
 }
 
 // Ability info for the HUD cooldown ring:

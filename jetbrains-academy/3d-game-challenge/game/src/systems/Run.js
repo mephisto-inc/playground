@@ -38,7 +38,7 @@ export function initRun() {
     // Combat reports the player's death; the run decides what it means.
     onPlayerDeath(() => endRun());
 
-    // Waves reports a cleared wave; the run opens the power-up draft (GDD 6A, after waves 1-4).
+    // Waves reports a cleared wave; the run opens the power-up draft (after waves 1-4).
     registerClearHandler(() => {
         openDraft();
         setState(STATE.POWERUP_DRAFT);
@@ -68,7 +68,7 @@ export function completeDraft(card) {
 // (main plays the defeat animation there).
 function endRun() {
     // The Anchor minions vanish with their master, so no companions float around the corpse or
-    // survive into the game-over screen (round 6).
+    // survive into the game-over screen.
     clearMinions();
     lastCommit = commitScore();
     checkNewRecord(lastCommit);

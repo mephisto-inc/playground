@@ -5,10 +5,10 @@ import { getMasterVolume, setMasterVolume } from '../systems/Audio.js';
 import { openAchievements } from './AchievementsPanel.js';
 import { createCreditsButton } from './credits.js';
 
-// Main menu (GDD 1 state 1): the central glass panel with the action buttons over the slowly
-// spinning arena. Play leads to the character-selection modal; Achievements opens the records
-// panel; the persisted best score is shown (and refreshed every time the menu appears).
-// Round 5 adds a master-volume slider (mirroring the pause menu's) and a credits link.
+// Main menu: the central glass panel with the action buttons over the slowly spinning arena.
+// Play leads to the character-selection modal; Achievements opens the records panel; the persisted
+// best score is shown (and refreshed every time the menu appears). It also hosts a master-volume
+// slider (mirroring the pause menu's) and a credits link.
 
 let overlay = null;
 let bestNode = null;
@@ -31,8 +31,8 @@ export function initMainMenu() {
     achievementsButton.addEventListener('click', () => openAchievements());
     panel.appendChild(achievementsButton);
 
-    // Master volume (round 5): same row as the pause menu, applied immediately and persisted by
-    // the Audio system.
+    // Master volume: same row as the pause menu, applied immediately and persisted by the Audio
+    // system.
     const volumeRow = el('div', 'volume-row');
     volumeRow.appendChild(el('span', '', '🔊'));
     volumeSlider = el('input');
@@ -44,7 +44,7 @@ export function initMainMenu() {
     volumeRow.appendChild(volumeSlider);
     panel.appendChild(volumeRow);
 
-    // Credits (round 5): opens the repository README's credits section in a new tab.
+    // Credits: opens the repository README's credits section in a new tab.
     panel.appendChild(createCreditsButton());
 
     overlay.appendChild(panel);

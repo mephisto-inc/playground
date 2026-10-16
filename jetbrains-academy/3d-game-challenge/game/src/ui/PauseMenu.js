@@ -4,9 +4,9 @@ import { getMasterVolume, setMasterVolume } from '../systems/Audio.js';
 import { openAchievements } from './AchievementsPanel.js';
 import { createCreditsButton } from './credits.js';
 
-// Pause menu (GDD 1 state 4): freezes the world and muffles the music (the Audio system reacts to
-// the state), with Continue, a master-volume slider (GDD 1: "options (includes master volume)"),
-// the achievements panel and a quit-to-menu option. Opened by the HUD pause button or Esc.
+// Pause menu: freezes the world and muffles the music (the Audio system reacts to the state),
+// with Continue, a master-volume slider, the achievements panel and a quit-to-menu option.
+// Opened by the HUD pause button or Esc.
 
 let overlay = null;
 let volumeSlider = null;
@@ -36,7 +36,7 @@ export function initPauseMenu() {
     achievementsButton.addEventListener('click', () => openAchievements());
     panel.appendChild(achievementsButton);
 
-    // Credits (round 5): same link as the main menu.
+    // Credits: same link as the main menu.
     panel.appendChild(createCreditsButton());
 
     const quitButton = el('button', 'btn', '✖ QUIT TO MENU');
@@ -47,7 +47,7 @@ export function initPauseMenu() {
     mount(overlay);
 
     // Esc toggles pause — but only between a live run and the pause screen; in the draft or on
-    // the game-over screen Esc does nothing (GDD 1 defines those as separate frozen states).
+    // the game-over screen Esc does nothing (those are separate frozen states).
     window.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape') return;
         const state = getState();

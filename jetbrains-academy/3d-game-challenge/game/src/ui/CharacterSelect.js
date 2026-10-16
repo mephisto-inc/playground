@@ -3,9 +3,9 @@ import { STATE, onStateChange, setState } from '../core/StateMachine.js';
 import { CLASSES } from '../config/classes.js';
 import { beginRun } from '../systems/Run.js';
 
-// Character-selection modal (GDD 1 state 2): three class cards over the frozen arena. Each card
-// shows the class icon, starting hearts and ability description (all from config/classes.js);
-// clicking one starts the run. A Back button returns to the main menu.
+// Character-selection modal: three class cards over the frozen arena. Each card shows the class
+// icon, starting hearts and ability description (all from config/classes.js); clicking one starts
+// the run. A Back button returns to the main menu.
 
 let overlay = null;
 

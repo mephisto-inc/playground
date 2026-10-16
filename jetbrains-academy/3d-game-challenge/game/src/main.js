@@ -27,7 +27,7 @@ import { initRun, resetWorld } from './systems/Run.js';
 import { initUI, updateHUD } from './ui/index.js';
 
 // Main entry point: assembles the scene, loads every asset, wires the systems together and runs
-// the frame loop. The loop is state-gated (GDD 1): the arena drifts in the main menu, the world
+// the frame loop. The loop is state-gated: the arena drifts in the main menu, the world
 // simulates in WAVE_PLAYING, the defeat animation plays in GAME_OVER, and everything else is
 // frozen — the same single state variable drives the UI and the audio through subscriptions.
 
@@ -39,9 +39,9 @@ const clock = new THREE.Clock(); // tracks elapsed time between frames (delta)
 // lurching (movement sub-stepping already prevents tunneling).
 const MAX_FRAME_DELTA = 0.1;
 
-// --- Lighting (GDD 5) ---------------------------------------------------------
-// Ambient fill (light blue, 0.75) plus one directional light (15, -20, 30 / 1.1) that casts the
-// soft ground shadows the GDD asks for. The shadow camera covers the whole 97.2x64.8 arena.
+// --- Lighting -----------------------------------------------------------------
+// Ambient fill plus one directional light that casts the soft ground shadows. The shadow camera
+// covers the whole arena.
 const ambientLight = new THREE.AmbientLight(LIGHTS.ambientColor, LIGHTS.ambientIntensity);
 scene.add(ambientLight);
 
@@ -96,9 +96,8 @@ initUI();
 // State reactions that belong to the 3D world:
 //   * the main menu shows the slowly rotating arena — leaving a run behind it would leave frozen
 //     corpses and bullets on display, so the world is cleared when the menu is entered;
-//   * everywhere else the frog is visible (GDD 1: the character selection "focuses on the
-//     player"), which needs the arena's rotation back because colliders are world-space and
-//     assume a level map;
+//   * everywhere else the frog is visible (the character selection focuses on the player), which
+//     needs the arena's rotation back because colliders are world-space and assume a level map;
 //   * "Play Again" after a defeat looks at a living hero, so the death animation's faded, tilted
 //     model must be restored (the fading, bullet-free battlefield too).
 let previousState = getState();
@@ -125,12 +124,12 @@ renderer.setAnimationLoop(() => {
     const state = getState();
 
     if (state === STATE.MAIN_MENU) {
-        spinArena(delta); // the slow menu drift (GDD 1 state 1)
+        spinArena(delta); // the slow menu drift
     } else if (state === STATE.WAVE_PLAYING) {
         updateWaves(delta);  // spawning, wave timing, boss scheduling
         updateCombat(delta); // player + enemies + boss + projectiles + pickups
     } else if (state === STATE.GAME_OVER) {
-        updateDeathAnimation(delta); // the code-made defeat animation (GDD state 6)
+        updateDeathAnimation(delta); // the code-made defeat animation
     }
     // POWERUP_DRAFT, PAUSE_MENU and CHARACTER_SELECTION freeze the world (time step = 0).
 

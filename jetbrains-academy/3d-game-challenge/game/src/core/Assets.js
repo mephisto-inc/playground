@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 import { measureCollisionShape } from './Collision.js';
@@ -7,9 +6,8 @@ import { measureCollisionShape } from './Collision.js';
 // entity module needs —
 //
 //   * normalizeModel() — lays a Y-up GLB onto this Z-up ground and scales it so its height
-//     matches a target, then reports the collision radius and ground offset. This replaces the
-//     old per-model magic scale constants (the arena shrank from 650 to 60 units, so every
-//     scale had to be recomputed anyway; deriving it from geometry is robust to model swaps).
+//     matches a target, then reports the collision radius and ground offset. Deriving the
+//     scale from geometry keeps entity sizes robust to model swaps.
 //   * cloneModel() — SkeletonUtils.clone for skinned models, plain clone for static ones.
 
 const loader = new GLTFLoader();
@@ -24,8 +22,8 @@ export function assetUrl(path) {
 }
 
 // Loads a GLB and resolves with its gltf object (scene + animations). Rejects on network/decode
-// errors so callers can surface a message, as the previous components did. The URL passes
-// through assetUrl() so callers keep writing '/assets/...' regardless of the deploy base.
+// errors so callers can surface a message. The URL passes through assetUrl() so callers keep
+// writing '/assets/...' regardless of the deploy base.
 export function loadGLTF(url) {
     return new Promise((resolve, reject) => {
         loader.load(assetUrl(url), resolve, undefined, reject);

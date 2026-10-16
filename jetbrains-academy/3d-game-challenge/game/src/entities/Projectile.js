@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { isObstacleFree } from '../core/Collision.js';
-import { ABILITY, COLLISION, PROJECTILE } from '../config/tuning.js';
+import { COLLISION, PROJECTILE } from '../config/tuning.js';
 
 // Projectile component: one pool for every shot in the game — player shots (and Anchor minion
 // shots, which behave identically) and enemy shots (ranged projectiles and boss orbs).
@@ -29,18 +29,19 @@ const materials = {
     boss: new THREE.MeshBasicMaterial({ color: COLORS.boss }),
 };
 
-// Every live bullet. Each entry: { mesh, owner, damage, radius, hitRadius, speedX, speedY, life,
-// pierce, hitSet, sender } where owner is 'player' | 'minion' | 'enemy' | 'boss' and hitSet
-// remembers enemies a piercing shot already damaged (so one bullet never damages the same body
-// twice). `radius` drives the mesh's visual size; `hitRadius` (= radius x
-// COLLISION.projectileRadiusMul) drives every collision test, so tuning the hitbox never
-// changes how big bullets look. sender (round 5) is the enemy/boss object that fired a hostile
-// bullet; parry reflections aim back at it while it is alive (see reflectProjectilesNear).
+// Every live bullet. Each entry: { mesh, owner, damage, hitRadius, speedX, speedY, life, pierce,
+// hitSet, sender } where owner is 'player' | 'minion' | 'enemy' | 'boss' and hitSet remembers
+// enemies a piercing shot already damaged (so one bullet never damages the same body twice).
+// `hitRadius` (= the visual radius x COLLISION.projectileRadiusMul) drives every collision test,
+// so tuning the hitbox never changes how big bullets look. sender is the enemy/boss object that
+// fired a hostile bullet; parry reflections aim back at it while it is alive (see
+// reflectProjectilesNear).
 const bullets = [];
 let sceneRef = null;
 
 // Creates a bullet at (x, y, z) flying in the unit direction (dirX, dirY) at `speed` units per
-// second. `owner` picks the visual color; `damage`/`radius` are carried for Combat to read.
+// second. `owner` picks the visual color; `damage` and the visual `radius` are carried for the
+// hit tests and fight bookkeeping.
 function spawnBullet({ owner, x, y, z, dirX, dirY, speed, damage, radius, life, pierce = 0, sender = null }) {
     if (!sceneRef) return null;
 
@@ -53,7 +54,6 @@ function spawnBullet({ owner, x, y, z, dirX, dirY, speed, damage, radius, life, 
         mesh,
         owner,
         damage,
-        radius,
         hitRadius: radius * COLLISION.projectileRadiusMul,
         speedX: dirX * speed,
         speedY: dirY * speed,
@@ -102,7 +102,7 @@ export function spawnMinionShot(x, y, dirX, dirY, { damage, speed }) {
 }
 
 // Fires one ranged-enemy projectile. `sender` is the enemy object, so a parry can send the shot
-// back at it (round 5).
+// back at it.
 export function spawnEnemyShot(x, y, dirX, dirY, sender = null) {
     return spawnBullet({
         owner: 'enemy',
@@ -119,8 +119,8 @@ export function spawnEnemyShot(x, y, dirX, dirY, sender = null) {
     });
 }
 
-// Fires one boss orb. `speedMul` scales the orb speed for this wave (round 5: wave 5 bosses fire
-// 10% faster than wave 3), and `sender` lets parries reflect the orb back at the boss.
+// Fires one boss orb. `speedMul` scales the orb speed for this wave and `sender` lets parries
+// reflect the orb back at the boss.
 export function spawnBossOrb(x, y, dirX, dirY, speedMul = 1, sender = null) {
     return spawnBullet({
         owner: 'boss',
@@ -130,7 +130,7 @@ export function spawnBossOrb(x, y, dirX, dirY, speedMul = 1, sender = null) {
         dirX,
         dirY,
         speed: PROJECTILE.bossOrbSpeed * speedMul,
-        damage: PROJECTILE.damage, // boss orbs deal 1 damage each (GDD 3C)
+        damage: PROJECTILE.damage, // boss orbs use the common projectile damage
         radius: PROJECTILE.bossOrbRadius,
         life: PROJECTILE.bossOrbLifetime,
         sender,
@@ -139,13 +139,13 @@ export function spawnBossOrb(x, y, dirX, dirY, speedMul = 1, sender = null) {
 
 // Turns every hostile bullet currently overlapping the parry shield circle back into a
 // player-owned bullet: ownership flips, the shot accelerates to player speed and it hits harder
-// than normal fire (ABILITY.parryReflectDamage). Direction (round 5b):
+// than normal fire (`reflectDamage` comes from the active class's ability). Direction:
 //   * live sender  — the shot flies straight back into the enemy/boss that fired it (bosses
 //     included), aimed at its position at parry time;
 //   * dead/absent sender — a corpse must not "pull" shots toward where it fell, so the shot is
 //     just flung the opposite way of its incoming travel instead.
 // Returns how many projectiles were reflected, so the parry can decide success/failure sound.
-export function reflectProjectilesNear(x, y, radius) {
+export function reflectProjectilesNear(x, y, radius, reflectDamage) {
     let reflected = 0;
     for (const bullet of bullets) {
         if (bullet.owner !== 'enemy' && bullet.owner !== 'boss') continue;
@@ -172,7 +172,7 @@ export function reflectProjectilesNear(x, y, radius) {
         }
 
         bullet.owner = 'player';
-        bullet.damage = ABILITY.parryReflectDamage;
+        bullet.damage = reflectDamage;
         bullet.pierce = 0;
         bullet.hitSet.clear();
         bullet.speedX = dirX * PROJECTILE.playerSpeed;
@@ -219,7 +219,7 @@ export function updateProjectiles(delta, enemies, playerInfo) {
             bullet.mesh.position.x += stepX / subSteps;
             bullet.mesh.position.y += stepY / subSteps;
 
-            // Houses and walls block every shot (GDD 5: houses block shots).
+            // Houses and walls block every shot.
             if (!isObstacleFree(bullet.mesh.position.x, bullet.mesh.position.y, bullet.hitRadius)) {
                 dead = true;
                 break;
@@ -242,8 +242,8 @@ export function updateProjectiles(delta, enemies, playerInfo) {
                     // splices the live array and would shift indices mid-flight.
                     bullet.hitSet.add(enemy);
                     events.enemyHits.push({ bullet, enemy });
-                    // Tanks act as a shield (GDD 4B): their body stops every shot dead, so even
-                    // a piercing bullet cannot pass through one to reach what stands behind it.
+                    // Tanks act as a shield: their body stops every shot dead, so even a
+                    // piercing bullet cannot pass through one to reach what stands behind it.
                     if (enemy.userData.blocksShots) {
                         dead = true; // absorbed
                     } else if (bullet.pierce > 0) {

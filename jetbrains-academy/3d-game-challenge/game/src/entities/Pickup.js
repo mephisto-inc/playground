@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { PICKUP } from '../config/tuning.js';
 
-// Pickup component (GDD 4B): health items that enemies and bosses drop. The GDD does not name
-// the item's look beyond "health items"; a flat red heart built from a Shape keeps it readable
-// from the top-down camera with zero texture assets.
+// Pickup component: health items that enemies and bosses drop. The 3D asset set has no pickup
+// model, so a flat red heart built from a Shape keeps it readable from the top-down camera with
+// zero extra assets.
 
 // One heart shape, reused by every pickup's geometry (shapes are cheap to build once).
 function makeHeartShape() {
@@ -80,10 +80,10 @@ export function updatePickups(delta, playerX, playerY, magnetRadius) {
             pickup.mesh.position.y += (dy / distance) * pull;
         }
 
-        // Cosmetic heartbeat: the heart stays flat on the floor (z fixed; round 5 removed the
-        // vertical bob, whose trough dipped the flat mesh under the floor plane and read as the
-        // heart blinking out) and instead pulsates its size around the base 0.6 scale, plus a
-        // slow spin so drops still read as alive.
+        // Cosmetic heartbeat: the heart stays flat on the floor (z fixed — a vertical bob dipped
+        // the flat mesh under the floor plane and read as the heart blinking out) and instead
+        // pulsates its size around the base 0.6 scale, plus a slow spin so drops still read as
+        // alive.
         const pulse = 1 + PICKUP.pulseAmplitude
             * Math.sin(elapsed * PICKUP.pulseHz * Math.PI * 2 + pickup.t);
         pickup.mesh.scale.setScalar(0.6 * pulse);

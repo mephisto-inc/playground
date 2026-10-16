@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
-// Trail component (GDD 4A, Dasher): the ground trail left by the dash. It is a translucent strip
-// lying on the floor that slows enemies standing on it — common enemies by 50%, the Boss by 25%.
+// Trail component (Dasher class): the ground trail left by the dash. It is a translucent strip
+// lying on the floor that slows enemies standing on it — common enemies more than the Boss.
 //
 // The trail is purely geometric: one quad per dash (a stretched plane), fading out over its
 // lifetime. Slowdown queries test the enemy's ground position against each live segment.
@@ -16,9 +16,8 @@ const TRAIL_COLOR = 0x4dd2ff;
 const trails = [];
 let sceneRef = null;
 
-// Lays a trail from (x1, y1) to (x2, y2). `duration` is its full lifetime in seconds, `width`
-// the across-the-strip width in world units. Duration comes from the class definition:
-// 2.0 s + 0.5 s per current heart.
+// Lays a trail from (x1, y1) to (x2, y2). `duration` is its full lifetime in seconds (from the
+// Dasher class ability definition), `width` the across-the-strip width in world units.
 export function spawnTrail(x1, y1, x2, y2, duration, width) {
     if (!sceneRef) return;
 
@@ -61,8 +60,9 @@ export function updateTrails(delta) {
 }
 
 // Speed multiplier for a character standing at (x, y): 1 outside every trail, otherwise the
-// given in-trail factor (0.5 for common enemies, 0.75 for the Boss). When trails overlap the
-// strongest slow wins, enforced by taking the minimum.
+// given in-trail factor (the caller passes the class ability's value — common enemies use one,
+// the Boss a weaker one). When trails overlap the strongest slow wins, enforced by taking the
+// minimum.
 export function getTrailSpeedFactor(x, y, inTrailFactor) {
     let factor = 1;
     for (const trail of trails) {

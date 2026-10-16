@@ -3,21 +3,21 @@ import { assetUrl } from '../core/Assets.js';
 import { STORAGE_KEYS, loadNumber, saveNumber } from '../core/Storage.js';
 import { STATE, getState, onStateChange } from '../core/StateMachine.js';
 
-// Audio system (GDD 2 + 8B/8C): the Web Audio engine for all music and sound effects.
+// Audio system: the Web Audio engine for all music and sound effects.
 //
 // Graph:
 //   music tracks -> musicBus gain -> low-pass filter -> masterGain -> destination
 //   sfx          -> sfxBus gain ---------------------> masterGain -> destination
 //
-// The 400 Hz low-pass sits on the music branch only: PAUSE_MENU, POWERUP_DRAFT and GAME_OVER
-// muffle the music while sound effects stay crisp (user-confirmed; GDD 1/2 say "music with the
-// filter"). The master gain (persisted, driven by the pause panel) controls everything.
+// The low-pass sits on the music branch only: PAUSE_MENU, POWERUP_DRAFT and GAME_OVER muffle the
+// music while sound effects stay crisp. The master gain (persisted, driven by the pause panel)
+// controls everything.
 //
-// Music is a set of looping tracks swapped by "step" (GDD 2A). The playing position survives
-// every swap: the new track starts at `position modulo its own musical length`, which is
-// simultaneously the GDD's two rules — "same position in seconds" going to the 19 s boss track
-// and "position modulo 9" coming back to a 9 s track. Swaps into or out of `bgm_boss_step3`
-// crossfade over AUDIO.crossfadeLong, every other swap over the snappier AUDIO.crossfadeSnappy.
+// Music is a set of looping tracks swapped by "step". The playing position survives every swap:
+// the new track starts at `position modulo its own musical length`, which covers both rules —
+// "same position in seconds" going to the 19 s boss track and "position modulo 9" coming back to
+// a 9 s track. Swaps into or out of `bgm_boss_step3` crossfade over AUDIO.crossfadeLong, every
+// other swap over the snappier AUDIO.crossfadeSnappy.
 //
 // The AudioContext is created at startup and immediately tries to run on its own; browsers that
 // block audio before a gesture keep it suspended (buffers still fetch and decode while
@@ -25,7 +25,7 @@ import { STATE, getState, onStateChange } from '../core/StateMachine.js';
 // whatever state the game is already in — the menu music starts as early as the browser allows,
 // never waiting for a later menu change.
 
-// Short track ids -> asset file names (GDD 8B table).
+// Short track ids -> asset file names.
 const TRACK_FILES = {
     main_step1: 'bgm_main_step1.wav',
     main_step2: 'bgm_main_step2.wav',
@@ -35,14 +35,14 @@ const TRACK_FILES = {
     boss_step3: 'bgm_boss_step3.wav',
 };
 
-// Every sound effect the game plays (GDD 8C): playSfx('jump') loads sfx_jump.wav.
+// Every sound effect the game plays: playSfx('jump') loads sfx_jump.wav.
 const SFX_NAMES = [
     'jump', 'shoot', 'parry', 'parry_failed', 'dash', 'minion_shot',
     'hit', 'hurt', 'boss_spawn', 'heart', 'card', 'defeat',
 ];
 
-// Musical loop length of each track — 9 s for all of them, 19 s for the wave-5 boss track
-// (GDD 2B). Position math uses these values, not the files' exact decimal durations.
+// Musical loop length of each track — 9 s for all of them, 19 s for the wave-5 boss track.
+// Position math uses these values, not the files' exact decimal durations.
 function trackLength(id) {
     return id === 'boss_step3' ? AUDIO.bossStep3Length : AUDIO.trackLength;
 }
@@ -51,7 +51,7 @@ let ctx = null;           // AudioContext, created at startup (suspended until t
 let masterGain = null;
 let sfxBus = null;        // unfiltered branch
 let musicBus = null;      // filtered branch input
-let musicFilter = null;   // the 400 Hz low-pass
+let musicFilter = null;   // the low-pass
 
 // Master volume (0..1), persisted; restored on startup.
 let volume = loadNumber(STORAGE_KEYS.volume, AUDIO.masterVolumeDefault);
@@ -205,9 +205,9 @@ function currentPosition() {
     return (current.offset + elapsed) % trackLength(current.id);
 }
 
-// Switches to track `id`, keeping the playing position per the GDD rules (see the header).
-// Called by the state handler and by Waves (setWaveStage).
-export function setMusic(id) {
+// Switches to track `id`, keeping the playing position per the header rules. Called by the
+// state handler and by applyWaveMusic().
+function setMusic(id) {
     // Token for this swap, bumped before any early return: even a "no change" call invalidates
     // an older in-flight fetch, so a newer intent always wins.
     const token = ++swapToken;
@@ -221,7 +221,7 @@ export function setMusic(id) {
 
     // Position rule: seconds-modulo the TARGET track's musical length. For a 9 -> 19 s swap the
     // position is under 9 so it is preserved unchanged; coming back from the 19 s track it
-    // becomes the GDD's "modulo 9"; 9 -> 9 swaps keep the seconds too.
+    // becomes modulo 9; 9 -> 9 swaps keep the seconds too.
     const position = currentPosition() % trackLength(id);
 
     getBuffer(TRACK_FILES[id])
@@ -282,7 +282,7 @@ export function setWaveStage(wave, bossAlive) {
     if (getState() === STATE.WAVE_PLAYING) applyWaveMusic();
 }
 
-// The wave -> track table from GDD 2A:
+// The wave -> track table:
 //   wave 3            -> bgm_boss_step2 (the boss is alive from the start)
 //   wave 5 + boss     -> bgm_boss_step3
 //   wave 5, no boss   -> bgm_main_step3
@@ -295,9 +295,9 @@ function applyWaveMusic() {
     setMusic(id);
 }
 
-// Reacts to the single state variable (GDD 1). The music step and position always survive
-// POWERUP_DRAFT / PAUSE_MENU; only the filter changes. GAME_OVER keeps the current music except
-// in waves 3 and 4, where it switches to bgm_boss_step1 (GDD 2A).
+// Reacts to the single state variable. The music step and position always survive POWERUP_DRAFT
+// / PAUSE_MENU; only the filter changes. GAME_OVER keeps the current music except in waves 3 and
+// 4, where it switches to bgm_boss_step1.
 function handleStateChange(state) {
     if (!ctx) return; // no Web Audio support; the unlock sync re-runs this
     if (state === STATE.POWERUP_DRAFT || state === STATE.PAUSE_MENU) {
@@ -306,7 +306,7 @@ function handleStateChange(state) {
     }
     if (state === STATE.GAME_OVER) {
         setLowPass(true);
-        playSfx('defeat'); // GDD 1 state table: GAME_OVER plays sfx_defeat
+        playSfx('defeat'); // GAME_OVER plays sfx_defeat
         if (waveStage.wave === 3 || waveStage.wave === 4) setMusic('boss_step1');
         return;
     }

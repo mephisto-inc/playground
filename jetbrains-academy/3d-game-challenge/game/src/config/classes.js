@@ -1,12 +1,12 @@
-// Class definitions (GDD 4A). Pure data: each entry describes one starter class and the numbers
-// its ability runs on. Player.js turns these into live stats; the UI reads name/icon/description.
+// Class definitions. Pure data: each entry describes one starter class and the numbers its
+// ability runs on. Player.js turns these into live stats (see Player.getAbilityValues), the UI
+// reads name/icon/description.
 
 import {ABILITY, PLAYER} from './tuning.js';
 
-// The three starter classes. `hearts` is the starting HP for the class:
-//   Parry/Dasher: 3 (the base — user-confirmed change from the GDD's 5).
-//   Anchor: 5 = base 3 + 2 from its passive "+2 max hearts" (user-confirmed; GDD said +1).
-// Every class can still grow up to the global 7-heart cap with Titan Heart cards.
+// The three starter classes. `hearts` is the starting HP for the class: Parry/Dasher start at
+// PLAYER.baseHearts; Anchor starts two hearts lower (its minions compensate). Every class can
+// grow up to the global 7-heart cap with Titan Heart cards.
 export const CLASSES = [
     {
         id: 'parry',
@@ -14,17 +14,20 @@ export const CLASSES = [
         icon: '🛡️',
         hearts: PLAYER.baseHearts,
         // The numbers interpolate the live values from tuning.js, so this text can never drift
-        // from the actual balance (round 5b: also mentions the reflected shots' damage).
+        // from the actual balance.
         description: `Double click/tap: raise a ${ABILITY.parryShield} s shield that cancels physical `
-            + `damage and reflects every projectile around you straight back at whoever fired it `
-            + `(bosses included), each reflected shot dealing ${ABILITY.parryReflectDamage} damage. `
-            + `On parry, a shockwave deals ${ABILITY.parryShockwaveBaseDamage} + current HP, stuns `
-            + `common enemies for ${ABILITY.parryStun} s and knocks the Boss back. `
-            + `${ABILITY.parryCooldown} s cooldown.`,
+            + `damage and reflects every projectile within ${ABILITY.parryReflectRadius} units straight `
+            + `back at whoever fired it (bosses included), each reflected shot dealing `
+            + `${ABILITY.parryReflectDamage} damage. On parry, a shockwave deals `
+            + `${ABILITY.parryShockwaveBaseDamage} + current HP, stuns common enemies for `
+            + `${ABILITY.parryStun} s and knocks the Boss back. ${ABILITY.parryCooldown} s cooldown.`,
         ability: {
-            // Shield window and cooldown live in tuning.js so balance stays in one place.
+            // Shield window and numbers live in tuning.js so balance stays in one place; the
+            // gameplay systems read this block through Player.getAbilityValues().
             cooldown: ABILITY.parryCooldown,
             shield: ABILITY.parryShield,
+            reflectRadius: ABILITY.parryReflectRadius,
+            reflectDamage: ABILITY.parryReflectDamage,
             shockwaveRadius: ABILITY.parryShockwaveRadius,
             shockwaveBaseDamage: ABILITY.parryShockwaveBaseDamage,
             stun: ABILITY.parryStun,
@@ -35,10 +38,14 @@ export const CLASSES = [
         name: 'Dasher',
         icon: '⚡',
         hearts: PLAYER.baseHearts,
-        description: 'Double click/tap: dash instantly with 0.5 s of extra invulnerability and '
-            + 'shadow clones. The ground trail lasts 2.0 s + 0.5 s per current heart, slowing '
-            + 'common enemies by 50% and the Boss by 25%. 3.0 s cooldown.',
+        description: `Double click/tap: dash ${ABILITY.dashDistance} units instantly with `
+            + `${ABILITY.dashExtraIFrames} s of extra invulnerability and `
+            + `${ABILITY.dashCloneCount} shadow clones. The ground trail lasts `
+            + `${ABILITY.trailBaseDuration} s + ${ABILITY.trailPerHeart} s per current heart, slowing `
+            + `common enemies by ${Math.round((1 - ABILITY.trailSlowCommon) * 100)}% and the Boss by `
+            + `${Math.round((1 - ABILITY.trailSlowBoss) * 100)}%. ${ABILITY.dashCooldown} s cooldown.`,
         ability: {
+            // Dash movement, clone look and trail slow/width; all read from tuning.js.
             cooldown: ABILITY.dashCooldown,
             distance: ABILITY.dashDistance,
             extraIFrames: ABILITY.dashExtraIFrames,
@@ -55,10 +62,10 @@ export const CLASSES = [
         id: 'anchor',
         name: 'Anchor',
         icon: '🤖',
-        hearts: PLAYER.baseHearts - 2, // passive: +2 max hearts (user-confirmed; GDD said +1)
+        hearts: PLAYER.baseHearts - 2,
         description: `Passive: ${ABILITY.minionCount} orbiting Minions that always face the camera. `
             + 'Minions have way more vision range and copy every power-up you collect. '
-            + `Minion damage: 1 every ${ABILITY.minionInterval} s.`,
+            + `Minion damage: ${ABILITY.minionDamage} every ${ABILITY.minionInterval} s.`,
         ability: {
             // Anchor has no active ability; these values drive the orbiting companions.
             minionCount: ABILITY.minionCount,

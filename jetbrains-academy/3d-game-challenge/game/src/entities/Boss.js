@@ -15,9 +15,9 @@ import {
     registerCollider,
     unregisterCollider,
 } from '../core/Collision.js';
-import { ABILITY, BOSS, COLLISION, ENEMY, SPAWN_POINTS } from '../config/tuning.js';
+import { BOSS, COLLISION, ENEMY, SPAWN_POINTS } from '../config/tuning.js';
 import { BOSS_TYPE } from '../config/enemies.js';
-import player, { damagePlayer, getHitCenter, isInvulnerable } from './Player.js';
+import player, { damagePlayer, getAbilityValues, getHitCenter, isInvulnerable } from './Player.js';
 import { addToEnemyList, removeFromEnemyList } from './Enemy.js';
 import { getTrailSpeedFactor } from './Trail.js';
 import { spawnHeart } from './Pickup.js';
@@ -25,23 +25,23 @@ import { spawnBossOrb } from './Projectile.js';
 import { playSfx } from '../systems/Audio.js';
 import { addScore } from '../systems/Score.js';
 
-// Boss component (GDD 4B): the Arena Lord (Pigeon). One instance at most. Spawns at a random
-// one of the 8 spawn points, chasing the player through a two-phase cycle:
+// Boss component: the Arena Lord (Pigeon). One instance at most. Spawns at a random one of the
+// 8 spawn points, chasing the player through a two-phase cycle:
 //
-//   chaseA -> chargeA (stands still 1.5 s) -> volley (24 orbs in a 360-degree circle)
-//   chaseB -> telegraph (stands still, turns red 0.7 s) -> dash (fast, 2 physical damage)
-//   ... and back to chaseA. The extra durations the GDD leaves open live in tuning.js (BOSS).
+//   chaseA -> chargeA (stands still BOSS.chargeTime seconds) -> volley (BOSS.orbCount orbs in a
+//   360-degree circle) -> chaseB -> telegraph (stands still, turns red BOSS.dashTelegraph) ->
+//   dash (fast, BOSS.dashDamage physical damage) ... and back to chaseA.
 //
 // The boss lives in Enemy.js's shared enemy list (addToEnemyList) so player shots, minions and
 // hit detection all see it, but it runs its own AI here — Enemy.updateEnemies skips it. Body
-// contact pushes the player away (GDD 3C) and now deals BOSS.contactDamage (round 5); the bigger
-// hits come from orbs and the dash.
+// contact pushes the player away and deals BOSS.contactDamage; the bigger hits come from orbs
+// and the dash.
 
 // Animation one-shot fades — same values/pattern as Enemy.js (the two modules stay independent
 // because their state machines differ; the shared logic is a dozen lines, duplication is fine).
 const ANIM_FADE = 0.15;
 
-// Red charge tint for the dash telegraph (GDD 4B: "red charging dash").
+// Red charge tint for the dash telegraph ("red charging dash").
 const CHARGE_RED = 0xcc1f1f;
 
 // Push step when shoving the player out of the boss's hitbox (same idea as knockback steps).
@@ -109,11 +109,10 @@ export async function initBoss(scene) {
 
 // --- Spawning ----------------------------------------------------------------
 
-// Spawns the boss with `hp` HP (250 in wave 3, 400 in wave 5 — Waves applies the endless growth
-// multiplier before calling and this rounds the result UP so health stays whole). `speedMul` and
-// `orbSpeedMul` come from the wave definition (round 5: wave 5 runs 10% faster in movement and
-// orb speed than wave 3). Picks a random free one of the 8 spawn points; returns the boss, or
-// null when every spawn point is occupied (Waves retries on a later frame).
+// Spawns the boss with `hp` HP (the wave's boss HP; Waves applies the endless growth multiplier
+// before calling, and this rounds the result UP so health stays whole). `speedMul` and
+// `orbSpeedMul` come from the wave definition. Picks a random free one of the 8 spawn points;
+// returns the boss, or null when every spawn point is occupied (Waves retries on a later frame).
 export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1) {
     if (!prepared || !sceneRef || boss) return null;
 
@@ -175,20 +174,19 @@ export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1) {
     data.oneShotRemaining = 0;
     data.touchingPlayer = false; // contact damage is applied in updateBoss, not by Combat
     data.velocity = { x: 0, y: 0 };
-    // Phase cycle state: starts chasing, per the GDD's "Phase A: pauses 1.5 s, then fires".
+    // Phase cycle state: starts chasing; the charge pause between chases comes first.
     data.state = 'chaseA';
     data.stateTimer = BOSS.phaseAChase;
     data.dashDirection = { x: 0, y: 0 };
     data.dashHit = false;
-    data.tintedRed = false;
 
     boss = group;
     addToEnemyList(group); // targeting + projectile hit detection see the boss
-    playSfx('boss_spawn'); // GDD 8C: plays when any boss appears
+    playSfx('boss_spawn'); // plays when any boss appears
     return group;
 }
 
-// Random free spawn point among the SPAWN_POINTS (GDD 4B: bosses use the same 8 points).
+// Random free spawn point among the SPAWN_POINTS (bosses use the same 8 points as enemies).
 function pickSpawnPoint() {
     const candidates = SPAWN_POINTS.map((point) => point);
     // Fisher-Yates shuffle: try spawn points in random order, take the first free one.
@@ -226,9 +224,9 @@ export function damageBoss(amount, options = {}) {
     return false;
 }
 
-// Pushes the boss away, collision-checked step by step (the parry shockwave uses this — GDD 4A:
-// "The Boss only gets knockback").
-export function knockbackBoss(dirX, dirY, distance) {
+// Pushes the boss away, collision-checked step by step (the parry shockwave uses this — the
+// boss only ever gets knocked back, never stunned or killed by it).
+function knockbackBoss(dirX, dirY, distance) {
     if (!boss || boss.userData.dying) return;
     const collider = boss.userData.collider;
     const length = Math.hypot(dirX, dirY);
@@ -248,8 +246,8 @@ export function knockbackBoss(dirX, dirY, distance) {
     }
 }
 
-// The kill moment: Death clip, score, the guaranteed 1-2 heart drops (GDD 4B), then a lingering
-// corpse removed in updateBoss().
+// The kill moment: Death clip, score, the guaranteed heart drops, then a lingering corpse
+// removed in updateBoss().
 function killBoss() {
     const data = boss.userData;
     data.dying = true;
@@ -271,10 +269,13 @@ function killBoss() {
         data.dyingTimer = 2.5;
     }
 
-    addScore(BOSS_TYPE.score); // 1,000 points (GDD 6C)
+    addScore(BOSS_TYPE.score); // points from the config
 
-    // 100% chance to drop 1-2 hearts, scattered slightly around the body (GDD 4B).
-    const drops = 1 + (Math.random() < 0.5 ? 1 : 0);
+    // Guaranteed heart drops: an inclusive random count in [heartDropsMin, heartDropsMax],
+    // scattered slightly around the body.
+    const min = BOSS.heartDropsMin;
+    const max = Math.max(min, BOSS.heartDropsMax);
+    const drops = min + Math.floor(Math.random() * (max - min + 1));
     for (let i = 0; i < drops; i++) {
         const angle = Math.random() * Math.PI * 2;
         const radius = 0.6 + Math.random() * 1.2;
@@ -327,9 +328,11 @@ export function updateBoss(delta) {
     let moving = false;
 
     if (data.state === 'chaseA' || data.state === 'chaseB') {
-        // Chase: walk toward the player, slowed 25% inside a Dasher trail (GDD 4A). The per-wave
-        // speed multiplier rides in data.speedMul (round 5: wave 5 is 10% faster than wave 3).
-        const trailFactor = getTrailSpeedFactor(boss.position.x, boss.position.y, ABILITY.trailSlowBoss);
+        // Chase: walk toward the player, slowed inside a Dasher trail (the factor comes from the
+        // active class's ability). The per-wave speed multiplier rides in data.speedMul.
+        const trailFactor = getTrailSpeedFactor(
+            boss.position.x, boss.position.y, getAbilityValues().trailSlowBoss ?? 1,
+        );
         const speed = ENEMY.baseSpeed * data.speedMul * endlessSpeedMul * trailFactor;
         moveBoss(collider, dirToPlayerX, dirToPlayerY, speed, delta);
         faceBoss(dirToPlayerX, dirToPlayerY);
@@ -337,7 +340,7 @@ export function updateBoss(delta) {
 
         if (data.stateTimer <= 0) {
             if (data.state === 'chaseA') {
-                // Phase A: pause, then the orb volley (the 1.5 s charge is driven by stateTimer).
+                // Phase A: pause, then the orb volley (the charge pause is driven by stateTimer).
                 data.state = 'chargeA';
                 data.stateTimer = BOSS.chargeTime;
                 playLoopAction(data.actions.idle);
@@ -379,9 +382,9 @@ export function updateBoss(delta) {
         moving = true;
         faceBoss(data.dashDirection.x, data.dashDirection.y);
 
-        // Dash contact: 2 physical damage, once per dash. During the player's i-frames the dash
-        // ghosts through instead (GDD 3C). Tested against the player's VISUAL centre, so a dash
-        // that visibly clips the leaning frog registers (round 6).
+        // Dash contact: BOSS.dashDamage physical damage, once per dash. During the player's
+        // i-frames the dash ghosts through instead. Tested against the player's VISUAL centre, so
+        // a dash that visibly clips the leaning frog registers.
         const playerCollider = getCollider(player);
         const playerCenter = getHitCenter();
         if (!data.dashHit && playerCollider && collider &&
@@ -406,10 +409,10 @@ export function updateBoss(delta) {
         }
     }
 
-    // Body contact: pushes the player away (GDD 3C) and hurts for contactDamage (round 5: the
-    // push alone felt toothless — the boss is a walking hazard). The push helper returns whether
-    // it actually touched; i-frames are honored inside it (no push and no damage while ghosting),
-    // and it is skipped entirely while dashing (the dash has its own 2-damage hit response).
+    // Body contact: pushes the player away and hurts for BOSS.contactDamage (the push alone felt
+    // toothless — the boss is a walking hazard). The push helper returns whether it actually
+    // touched; i-frames are honored inside it (no push and no damage while ghosting), and it is
+    // skipped entirely while dashing (the dash has its own hit response).
     if (data.state !== 'dash' && collider) {
         if (pushPlayerOut(collider)) {
             damagePlayer(BOSS.contactDamage, 'physical');
@@ -472,12 +475,12 @@ function faceBoss(dirX, dirY) {
 }
 
 // Shoves the player out of the boss's body: a short push directly away from the boss centre,
-// cancelled by anything solid behind the player ("unless their back is against an obstacle",
-// GDD 3C) — isMoveFree stops at walls, and the push is skipped entirely during i-frames.
-// Returns true when the bodies were actually overlapping (round 5: the caller applies the
-// contact damage on that signal); false when there was no contact or the player is invulnerable.
-// Round 6: the overlap is measured to the player's VISUAL centre (the lean shifts his body),
-// while the push itself still moves the feet position.
+// cancelled by anything solid behind the player ("unless their back is against an obstacle") —
+// isMoveFree stops at walls, and the push is skipped entirely during i-frames. Returns true when
+// the bodies were actually overlapping (the caller applies the contact damage on that signal);
+// false when there was no contact or the player is invulnerable. The overlap is measured to the
+// player's VISUAL centre (the lean shifts his body), while the push itself still moves the feet
+// position.
 function pushPlayerOut(bossCollider) {
     if (isInvulnerable()) return false; // ghosting
     const playerCollider = getCollider(player);
@@ -506,11 +509,10 @@ function pushPlayerOut(bossCollider) {
     return true;
 }
 
-// Fires the orb circle (GDD 4B: "fires 8 orbs in a 360-degree circle"; round 5 tripled it to
-// 24, so the ring is tighter and dodging needs real movement). The Bite_Front clip plays as the
-// one-shot; the attack (Jump) clip is only the fallback when the volley clip is missing. The
-// one-shot timer resumes the walk loop by itself once the clip ends. The boss object is passed
-// as each orb's sender so parries can reflect orbs back into it.
+// Fires the orb circle (BOSS.orbCount orbs evenly spaced around 360 degrees). The volley clip
+// plays as the one-shot; the attack clip is only the fallback when the volley clip is missing.
+// The one-shot timer resumes the walk loop by itself once the clip ends. The boss object is
+// passed as each orb's sender so parries can reflect orbs back into it.
 function fireOrbVolley() {
     if (!boss) return;
     playOneShot(boss, boss.userData.actions.volley || boss.userData.actions.attack);
@@ -574,7 +576,6 @@ function cancelOneShot(entity) {
 // Paints the boss red for the dash telegraph.
 function tintRed() {
     const data = boss.userData;
-    data.tintedRed = true;
     for (const entry of data.flashOriginals) {
         if (!entry.emissive) continue;
         entry.material.emissive.setHex(CHARGE_RED);
@@ -596,7 +597,6 @@ function flashBoss() {
 // Restores every material's original emissive (ends both the hit flash and the red tint).
 function restoreBossMaterials() {
     if (!boss) return;
-    boss.userData.tintedRed = false;
     for (const entry of boss.userData.flashOriginals) {
         if (!entry.emissive) continue;
         entry.material.emissive.copy(entry.emissive);
@@ -610,11 +610,6 @@ function restoreBossMaterials() {
 // respawn counter and report the music stage).
 export function isBossAlive() {
     return !!boss && !boss.userData.dying;
-}
-
-// The live boss group, or null (targeting helpers / HUD).
-export function getBoss() {
-    return boss;
 }
 
 // HUD data for the boss health bar: { hp, maxHp } or null without a live boss. Dying bosses

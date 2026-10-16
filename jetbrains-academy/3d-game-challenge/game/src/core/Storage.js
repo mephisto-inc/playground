@@ -4,9 +4,9 @@
 
 // Keys are namespaced so the game's data cannot collide with other pages on the same origin.
 export const STORAGE_KEYS = {
-    bestScore: 'tode3d.bestScore',       // highest score ever reached (GDD 6C)
-    achievements: 'tode3d.achievements', // array of unlocked achievement ids (GDD 7)
-    volume: 'tode3d.volume',             // master volume 0..1 (GDD 1: PAUSE_MENU option)
+    bestScore: 'tode3d.bestScore',       // highest score ever reached
+    achievements: 'tode3d.achievements', // array of unlocked achievement ids
+    volume: 'tode3d.volume',             // master volume 0..1
 };
 
 // Reads a number, falling back when missing or unreadable. Returns `fallback` for NaN too, so a

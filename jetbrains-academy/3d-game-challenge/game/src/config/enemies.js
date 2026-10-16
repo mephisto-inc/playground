@@ -1,37 +1,29 @@
-// Enemy and Boss definitions (GDD 4B + 8A). Pure data: stats, model files and the animation
-// clip names the entity modules try to play. The GDD fixes HP / speed / score / behavior; the
-// model-to-type pairing is ours (TODO below) because the asset table does not map models to
-// types explicitly.
-// Round 5: every non-ranged type (fighter, speeder, tank) got +20% HP and speed. HP stays
-// integer (the game's health is whole numbers), so the +20% was rounded up: fighter 2 -> 3,
-// speeder 1 -> 2, tank 8 -> 10. The Ranged type and the Boss keep their GDD values.
+// Enemy and Boss definitions. Pure data: stats, model files and the animation clip names the
+// entity modules try to play. The model-to-type pairing and the clip names below are what the
+// files really ship (findClip() also tolerates small naming differences).
 
 // The four common enemy types, keyed by type id. `behavior` selects the AI routine in Enemy.js:
 //   'chase'   — straight line toward the player (Fighter)
 //   'ranged'  — keeps its distance and fires projectiles (Ranged)
 //   'speeder' — short, frequent zig-zag dashes (Speeder)
 //   'tank'    — slow, knockback-immune, blocks shots aimed through it (Tank)
-// Model pairing and clip names come from GDD section 8A:
-//   Fighter = Armabee (42djT5zJnx), Ranged = Enemy Flying (kzpT6fNmM5),
-//   Speeder = Squidle (54QyRcsogk), Tank = Armabee Evolved (GcttdvsqsQ).
-// NOTE: the GDD's clip names are not always what the GLBs ship — the speeder and tank have no
-// 'Push' clip (their files ship Headbutt/Punch instead) and the boss ships Idle and Dance as
-// separate clips plus Jump and Bite_Front. The names below use what the files really have.
+// Model pairing: Fighter = Armabee (42djT5zJnx), Ranged = Enemy Flying (kzpT6fNmM5),
+// Speeder = Squidle (54QyRcsogk), Tank = Armabee Evolved (GcttdvsqsQ).
+// NOTE: the speeder and tank files ship no 'Push' clip (they have Headbutt/Punch instead), so
+// their attack uses the substitute noted below.
 // `yawOffset` turns each model's local forward onto its movement direction. PI/2 matches the
-// rig conventions of the previous codebase; TODO: verify each model visually and adjust — a
-// wrong offset shows up as an enemy flying sideways.
+// rig conventions; TODO: verify each model visually and adjust — a wrong offset shows up as an
+// enemy flying sideways.
 export const ENEMY_TYPES = {
     fighter: {
         id: 'fighter',
-        name: 'Fighter',
         model: '/assets/42djT5zJnx.glb',
-        hp: 3, // round 5: +20% from 2, rounded up for integer health
-        speedMul: 1.3, // round 5: 1.2 + 20%
+        hp: 3,
+        speedMul: 1.3, // multiplier on ENEMY.baseSpeed
         score: 20,
-        targetHeight: 1.3,
+        targetHeight: 1.3, // model height in world units; the hitbox is measured from the model
         yawOffset: Math.PI / 2,
         behavior: 'chase',
-        // Clip names from GDD 8A; findClip() tolerates naming differences and falls back.
         moveClip: 'Fast_Flying',
         attackClip: 'Headbutt',
         hitClip: 'HitReact',
@@ -39,13 +31,12 @@ export const ENEMY_TYPES = {
     },
     ranged: {
         id: 'ranged',
-        name: 'Ranged',
         model: '/assets/kzpT6fNmM5.glb',
         hp: 1,
         speedMul: 0.8,
         score: 30,
-        // Round 6: +10% on user request (was 1.4). The model and its measured hitbox grow
-        // together, because the hitbox is measured from the model at this height.
+        // The model and its measured hitbox grow together, because the hitbox is measured from
+        // the model at this height.
         targetHeight: 1.54,
         yawOffset: Math.PI / 2,
         behavior: 'ranged',
@@ -56,54 +47,49 @@ export const ENEMY_TYPES = {
     },
     speeder: {
         id: 'speeder',
-        name: 'Speeder',
         model: '/assets/54QyRcsogk.glb',
-        hp: 2, // round 5: +20% from 1, rounded up (now takes two base shots to kill)
-        speedMul: 2.3, // round 5: 1.8 + 20%
+        hp: 2, // takes two base shots to kill
+        speedMul: 2.3,
         score: 25,
         targetHeight: 1.1,
         yawOffset: Math.PI / 2,
         behavior: 'speeder',
         moveClip: 'Flying_Idle',
-        attackClip: 'Headbutt', // substitute for the GDD's "Push" (not shipped) — TODO: try Headbutt
+        attackClip: 'Headbutt', // substitute for the missing 'Push' clip; TODO: try Headbutt
         hitClip: 'HitReact',
         deathClip: 'Death',
     },
     tank: {
         id: 'tank',
-        name: 'Tank',
         model: '/assets/GcttdvsqsQ.glb',
-        hp: 10, // round 5: +20% from 8, rounded up for integer health
-        speedMul: 0.6, // round 5: 0.5 + 20% (0.6 keeps the multiplier fractional; only HP/damage
-                       // are integer — speed is a continuous stat)
+        hp: 10,
+        speedMul: 0.6, // fractional on purpose: only HP and damage are whole numbers
         score: 80,
         targetHeight: 2.0,
         yawOffset: Math.PI / 2,
         behavior: 'tank',
         moveClip: 'Flying_Idle',
-        attackClip: 'Headbutt', // substitute for the GDD's "Push" (not shipped) — TODO: try Headbutt
+        attackClip: 'Headbutt', // substitute for the missing 'Push' clip; TODO: try Headbutt
         hitClip: 'HitReact',
         deathClip: 'Death',
     },
 };
 
-// The Arena Lord boss (GDD 4B + 8A: Pigeon, 9NGlBTpDEr.glb).
+// The Arena Lord boss (Pigeon, 9NGlBTpDEr.glb).
 export const BOSS_TYPE = {
-    id: 'boss',
-    name: 'Arena Lord',
     model: '/assets/9NGlBTpDEr.glb',
-    targetHeight: 3.5, // ~2.5x a common enemy (GDD: "Size 2.5x")
-    score: 1000,      // points for the kill (GDD 6C)
+    targetHeight: 3.5, // ~2.5x a common enemy; the hitbox is measured from the model
+    score: 1000,       // points for the kill
     // Same rig family as the mobs; TODO: verify visually like the enemy yaw offsets.
     yawOffset: Math.PI / 2,
     moveClip: 'Walk',
-    // GDD 8A writes "Idle/Dance" — the file ships both; Idle reads calmer while charging the
+    // The file ships Idle and Dance as separate clips; Idle reads calmer while charging the
     // volley. TODO: try Dance if the pigeon should feel goofier.
     idleClip: 'Dance',
-    // GDD 8A writes "Jump+Bit_Front": both clips are used — Jump wind-ups the dash telegraph,
-    // Bite_Front pecks out the orb volley (played in Boss.fireOrbVolley).
+    // Jump wind-ups the dash telegraph, Bite_Front pecks out the orb volley (see
+    // Boss.fireOrbVolley).
     attackClip: 'Jump',
     volleyClip: 'Bite_Front',
-    hitClip: 'HitRecieve',        // NOTE: exact clip name as written in GDD 8A
+    hitClip: 'HitRecieve', // NOTE: misspelled in the file; keep the exact name
     deathClip: 'Death',
 };

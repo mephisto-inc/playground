@@ -1,8 +1,8 @@
 import { el } from './dom.js';
 
-// Credits link (round 5): the credits live in the repository README's "credits" section. The
-// button is shared by the main menu, the pause menu and the game-over screen, so the URL is
-// defined once here.
+// Credits link: the credits live in the repository README's "credits" section. The button is
+// shared by the main menu, the pause menu and the game-over screen, so the URL is defined once
+// here.
 const CREDITS_URL =
     'https://github.com/mephisto-inc/playground/tree/main/jetbrains-academy/3d-game-challenge#credits';
 

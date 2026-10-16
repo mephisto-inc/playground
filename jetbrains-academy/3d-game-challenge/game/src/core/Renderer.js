@@ -11,8 +11,8 @@ const canvas = document.querySelector('canvas.game');
 // antialias: true -> smooth model and floor edges.
 const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
 
-// Shadows (GDD 5 asks for soft ground shadows): PCFSoft gives the softest edge the default
-// shadow map supports. Every caster/receiver opts in individually (see Arena/Houses/entities).
+// Shadows: PCFSoft gives the softest edge the default shadow map supports. Every caster/receiver
+// opts in individually (see Arena/Houses/entities).
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 

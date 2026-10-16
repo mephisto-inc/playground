@@ -3,8 +3,8 @@ import camera from '../world/Camera.js';
 import renderer from './Renderer.js';
 import { MOVE } from '../config/tuning.js';
 
-// Input component (GDD 3B, 4A): the single owner of pointer input (mouse, touch, pen) for the
-// whole game — no other module adds pointer listeners.
+// Input component: the single owner of pointer input (mouse, touch, pen) for the whole game —
+// no other module adds pointer listeners.
 //
 //   * Movement — the pointer position is unprojected onto the ground every frame. Player.js pulls
 //     the steering target through getMoveTarget(): the hero hops toward that point while it sits

@@ -22,8 +22,8 @@ import {
 } from './Achievements.js';
 import { setWaveStage } from './Audio.js';
 
-// Waves system (GDD 6B): drives the five waves — spawn pacing, the enemy cap, boss scheduling,
-// clear conditions and the wave-5 endless escalation. main.js steps it (through Run's loop) with
+// Waves system: drives the five waves — spawn pacing, the enemy cap, boss scheduling, clear
+// conditions and the wave-5 endless escalation. main.js steps it (through Run's loop) with
 // updateWaves(delta) only while WAVE_PLAYING, so the draft and pause freeze it for free.
 //
 // Division of labour: this module decides WHEN to spawn; Enemy/Boss own HOW spawning works. When
@@ -117,8 +117,8 @@ export function updateWaves(delta) {
 
     waveElapsed += delta;
 
-    // Wave 5 growth (GDD 6B): +10% HP and speed per minute, capped at 3x HP / 1.5x speed. HP is
-    // baked into each new spawn; speed applies live (Enemy/Boss read it from their setters).
+    // Wave 5 growth: +10% HP and speed per minute, capped at 3x HP / 1.5x speed. HP is baked into
+    // each new spawn; speed applies live (Enemy/Boss read it from their setters).
     let growthHpMul = 1;
     if (wave === 5) {
         const minutes = waveElapsed / 60;
@@ -130,14 +130,14 @@ export function updateWaves(delta) {
     }
 
     // Boss scheduling: waves 3 and 5 spawn one at the start; wave 5 respawns each time 1,000
-    // points are earned AFTER the previous boss died (GDD 6B — the kill's own 1,000 do not count,
-    // which is exactly why the checkpoint is taken at the death moment).
+    // points are earned AFTER the previous boss died (the kill's own 1,000 do not count, which is
+    // exactly why the checkpoint is taken at the death moment).
     if (definition.boss && bossPending) {
         const gateOpen = scoreCheckpoint === null
             || getScore() - scoreCheckpoint >= definition.bossRespawnScore;
         if (gateOpen) {
-            // Round 5: the wave definition also carries the boss's speed and orb-speed
-            // multipliers (wave 5 runs 10% faster than wave 3).
+            // The wave definition carries the boss's speed and orb-speed multipliers (wave 5
+            // runs 10% faster than wave 3).
             const boss = spawnBoss(
                 definition.bossHp * growthHpMul,
                 definition.bossSpeedMul,
@@ -160,7 +160,7 @@ export function updateWaves(delta) {
             scoreCheckpoint = getScore(); // start the 1,000-point respawn counter
             bossPending = true;
         } else if (wave === 3) {
-            clearWave(); // wave 3 ends the moment the boss dies (GDD 6B)
+            clearWave(); // wave 3 ends the moment the boss dies
             return;
         }
     }
@@ -171,8 +171,8 @@ export function updateWaves(delta) {
         return;
     }
 
-    // Spawning: at the wave's interval; in wave 5 ramping toward the endless minimum; during the
-    // wave-3 boss fight at 30% of the normal rate (GDD 6B: spawn rate -70% while the boss lives).
+    // Spawning: at the wave's interval; in wave 5 ramping toward the endless minimum; while the
+    // wave-3 boss fight runs, the interval is stretched (spawn rate drops to 30% of normal).
     let interval = definition.spawnInterval;
     if (wave === 5 && definition.rampSeconds) {
         const t = Math.min(waveElapsed / definition.rampSeconds, 1);
@@ -187,9 +187,9 @@ export function updateWaves(delta) {
     }
 }
 
-// Attempts one spawn: skipped at the ENEMY.maxAlive cap (round 4: raised to 200 — a runaway
-// guard only, since the x3 spawn rate is what paces the arena), and retried spawn points are
-// limited to the free ones (shuffled so consecutive spawns do not all use the same corner).
+// Attempts one spawn: skipped at the ENEMY.maxAlive cap (a runaway guard only — the wave's spawn
+// rate is what paces the arena), and retried spawn points are limited to the free ones (shuffled
+// so consecutive spawns do not all use the same corner).
 function spawnOneEnemy(pool) {
     if (getAliveCount() >= ENEMY.maxAlive) return;
 

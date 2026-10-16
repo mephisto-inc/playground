@@ -4,12 +4,12 @@ import { spawnMinionShot } from './Projectile.js';
 import { assetUrl } from '../core/Assets.js';
 import { isLineSightClear } from '../core/Collision.js';
 import { playSfx } from '../systems/Audio.js';
-import { ABILITY, COLLISION, PLAYER, PROJECTILE } from '../config/tuning.js';
+import { COLLISION, PLAYER, PROJECTILE } from '../config/tuning.js';
 
-// Minion component (GDD 4A, Anchor class): two translucent sprites that orbit the player, always
-// facing the camera (THREE.Sprite billboards automatically), with 50% more vision range than the
-// player. They copy every power-up: their damage, fire rate, shot count, pierce and range are
-// derived from the live player stats each frame, so a card picked mid-run changes them instantly.
+// Minion component (Anchor class): translucent sprites that orbit the player, always facing the
+// camera (THREE.Sprite billboards automatically), with extra vision range (ability.rangeMul).
+// They copy every power-up: their damage, fire rate, shot count, pierce and range are derived
+// from the live player stats each frame, so a card picked mid-run changes them instantly.
 //
 // Architecture note: this module imports Enemy (to find targets), and Enemy imports Player (for
 // its position) — a runtime-only cycle that ESM handles because nothing is touched at module
@@ -50,9 +50,10 @@ function loadSpriteTexture() {
     return texturePromise;
 }
 
-// Creates `count` orbiting minions (2 for Anchor). Call once per run when the class is chosen;
-// safe to call again after clearMinions(). Returns a promise so callers can await the texture.
-export async function createMinions(scene, count) {
+// Creates the class's orbiting minions (ability.minionCount of them). Call once per run when
+// the class is chosen; safe to call again after clearMinions(). Returns a promise so callers
+// can await the texture.
+export async function createMinions(scene, ability) {
     clearMinions();
     try {
         await loadSpriteTexture();
@@ -61,11 +62,12 @@ export async function createMinions(scene, count) {
         console.error('Failed to load minion sprite (tode.svg)', error);
         return;
     }
+    const count = ability.minionCount;
     for (let i = 0; i < count; i++) {
         const material = new THREE.SpriteMaterial({
             map: texture,
             transparent: true,
-            opacity: 0.8, // translucent sprite (GDD 4A)
+            opacity: 0.8, // translucent sprite
             depthWrite: false, // translucent billboards must not fight other transparent draws
         });
         const sprite = new THREE.Sprite(material);
@@ -76,7 +78,7 @@ export async function createMinions(scene, count) {
         scene.add(group);
         minions.push({
             group,
-            timer: Math.random() * ABILITY.minionInterval, // desync the two minions' first shots
+            timer: Math.random() * ability.minionInterval, // desync the first shots
             angleOffset: (i / count) * Math.PI * 2, // spread evenly around the orbit
         });
     }
@@ -86,24 +88,25 @@ export async function createMinions(scene, count) {
 // while WAVE_PLAYING.
 //   * playerPos — the hero's ground position (orbit centre).
 //   * stats     — live player stats; minions copy them (see the module header).
-export function updateMinions(delta, playerPos, stats) {
+//   * ability   — the active class's ability block (orbit + damage numbers).
+export function updateMinions(delta, playerPos, stats, ability) {
     if (minions.length === 0) return;
     elapsed += delta;
 
     // Fire-rate copy: how much faster the player shoots than at base (1.0 = no Quick Trigger).
     const fireRateMul = PLAYER.baseFireCooldown / Math.max(stats.fireCooldown, 0.05);
-    const interval = ABILITY.minionInterval / fireRateMul;
-    // Range copy: 50% more vision than the player (GDD 4A).
-    const range = stats.range * ABILITY.minionRangeMul;
+    const interval = ability.minionInterval / fireRateMul;
+    // Range copy: extra vision relative to the player (ability.rangeMul).
+    const range = stats.range * ability.rangeMul;
     const enemies = getEnemies();
 
     for (const minion of minions) {
         // Orbit placement: angle advances at a fixed rate; the group (not the sprite) moves.
-        const angle = elapsed * ABILITY.minionOrbitSpeed + minion.angleOffset;
+        const angle = elapsed * ability.orbitSpeed + minion.angleOffset;
         minion.group.position.set(
-            playerPos.x + Math.cos(angle) * ABILITY.minionOrbitRadius,
-            playerPos.y + Math.sin(angle) * ABILITY.minionOrbitRadius,
-            ABILITY.minionHeight,
+            playerPos.x + Math.cos(angle) * ability.orbitRadius,
+            playerPos.y + Math.sin(angle) * ability.orbitRadius,
+            ability.orbitHeight,
         );
 
         minion.timer += delta;
@@ -114,17 +117,16 @@ export function updateMinions(delta, playerPos, stats) {
         const target = findNearestEnemy(enemies, minion.group.position, range);
         if (!target) continue;
 
-        fireVolley(minion.group.position, target, stats);
+        fireVolley(minion.group.position, target, stats, ability);
         playSfx('minion_shot');
     }
 }
 
 // Finds the closest enemy (circle centres on the ground plane) within `range` of a position,
 // skipping corpses and enemies with no clear shot: the line from the minion's orbit point must
-// stay clear of every house/wall box for the shot's hit radius (round 4, same gate as the
-// player's auto-shooter; round 6: the configurable hit radius, matching what really stops the
-// bullet), so minions never fire into a house wall. A farther visible enemy wins over a nearer
-// hidden one.
+// stay clear of every house/wall box for the shot's hit radius (the configurable one, matching
+// what really stops the bullet), so minions never fire into a house wall. A farther visible
+// enemy wins over a nearer hidden one.
 function findNearestEnemy(enemies, position, range) {
     let best = null;
     let bestDistanceSq = range * range;
@@ -149,10 +151,9 @@ function findNearestEnemy(enemies, position, range) {
 // Fires the minion's volley at one target: `stats.projectiles` shots in a small fan, each with
 // the minion's damage and the player's pierce. Aim leads the target's velocity, mirroring the
 // player's auto-shooter (see Combat.js).
-function fireVolley(origin, target, stats) {
-    // Damage copy: base 1 (round 5: integer; was 0.5 at twice the fire rate — same DPS) plus
-    // whatever Heavy Ammo added to the player.
-    const damage = ABILITY.minionDamage + (stats.damage - PLAYER.baseDamage);
+function fireVolley(origin, target, stats, ability) {
+    // Damage copy: the ability's base damage plus whatever Heavy Ammo added to the player.
+    const damage = ability.minionDamage + (stats.damage - PLAYER.baseDamage);
     const count = Math.max(1, stats.projectiles);
 
     // Lead: extrapolate the target's position by its approximate flight time to it.
@@ -189,9 +190,4 @@ export function clearMinions() {
     }
     minions.length = 0;
     elapsed = 0;
-}
-
-// True when the Anchor class currently has its companions out (HUD/ability queries).
-export function hasMinions() {
-    return minions.length > 0;
 }

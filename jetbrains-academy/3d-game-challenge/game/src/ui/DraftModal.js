@@ -3,9 +3,9 @@ import { STATE, onStateChange } from '../core/StateMachine.js';
 import { getOffers, getReshufflesLeft, reshuffle } from '../systems/PowerupDraft.js';
 import { completeDraft } from '../systems/Run.js';
 
-// Power-up draft modal (GDD 6A): three distinct cards, a once-per-run reshuffle button and the
-// pick that resumes play. The system side (offers, reshuffle budget) lives in PowerupDraft.js;
-// picking routes through Run.completeDraft() which applies the card and starts the next wave.
+// Power-up draft modal: three distinct cards, a once-per-run reshuffle button and the pick that
+// resumes play. The system side (offers, reshuffle budget) lives in PowerupDraft.js; picking
+// routes through Run.completeDraft() which applies the card and starts the next wave.
 
 let overlay = null;
 let cardsRow = null;

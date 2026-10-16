@@ -1,6 +1,6 @@
-// Power-up card definitions (GDD 6A). Pure data: id, emoji, name, description and an effect
-// descriptor. Player.applyCard() interprets the descriptor fields — keeping the cards declarative
-// means a balance change is a one-line edit here, and the draft UI can render any card generically.
+// Power-up card definitions. Pure data: id, emoji, name, description and an effect descriptor.
+// Player.applyCard() interprets the descriptor fields — keeping the cards declarative means a
+// balance change is a one-line edit here, and the draft UI can render any card generically.
 
 // Effect descriptor fields (any combination; an absent field means "do not touch"):
 //   fireRateMul    — multiply shots per second (cooldown is divided by this)
@@ -89,7 +89,7 @@ export const POWERUPS = [
     },
 ];
 
-// Looks a power-up up by id; used by tests of the draft flow and by the recap at game over.
+// Looks a power-up up by id; used by the HUD's collected-card queue and the game-over recap.
 export function getPowerup(id) {
     return POWERUPS.find((card) => card.id === id);
 }

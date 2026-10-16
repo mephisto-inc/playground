@@ -1,7 +1,8 @@
-import { ABILITY, BOSS, COLLISION, ENEMY, PROJECTILE } from '../config/tuning.js';
+import { BOSS, COLLISION, ENEMY, PICKUP, PROJECTILE } from '../config/tuning.js';
 import player, {
     consumeParryBurst,
     damagePlayer,
+    getAbilityValues,
     getHitCenter,
     getStats,
     healPlayer,
@@ -40,9 +41,9 @@ import { getCollider, isLineSightClear } from '../core/Collision.js';
 // projectile flight is Projectile.js's.
 
 // The auto-shooter's timing: one volley every stats.fireCooldown seconds while a VISIBLE target
-// is in range (round 4: findNearestTarget also requires a clear line of sight). `fireTimer`
-// counts down only while such a target exists, so hiding behind a house holds the shot instead
-// of wasting it on the wall — and the next clear engagement starts with an instant shot.
+// is in range (findNearestTarget also requires a clear line of sight). `fireTimer` counts down
+// only while such a target exists, so hiding behind a house holds the shot instead of wasting it
+// on the wall — and the next clear engagement starts with an instant shot.
 let fireTimer = 0;
 
 // Set by Run.beginRun(): called exactly once when the player's HP reaches zero.
@@ -82,14 +83,15 @@ export function updateCombat(delta) {
     // 6. The parry shockwave, when a successful parry is waiting for it.
     applyParryBurst();
 
-    // 7. Pickups: magnet + collection, then healing (GDD 4B). Healing a full-HP player is a
-    //    no-op by design (healPlayer clamps), so no special check is needed here.
+    // 7. Pickups: magnet + collection, then healing. PICKUP.heal is the hearts restored per
+    //    collected heart; healing a full-HP player is a no-op by design (healPlayer clamps), so
+    //    no special check is needed here.
     const collected = updatePickups(
         delta, player.position.x, player.position.y, getStats().magnetRadius,
     );
     if (collected > 0) {
-        healPlayer(collected);
-        playSfx('heart'); // GDD 8C: health pickup sound
+        healPlayer(collected * PICKUP.heal);
+        playSfx('heart'); // health pickup sound
     }
 
     // 8. Dasher trails fade and expire (their slow effect is read by movers each frame).
@@ -99,7 +101,7 @@ export function updateCombat(delta) {
     if (isDead() && deathCallback) deathCallback();
 }
 
-// --- Auto-shooter (GDD 4A) ----------------------------------------------------
+// --- Auto-shooter -------------------------------------------------------------
 
 // Fires a volley at the nearest live enemy in range. Runs on stats.fireCooldown (Shortened by
 // the Quick Trigger card); multi-shot fans the extra projectiles; aim leads the target's motion.
@@ -143,8 +145,8 @@ function findNearestTarget(range) {
     return best;
 }
 
-// Fires `stats.projectiles` shots in a small fan (GDD 6A: Multi-Shot) toward the target, leading
-// its velocity by a fraction of the flight time. Pierce is carried per bullet.
+// Fires `stats.projectiles` shots in a small fan (the Multi-Shot card) toward the target,
+// leading its velocity by a fraction of the flight time. Pierce is carried per bullet.
 function fireVolley(target) {
     const stats = getStats();
     const originX = player.position.x;
@@ -174,27 +176,31 @@ function fireVolley(target) {
         );
         if (bullet) bullet.pierce = stats.pierce;
     }
-    playSfx('shoot'); // GDD 8C: laser shot
+    playSfx('shoot'); // laser shot
 }
 
-// --- Parry interactions (GDD 4A) ------------------------------------------------
+// --- Parry interactions ---------------------------------------------------------
 
-// While the shield is up, any hostile projectile that enters its circle is reflected back at
-// player speed (Projectile.reflectProjectilesNear). Round 6: the circle is centred on Tode's
-// VISUAL position (the lean shifts his body), so the parry catches what visually touches him.
-// A reflection is a successful parry.
+// While the shield is up, any hostile projectile that enters its circle (radius from the active
+// class's ability) is reflected back at player speed (Projectile.reflectProjectilesNear). The
+// circle is centred on Tode's VISUAL position (the lean shifts his body), so the parry catches
+// what visually touches him. A reflection is a successful parry.
 function reflectWithShield() {
     if (!isShieldActive()) return;
     const center = getHitCenter();
-    const reflected = reflectProjectilesNear(center.x, center.y, ABILITY.parryReflectRadius);
+    const ability = getAbilityValues();
+    const reflected = reflectProjectilesNear(
+        center.x, center.y, ability.reflectRadius, ability.reflectDamage,
+    );
     if (reflected > 0) markParrySuccess(); // plays sfx_parry once and arms the shockwave
 }
 
 // Applies the pending parry shockwave once: AoE damage to everything in radius, a stun for
-// common enemies, and plain knockback for the boss (GDD 4A).
+// common enemies, and plain knockback for the boss.
 function applyParryBurst() {
     const burst = consumeParryBurst();
     if (!burst) return;
+    const ability = getAbilityValues();
 
     const px = player.position.x;
     const py = player.position.y;
@@ -212,7 +218,7 @@ function applyParryBurst() {
             });
         } else {
             damageEnemy(enemy, burst.damage);
-            stunEnemy(enemy, ABILITY.parryStun);
+            stunEnemy(enemy, ability.stun);
         }
     }
 }
@@ -239,9 +245,9 @@ function resolvePlayerHits(playerHits) {
     }
 }
 
-// Enemies overlapping the player deal 1 physical damage and are knocked back (GDD 3C). Skipped
-// entirely while the player is invulnerable, so i-frames are true ghosting (no damage, no push).
-// The boss is excluded: its body push lives in Boss.js.
+// Enemies overlapping the player deal 1 physical damage and are knocked back. Skipped entirely
+// while the player is invulnerable, so i-frames are true ghosting (no damage, no push). The
+// boss is excluded: its body push lives in Boss.js.
 function resolveContactDamage() {
     if (isDead() || isInvulnerable()) return;
 

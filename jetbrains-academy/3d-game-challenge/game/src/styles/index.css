@@ -1,6 +1,6 @@
 /* Global UI stylesheet: page reset, canvas, the overlay root and the glassmorphism design
-   language shared by every screen (GDD 1: "central glass panel", GDD 7: HUD zones). Imported
-   once from main.js; the 3D canvas sits underneath everything. */
+   language shared by every screen (a "central glass panel" per screen). Imported once from
+   main.js; the 3D canvas sits underneath everything. */
 
 :root {
     --glass-bg: rgba(14, 22, 32, 0.55);
@@ -11,7 +11,7 @@
     --text-dim: #b9c6d4;
     --accent: #7ee2a8;
     --danger: #ff5a5a;
-    /* Screen vignette darkness at the edges (round 4). 0 disables it; tune freely. */
+    /* Screen vignette darkness at the edges. 0 disables it; tune freely. */
     --vignette-strength: 0.55;
 }
 
@@ -49,11 +49,11 @@ canvas.game {
     z-index: 10;
 }
 
-/* Screen vignette (round 4): a pure-CSS radial gradient that darkens the screen edges, giving
-   the orthographic view a soft framing without any renderer work. It is the ::before of the
+/* Screen vignette: a pure-CSS radial gradient that darkens the screen edges, giving the
+   orthographic view a soft framing without any renderer work. It is the ::before of the
    overlay root, so it sits above the 3D canvas (z-index 10) but every HUD element and panel —
    later children of #ui-root, painted in DOM order — still draws on top of it. Strength comes
-   from --vignette-strength (:root default 0.55 — the "default value" requested; 0 disables). */
+   from --vignette-strength (:root default 0.55; 0 disables). */
 #ui-root::before {
     content: "";
     position: fixed;
@@ -132,7 +132,7 @@ canvas.game {
     display: none !important;
 }
 
-/* --- HUD (GDD 7: top-center and bottom-center only) --------------------------------------- */
+/* --- HUD (top-center and bottom-center only) ---------------------------------------------- */
 
 #hud {
     position: absolute;
@@ -268,8 +268,8 @@ canvas.game {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     backdrop-filter: blur(8px);
-    /* Round 5: badges accept pointer events again so they can show their tooltip on hover/tap
-       (the UI root is pointer-events: none, so without this they are inert). */
+    /* Badges accept pointer events so they can show their tooltip on hover/tap (the UI root
+       is pointer-events: none, so without this they are inert). */
     pointer-events: auto;
     cursor: help;
 }
@@ -397,7 +397,7 @@ canvas.game {
     line-height: 1.45;
 }
 
-/* --- Draft modal (GDD 6A) -------------------------------------------------------------------- */
+/* --- Draft modal ------------------------------------------------------------------------------ */
 
 .draft-panel {
     padding: 26px 26px 20px;
@@ -559,12 +559,23 @@ canvas.game {
 .achievements-panel {
     width: min(520px, 92vw);
     max-height: 84vh;
-    overflow-y: auto;
     padding: 26px;
     display: flex;
     flex-direction: column;
     gap: 12px;
     pointer-events: auto;
+}
+
+/* Only this middle section scrolls: the title and the footer buttons stay fixed, so a long
+   achievement list never pushes them out of reach. */
+.achievements-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 6px;
 }
 
 .achievements-title {
@@ -573,6 +584,18 @@ canvas.game {
     letter-spacing: 2px;
     text-transform: uppercase;
     text-align: center;
+}
+
+.achievements-footer {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+/* The RESET button armed for its confirming click ("SURE?"). */
+.btn.confirming {
+    background: rgba(255, 90, 90, 0.28);
+    border-color: var(--danger);
 }
 
 .achievement {
@@ -604,6 +627,64 @@ canvas.game {
 .achievement .a-desc {
     font-size: 12.5px;
     color: var(--text-dim);
+}
+
+/* --- Achievement toasts ------------------------------------------------------------------- */
+
+/* Top-center stack of unlock banners (ui/Toast.js), parked just below the HUD's top row so it
+   never covers the hearts, the wave banner or the score. The container ignores pointer events,
+   so the banners never block clicks on whatever sits underneath them. */
+.toast-container {
+    position: fixed;
+    left: 50%;
+    top: 132px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-radius: 12px;
+    background: var(--glass-bg-strong);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    box-shadow:
+        inset 0 1px 0 var(--glass-highlight),
+        0 18px 50px rgba(0, 0, 0, 0.45);
+    /* Hidden state the .visible class transitions from; the duration must stay in sync with
+       FADE_MS in ui/Toast.js. */
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.toast .toast-icon {
+    font-size: 20px;
+}
+
+.toast .toast-title {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: var(--accent);
+}
+
+.toast .toast-name {
+    font-size: 13px;
+    font-weight: 700;
 }
 
 /* --- Small screens ----------------------------------------------------------------------------- */

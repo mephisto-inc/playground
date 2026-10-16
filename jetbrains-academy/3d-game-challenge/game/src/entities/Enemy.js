@@ -16,28 +16,27 @@ import {
     registerCollider,
     unregisterCollider,
 } from '../core/Collision.js';
-import { ABILITY, COLLISION, ENEMY, PROJECTILE } from '../config/tuning.js';
+import { COLLISION, ENEMY, PROJECTILE } from '../config/tuning.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
-import player, { getHitCenter, getStats } from './Player.js';
+import player, { getAbilityValues, getHitCenter, getStats } from './Player.js';
 import { getTrailSpeedFactor } from './Trail.js';
 import { spawnHeart } from './Pickup.js';
 import { spawnEnemyShot } from './Projectile.js';
 import { playSfx } from '../systems/Audio.js';
 import { addScore } from '../systems/Score.js';
 
-// Enemy component (GDD 4B): loads the four common enemy models, lets Waves spawn them at the
-// arena's 8 spawn points, and runs their per-frame AI. Each enemy is a Group carrying the ground
-// position; the model child carries facing. Every behavior (chase / ranged / speeder / tank)
-// shares one movement routine: collision-checked sub-steps that slide along houses and walls,
-// plus the escape-detour system ported from the previous codebase (stuck clock, body-width
-// line-of-sight probe, lateral waypoint) so nothing stays wedged behind a house forever.
+// Enemy component: loads the four common enemy models, lets Waves spawn them at the arena's 8
+// spawn points, and runs their per-frame AI. Each enemy is a Group carrying the ground position;
+// the model child carries facing. Every behavior (chase / ranged / speeder / tank) shares one
+// movement routine: collision-checked sub-steps that slide along houses and walls, plus an
+// escape-detour system (stuck clock, body-width line-of-sight probe, lateral waypoint) so
+// nothing stays wedged behind a house forever.
 //
 // Damage/score/drop bookkeeping lives here too (damageEnemy), because the enemy owns its HP and
 // the kill moment — Combat only reports what the projectiles hit.
 
 // --- Steering tuning ---------------------------------------------------------
-// Ported from the old 650-unit arena and divided by ~10 for the old 60x40 one (their comment:
-// values selected so a wedged enemy is visible as a bug for well under a second).
+// Values chosen so a wedged enemy is visible as a bug for well under a second.
 const STUCK_ESCAPE_SECONDS = 0.5;    // zero-progress seconds before the detour kicks in
 const ESCAPE_WAYPOINT_DISTANCE = 5;  // lateral offset of the detour waypoint, world units
 const ESCAPE_WAYPOINT_REACHED = 0.9; // arrival radius at the waypoint
@@ -66,8 +65,8 @@ let ready = false;
 // death} } — clips hold AnimationClip references (or null when the model lacks that clip).
 const prepared = {};
 
-// Wave-5 endless growth (GDD 6B), set by Waves: HP multiplier applies to new spawns, speed
-// multiplier applies live to every enemy (existing ones speed up as the wave grows).
+// Wave-5 endless growth, set by Waves: HP multiplier applies to new spawns, speed multiplier
+// applies live to every enemy (existing ones speed up as the wave grows).
 let endlessHpMul = 1;
 let endlessSpeedMul = 1;
 
@@ -90,9 +89,9 @@ export async function initEnemies(scene) {
         const probe = cloneModel(template);
         const shape = normalizeModel(probe, { targetHeight: type.targetHeight });
 
-        // Resolve the GDD's clip names against what the file actually ships. findClip tolerates
-        // case and slight renames; a missing clip degrades to no animation for that action, and
-        // the warning below lists the real names for easy fixing.
+        // Resolve the expected clip names against what the file actually ships. findClip
+        // tolerates case and slight renames; a missing clip degrades to no animation for that
+        // action, and the warning below lists the real names for easy fixing.
         const clips = {
             move: findClip(gltf.animations, type.moveClip),
             attack: findClip(gltf.animations, type.attackClip),
@@ -120,9 +119,9 @@ export async function initEnemies(scene) {
 }
 
 // Finds a clip by exact name first, then case-insensitively, then by loose substring match —
-// the GDD's names ("HitRecieve" is even misspelled in the model) rarely match byte-for-byte.
-// The exported animations prefix every clip with "CharacterArmature|", so every comparison
-// strips everything up to the last '|' before matching.
+// the models' clip names rarely match the config byte-for-byte ("HitRecieve" is even misspelled
+// in the model). The exported animations prefix every clip with "CharacterArmature|", so every
+// comparison strips everything up to the last '|' before matching.
 function findClip(animations, name) {
     if (!name || animations.length === 0) return null;
     const base = (clipName) => {
@@ -147,8 +146,8 @@ export function getEnemyRadius(typeId) {
 
 // --- Spawning ------------------------------------------------------------------
 
-// Waves' endless-growth hook (GDD 6B): HP multiplier for future spawns, speed multiplier for
-// everyone including enemies already on the field. Called every frame in wave 5.
+// Waves' endless-growth hook: HP multiplier for future spawns, speed multiplier for everyone
+// including enemies already on the field. Called every frame in wave 5.
 export function setEndlessScaling(hpMul, speedMul) {
     endlessHpMul = hpMul;
     endlessSpeedMul = speedMul;
@@ -206,8 +205,8 @@ export function spawnEnemy(typeId, position) {
 
     const data = group.userData;
     data.typeConfig = type;
-    data.maxHp = Math.ceil(type.hp * endlessHpMul); // wave-5 growth bakes into the spawn (GDD 6B);
-    // round 5: health is whole numbers everywhere, so grown HP rounds UP (2.2 -> 3), never down.
+    data.maxHp = Math.ceil(type.hp * endlessHpMul); // wave-5 growth bakes into the spawn;
+    // health is whole numbers everywhere, so grown HP rounds UP (2.2 -> 3), never down.
     data.hp = data.maxHp;
     data.collider = registerCollider(group, group.position, typePrepared.radius);
     data.touchingPlayer = false;
@@ -225,7 +224,7 @@ export function spawnEnemy(typeId, position) {
     data.contactAnimTimer = 0;
     data.velocity = { x: 0, y: 0 };
     data.travelClock = 0; // own per-enemy clock driving the Speeders' zig-zag phase
-    // Tank behavior: its body stops shots dead (GDD 4B), read by Projectile.js.
+    // Tank behavior: its body stops shots dead, read by Projectile.js.
     data.blocksShots = type.behavior === 'tank';
     // Ranged behavior: desynchronized first shot so a group does not fire in lockstep.
     data.fireTimer = Math.random() * ENEMY.rangedFireInterval;
@@ -246,7 +245,7 @@ export function damageEnemy(enemy, amount, options = {}) {
 
     enemy.userData.hp -= amount;
     flashEnemy(enemy);
-    playSfx('hit'); // GDD 8C: sfx_hit is "enemy gets hit"
+    playSfx('hit'); // sfx_hit: "enemy gets hit"
 
     if (options.knockback > 0) {
         knockbackEnemy(enemy, options.knockbackX || 0, options.knockbackY || 0, options.knockback);
@@ -262,7 +261,7 @@ export function damageEnemy(enemy, amount, options = {}) {
 }
 
 // Pushes an enemy away, one collision-checked step at a time (never through a wall). Tanks
-// ignore knockback entirely (GDD 4B: it is immune to being pushed).
+// ignore knockback entirely (they are immune to being pushed).
 export function knockbackEnemy(enemy, dirX, dirY, distance) {
     if (!enemy || enemy.userData.dying) return;
     if (enemy.userData.typeConfig.behavior === 'tank') return;
@@ -284,8 +283,8 @@ export function knockbackEnemy(enemy, dirX, dirY, distance) {
     }
 }
 
-// Stuns an enemy for `duration` seconds (Parry shockwave, GDD 4A): it stops moving and firing
-// but stays on the field and keeps animating its idle pose.
+// Stuns an enemy for `duration` seconds (Parry shockwave): it stops moving and firing but stays
+// on the field and keeps animating its idle pose.
 export function stunEnemy(enemy, duration) {
     if (!enemy || enemy.userData.dying) return;
     enemy.userData.stunTimer = Math.max(enemy.userData.stunTimer, duration);
@@ -318,10 +317,11 @@ function killEnemy(enemy) {
         data.dyingTimer = ENEMY.deathLinger;
     }
 
-    // GDD 6C: kills pay points (value per type from the config).
+    // Kills pay points (value per type from the config).
     addScore(data.typeConfig.score);
 
-    // GDD 4B: drop chance from the player's stats (the Bloodthirst card raises it to 10%).
+    // Drop roll against the player's live drop chance (the Bloodthirst card replaces it with
+    // ENEMY.HealthyDropChance).
     if (Math.random() < getStats().dropChance) {
         spawnHeart(enemy.position.x, enemy.position.y);
     }
@@ -329,7 +329,7 @@ function killEnemy(enemy) {
 
 // --- Hit flash -----------------------------------------------------------------
 
-// White flash after taking damage (GDD 3C). Uses the material's emissive channel so the model's
+// White flash after taking damage. Uses the material's emissive channel so the model's
 // diffuse texture/color stays intact underneath; materials without an emissive channel (rare
 // here — all four models load as MeshStandardMaterial) simply skip the flash.
 function flashEnemy(enemy) {
@@ -375,7 +375,7 @@ export function updateEnemies(delta) {
 
     const playerCollider = getCollider(player);
     // Hit tests use Tode's visible centre (the lean shifts his body ahead of his feet), so a
-    // leaning frog is touched where he visibly is (round 6).
+    // leaning frog is touched where he visibly is.
     const playerCenter = getHitCenter();
 
     // Backwards iteration so dying enemies can be removed in place.
@@ -461,7 +461,7 @@ export function updateEnemies(delta) {
             }
         } else if (behavior === 'speeder') {
             // Alternate short dash bursts and rests; during a dash the heading zig-zags around
-            // the line to the player, so the path reads as erratic (GDD 4B: "rapid, zig-zag").
+            // the line to the player, so the path reads as erratic.
             data.speederTimer -= delta;
             const cycle = ENEMY.speederDashOn + ENEMY.speederDashOff;
             if (data.speederTimer <= 0) data.speederTimer += cycle;
@@ -501,8 +501,9 @@ export function updateEnemies(delta) {
 
         if (collider && moving) {
             // Effective speed: base x type x endless growth, slowed inside a Dasher trail.
+            // The slow factor comes from the active class's ability (only the Dasher has trails).
             const trailFactor = getTrailSpeedFactor(
-                enemy.position.x, enemy.position.y, ABILITY.trailSlowCommon,
+                enemy.position.x, enemy.position.y, getAbilityValues().trailSlowCommon ?? 1,
             );
             const speed = ENEMY.baseSpeed * data.typeConfig.speedMul * endlessSpeedMul * trailFactor;
 
@@ -533,7 +534,7 @@ export function updateEnemies(delta) {
             }
 
             // Stuck clock: any real displacement resets it; a wedged frame grows it and the
-            // escape state below eventually picks a lateral waypoint (see the old steering).
+            // escape state below eventually picks a lateral waypoint.
             const moved =
                 Math.hypot(enemy.position.x - startX, enemy.position.y - startY) > STUCK_EPSILON;
             if (moved) {
@@ -571,28 +572,28 @@ export function updateEnemies(delta) {
             playOneShot(enemy, data.actions.attack);
         }
 
-        // --- Ranged behavior: fire at the player (GDD 4B) ---
-        // Round 4: the gate is the same precise line-of-sight test the player's side uses, at
-        // the hostile shot's hit radius (round 6: the configurable one, not the visual radius).
-        // It replaced the coarse sampled probe, which let shots squeeze "through" a house corner
-        // and die on it with no visible cause.
+        // --- Ranged behavior: fire at the player ---
+        // The gate is the same precise line-of-sight test the player's side uses, at the hostile
+        // shot's hit radius (the configurable one, not the visual radius). It replaced a coarse
+        // sampled probe, which let shots squeeze "through" a house corner and die on it with no
+        // visible cause.
         if (behavior === 'ranged') {
             data.fireTimer -= delta;
             if (data.fireTimer <= 0) {
                 data.fireTimer = ENEMY.rangedFireInterval;
                 const inRange = playerDistance <= ENEMY.rangedStandoff * 1.6;
-                // Round 5: the visibility check still runs against the player's REAL position —
-                // peeking around a corner should not let the ranger shoot through the house.
+                // The visibility check runs against the player's REAL position — peeking around
+                // a corner should not let the ranger shoot through the house.
                 const clearShot = isLineSightClear(
                     enemy.position.x, enemy.position.y,
                     player.position.x, player.position.y,
                     PROJECTILE.enemyRadius * COLLISION.projectileRadiusMul,
                 );
                 if (inRange && clearShot) {
-                    // Round 5: lead the shot. Estimate the flight time from the current distance,
-                    // then aim at where the player will be after rangedAimLead of that time
-                    // (0.8 = 80% of the way). Keeping the fraction below 1 makes strafing and
-                    // direction changes beat the guess; standing still still gets hit.
+                    // Lead the shot. Estimate the flight time from the current distance, then
+                    // aim at where the player will be after rangedAimLead of that time (0.8 =
+                    // 80% of the way). Keeping the fraction below 1 makes strafing and direction
+                    // changes beat the guess; standing still still gets hit.
                     const flightTime = playerDistance / PROJECTILE.enemySpeed;
                     const playerVelocity = player.userData.velocity || { x: 0, y: 0 };
                     let aimX = player.position.x
@@ -612,7 +613,7 @@ export function updateEnemies(delta) {
                     const dirToAimY = aimY - enemy.position.y;
                     const aimLength = Math.max(Math.hypot(dirToAimX, dirToAimY), 1e-6);
                     // The enemy object rides along as the bullet's `sender`, so a parry can bounce
-                    // this exact shot back into this exact ranger (round 5).
+                    // this exact shot back into this exact ranger.
                     spawnEnemyShot(
                         enemy.position.x, enemy.position.y,
                         dirToAimX / aimLength, dirToAimY / aimLength,
@@ -628,7 +629,7 @@ export function updateEnemies(delta) {
     }
 }
 
-// --- Detour helpers (ported from the old steering) --------------------------------
+// --- Detour helpers ------------------------------------------------------------
 
 // True when a straight line from `from` to `to` stays clear for the enemy's own circle: the line
 // is sampled every ESCAPE_PROBE_SPACING units and every sample must pass isMoveFree, so the
@@ -727,7 +728,7 @@ export function removeFromEnemyList(enemy) {
 
 // Removes one enemy: drops it from the array, unregisters its collider and detaches its node.
 // Returns true when it removed something (callers use that to avoid double kill credit).
-export function removeEnemy(enemy) {
+function removeEnemy(enemy) {
     const index = enemies.indexOf(enemy);
     if (index === -1) return false;
 

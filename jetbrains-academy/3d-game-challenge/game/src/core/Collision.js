@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { COLLISION } from '../config/tuning.js';
 
-// Collision module: two shared responsibilities, split as before —
+// Collision module: two shared responsibilities —
 //
 //   * MOVEMENT (isMoveFree / isObstacleFree) — "may a mover stand at (x, y)?". Only static
 //     boxes block movement/shots: houses and the arena's boundary walls. Characters pass
@@ -182,8 +182,7 @@ export function isSpotFree(x, y, radius) {
 //                 normalizeModel() to scale a model to a target height at load time.
 export function measureCollisionShape(object) {
     // Refresh world matrices BEFORE reading any vertex: SkeletonUtils.clone() leaves the cloned
-    // skeleton's bone matrices stale, and measuring before they refresh caused wild sizes in the
-    // previous codebase.
+    // skeleton's bone matrices stale, and measuring them before refresh produces wild sizes.
     object.updateMatrixWorld(true);
 
     let radius = 0;

@@ -5,8 +5,8 @@ import { getScore } from '../systems/Score.js';
 import { getWaveInfo } from '../systems/Waves.js';
 import { getPowerup } from '../config/powerups.js';
 
-// HUD (GDD 7): the always-in-play layer — top-center (heart meter, wave banner, score, pause
-// button, boss bar) and bottom-center (ability cooldown ring, build badges). It updates through
+// HUD: the always-in-play layer — top-center (heart meter, wave banner, score, pause button,
+// boss bar) and bottom-center (ability cooldown ring, build badges). It updates through
 // updateHUD(), which main.js calls once per frame; every write is guarded by a cache so the DOM
 // only changes when a value actually changes.
 
@@ -72,7 +72,7 @@ export function initHUD() {
     mount(hudNode);
 
     onStateChange((state) => {
-        // Visible through every in-run screen; hidden in the menus (GDD 7: the HUD is gameplay UI).
+        // Visible through every in-run screen; hidden in the menus (the HUD is gameplay UI).
         const inRun = state === STATE.WAVE_PLAYING
             || state === STATE.POWERUP_DRAFT
             || state === STATE.PAUSE_MENU
@@ -88,7 +88,7 @@ export function initHUD() {
 export function updateHUD() {
     if (!hudNode || hudNode.classList.contains('hidden')) return;
 
-    // Hearts: filled for current HP, black for missing out of the current max (GDD 7 example).
+    // Hearts: filled for current HP, black for missing out of the current max.
     const hearts = getHearts();
     const maxHearts = getStats().maxHearts;
     const heartsText = '💖'.repeat(hearts) + '🖤'.repeat(Math.max(0, maxHearts - hearts));
@@ -147,9 +147,9 @@ export function updateHUD() {
         abilityRingNode.style.setProperty('--fill', String(fillRounded));
     }
 
-    // Build badges: collected cards with a count when stacked. Each badge is an element (round 5,
-    // was an innerHTML string) so it can carry a tooltip: hover with a mouse or tap on touch to
-    // see the card's icon, name and description. The cache key is the id:count list.
+    // Build badges: collected cards with a count when stacked. Each badge is an element so it can
+    // carry a tooltip: hover with a mouse or tap on touch to see the card's icon, name and
+    // description. The cache key is the id:count list.
     const counts = new Map();
     for (const id of getCollectedCards()) counts.set(id, (counts.get(id) || 0) + 1);
     let badgesKey = '';

@@ -2,8 +2,8 @@ import { DRAFT } from '../config/tuning.js';
 import { POWERUPS } from '../config/powerups.js';
 import { playSfx } from './Audio.js';
 
-// Power-up draft system (GDD 6A): every draft shows 3 DISTINCT cards; the same card may appear
-// again in later drafts. One reshuffle per run re-rolls the trio (GDD: once per game).
+// Power-up draft system: every draft shows 3 DISTINCT cards; the same card may appear again in
+// later drafts. One reshuffle per run re-rolls the trio.
 //
 // This module only owns the two things the draft needs: the current offers and the reshuffle
 // budget. The UI (DraftModal) renders getOffers() and calls reshuffle(); picking a card goes
@@ -12,8 +12,7 @@ import { playSfx } from './Audio.js';
 let offers = [];
 let reshufflesLeft = 0;
 
-// Begins a draft: draws the first trio and plays the draft sound (GDD 1 state table: entering
-// POWERUP_DRAFT plays sfx_card.wav).
+// Begins a draft: draws the first trio and plays the draft sound.
 export function openDraft() {
     offers = drawOffers();
     playSfx('card');
@@ -24,8 +23,8 @@ export function getOffers() {
     return offers.slice();
 }
 
-// Re-rolls the trio with the once-per-game reshuffle. Returns false when the budget is spent
-// (the UI disables the button then). Plays the card sound (GDD 8C: reshuffle uses sfx_card).
+// Re-rolls the trio with the once-per-run reshuffle. Returns false when the budget is spent
+// (the UI disables the button then). Plays the card sound like a fresh draft.
 export function reshuffle() {
     if (reshufflesLeft <= 0) return false;
     reshufflesLeft--;
@@ -46,7 +45,7 @@ export function resetDraft() {
 }
 
 // Draws DRAFT.cardsShown distinct cards: shuffle a copy of the deck, take the first few. Distinct
-// within one draft; across drafts repeats naturally happen (allowed by the GDD).
+// within one draft; across drafts the same card can return.
 function drawOffers() {
     const deck = POWERUPS.slice();
     for (let i = deck.length - 1; i > 0; i--) {

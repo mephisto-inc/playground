@@ -21,7 +21,7 @@ export function mount(...nodes) {
     return nodes[nodes.length - 1];
 }
 
-// --- Tooltips (round 5) -------------------------------------------------------
+// --- Tooltips -----------------------------------------------------------------
 
 // One shared tooltip bubble for the whole UI. It is appended to <body> (not the UI root) and
 // pointer-events: none (see index.css), so it can never swallow a tap meant for the badge under
@@ -89,5 +89,3 @@ export function hideTooltip() {
     tooltipOwner = null;
     tooltip.style.display = 'none';
 }
-
-export { root };

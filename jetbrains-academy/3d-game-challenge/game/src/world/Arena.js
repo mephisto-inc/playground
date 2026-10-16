@@ -4,7 +4,7 @@ import { assetUrl } from '../core/Assets.js';
 import renderer from '../core/Renderer.js';
 import { ARENA } from '../config/tuning.js';
 
-// Arena component (GDD 5): builds the 97.2 x 64.8 playfield — a cobblestone floor, a dark backdrop
+// Arena component: builds the 87.48 x 58.32 playfield — a cobblestone floor, a dark backdrop
 // plane under it, and four invisible boundary-wall colliders. Exposes the whole thing as one
 // group so the main menu can spin the arena slowly in the background and a run can reset it.
 //
@@ -16,13 +16,13 @@ import { ARENA } from '../config/tuning.js';
 // group's rotation is zero — Run.resetWorld() puts it back before any wave starts.
 export const map = new THREE.Group();
 
-// Degrees per second the arena drifts in the main menu (GDD 1: "arena rotates slowly").
+// Degrees per second the arena drifts in the main menu.
 const MENU_ROTATION_SPEED = 0.12;
 
-// Builds the cobblestone floor from PlaneMesh.png (the GDD's floor asset), tiled so one repeat
-// always covers ARENA.floorTile world units. PlaneGeometry already lies in the XY plane facing
-// +Z — exactly this scene's ground — so no rotation is needed. Lit (MeshStandardMaterial) on
-// purpose: an unlit floor cannot receive the soft ground shadows (GDD 5).
+// Builds the cobblestone floor from PlaneMesh.png, tiled so one repeat always covers
+// ARENA.floorTile world units. PlaneGeometry already lies in the XY plane facing +Z — exactly
+// this scene's ground — so no rotation is needed. Lit (MeshStandardMaterial) on purpose: an
+// unlit floor cannot receive the soft ground shadows.
 function makeFloor() {
     // TextureLoader is asynchronous, so the floor may render untextured for a frame or two —
     // acceptable for a local PNG, and it avoids threading a promise through arena startup.
@@ -38,7 +38,7 @@ function makeFloor() {
         new THREE.PlaneGeometry(ARENA.width, ARENA.depth),
         new THREE.MeshStandardMaterial({ map: texture, roughness: 1, metalness: 0 }),
     );
-    floor.receiveShadow = true; // houses and characters drop soft shadows on it (GDD 5)
+    floor.receiveShadow = true; // houses and characters drop soft shadows on it
     return floor;
 }
 

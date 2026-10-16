@@ -1,6 +1,6 @@
 import { STORAGE_KEYS, loadNumber, saveNumber } from '../core/Storage.js';
 
-// Score system (GDD 6C): owns the running score and the persisted best score.
+// Score system: owns the running score and the persisted best score.
 //
 // Points come from exactly two places — Enemy/Boss kills (their own point values) and the wave
 // clear bonus (500 x wave number, waves 1-4). Wave 5 never pays a bonus.

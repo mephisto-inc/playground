@@ -3,14 +3,14 @@ import { STATE, onStateChange, setState } from '../core/StateMachine.js';
 import { PLAYER } from '../config/tuning.js';
 import { getGameOverSummary } from '../systems/Run.js';
 import { getPowerup } from '../config/powerups.js';
-import { ACHIEVEMENTS } from '../systems/Achievements.js';
+import { getAchievement } from '../systems/Achievements.js';
 import { openAchievements } from './AchievementsPanel.js';
 import { createCreditsButton } from './credits.js';
 
-// Game-over screen (GDD 1 state 6 + GDD 7): appears after the defeat animation finishes, showing
-// the final score, the record status, a recap of the collected power-up cards and the
-// achievements unlocked during the run. Play Again returns to the character-select modal
-// (choosing the class starts the next run); Main Menu returns to the title.
+// Game-over screen: appears after the defeat animation finishes, showing the final score, the
+// record status, a recap of the collected power-up cards and the achievements unlocked during
+// the run. Play Again returns to the character-select modal (choosing the class starts the next
+// run); Main Menu returns to the title.
 
 let overlay = null;
 let scoreNode = null;
@@ -48,12 +48,12 @@ export function initGameOverScreen() {
     menuButton.addEventListener('click', () => setState(STATE.MAIN_MENU));
     panel.appendChild(menuButton);
 
-    // The achievements panel is available at any time (GDD 7), including from this screen.
+    // The achievements panel is available at any time, including from this screen.
     const achievementsButton = el('button', 'btn', '🏆 ACHIEVEMENTS');
     achievementsButton.addEventListener('click', () => openAchievements());
     panel.appendChild(achievementsButton);
 
-    // Credits (round 5): same link as the menus.
+    // Credits link, the same one the menus use.
     panel.appendChild(createCreditsButton());
 
     overlay.appendChild(panel);
@@ -62,7 +62,7 @@ export function initGameOverScreen() {
     onStateChange((state) => {
         if (state === STATE.GAME_OVER) {
             render();
-            // Let the defeat animation (GDD state 6) play before revealing the panel.
+            // Let the defeat animation play before revealing the panel.
             overlay.classList.remove('revealed');
             clearTimeout(revealTimer);
             revealTimer = setTimeout(() => {
@@ -85,8 +85,7 @@ function render() {
     recordNode.textContent = summary.isRecord ? '🏆 NEW RECORD!' : '';
 
     // Cards recap: one badge per collected card, in pickup order. Each carries the same tooltip
-    // as the HUD badges (round 5), so the recap explains what was picked without leaving the
-    // screen.
+    // as the HUD badges, so the recap explains what was picked without leaving the screen.
     hideTooltip(); // the badges it was describing are about to be discarded
     cardsNode.innerHTML = '';
     if (summary.cards.length === 0) {
@@ -104,13 +103,14 @@ function render() {
         }
     }
 
-    // Achievements unlocked during this run (by id, looked up for icon + name).
+    // Achievements unlocked during this run (by id, looked up in the live registry for icon
+    // and name; a hit from an achievement unregistered since the run is skipped).
     achievementsNode.innerHTML = '';
     if (summary.unlocked.length === 0) {
         achievementsNode.appendChild(el('div', 'summary-label', '— none —'));
     } else {
         for (const id of summary.unlocked) {
-            const definition = ACHIEVEMENTS.find((entry) => entry.id === id);
+            const definition = getAchievement(id);
             if (!definition) continue;
             achievementsNode.appendChild(
                 el('div', '', `${definition.icon} ${definition.name}`),
