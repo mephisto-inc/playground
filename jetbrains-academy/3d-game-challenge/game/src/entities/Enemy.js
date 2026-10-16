@@ -16,21 +16,26 @@ import {
     registerCollider,
     unregisterCollider,
 } from '../core/Collision.js';
-import { COLLISION, ENEMY, PROJECTILE } from '../config/tuning.js';
+import { ARENA, COLLISION, ENEMY, PROJECTILE, TRAIL } from '../config/tuning.js';
 import { ENEMY_TYPES } from '../config/enemies.js';
-import player, { getAbilityValues, getHitCenter, getStats } from './Player.js';
-import { getTrailSpeedFactor } from './Trail.js';
+import player, { getHitCenter, getStats } from './Player.js';
+import { isInsideTrail } from './Trail.js';
 import { spawnHeart } from './Pickup.js';
 import { spawnEnemyShot } from './Projectile.js';
-import { playSfx } from '../systems/Audio.js';
+import { playSfxAt } from '../systems/Audio.js';
 import { addScore } from '../systems/Score.js';
+import { recordKill } from '../systems/Achievements.js';
 
 // Enemy component: loads the four common enemy models, lets Waves spawn them at the arena's 8
-// spawn points, and runs their per-frame AI. Each enemy is a Group carrying the ground position;
-// the model child carries facing. Every behavior (chase / ranged / speeder / tank) shares one
-// movement routine: collision-checked sub-steps that slide along houses and walls, plus an
-// escape-detour system (stuck clock, body-width line-of-sight probe, lateral waypoint) so
-// nothing stays wedged behind a house forever.
+// spawn points (which now sit OUTSIDE the boundary walls), and runs their per-frame AI. Each
+// enemy is a Group carrying the ground position; the model child carries facing. Every behavior
+// (chase / ranged / speeder / tank) shares one movement routine: collision-checked sub-steps that
+// slide along houses, plus an escape-detour system (stuck clock, body-width line-of-sight probe,
+// lateral waypoint) so nothing stays wedged behind a house forever.
+//
+// Outside the arena an enemy walks as a near-black silhouette (boundary walls are ignored by its
+// movement, and it neither fires nor can be shot through the walls); crossing the floor edge
+// blends it back to its normal look over ENEMY.silhouetteBlend seconds.
 //
 // Damage/score/drop bookkeeping lives here too (damageEnemy), because the enemy owns its HP and
 // the kill moment — Combat only reports what the projectiles hit.
@@ -65,10 +70,21 @@ let ready = false;
 // death} } — clips hold AnimationClip references (or null when the model lacks that clip).
 const prepared = {};
 
-// Wave-5 endless growth, set by Waves: HP multiplier applies to new spawns, speed multiplier
-// applies live to every enemy (existing ones speed up as the wave grows).
+// Wave-5 endless growth, set by Waves: HP multiplier applies to new spawns, speed and attack
+// multipliers apply live to every enemy (existing ones speed up and fire faster as the wave
+// grows). `endlessAttackMul` scales ranged fire rate and enemy shot speed.
 let endlessHpMul = 1;
 let endlessSpeedMul = 1;
+let endlessAttackMul = 1;
+
+// The near-black silhouette color (single shared instance; materials lerp toward it).
+const SILHOUETTE_COLOR = new THREE.Color(ENEMY.silhouetteColor);
+
+// True when a ground point lies outside the arena floor rectangle. Enemies/boss there read as
+// silhouettes, cannot fire, and movement ignores the boundary walls. Also used by Boss.js.
+export function isOutsideArena(x, y) {
+    return Math.abs(x) > ARENA.width / 2 || Math.abs(y) > ARENA.depth / 2;
+}
 
 // --- Loading -----------------------------------------------------------------
 
@@ -146,11 +162,12 @@ export function getEnemyRadius(typeId) {
 
 // --- Spawning ------------------------------------------------------------------
 
-// Waves' endless-growth hook: HP multiplier for future spawns, speed multiplier for everyone
-// including enemies already on the field. Called every frame in wave 5.
-export function setEndlessScaling(hpMul, speedMul) {
+// Waves' endless-growth hook: HP multiplier for future spawns; speed and attack multipliers for
+// everyone including enemies already on the field. Called every frame in wave 5.
+export function setEndlessScaling(hpMul, speedMul, attackMul) {
     endlessHpMul = hpMul;
     endlessSpeedMul = speedMul;
+    endlessAttackMul = attackMul;
 }
 
 // Spawns one enemy of `typeId` at `position` (a ground point). Returns the enemy or null when it
@@ -169,13 +186,15 @@ export function spawnEnemy(typeId, position) {
     model.scale.setScalar(typePrepared.scale);
     model.position.z += typePrepared.groundOffset;
 
-    // Per-instance materials so the white hit flash never bleeds into siblings; remember each
-    // material's original emissive so the flash can be undone exactly.
+    // Per-instance materials so the white hit flash and the silhouette/trail tints never bleed
+    // into siblings; remember each material's original emissive AND color so every tint can be
+    // undone exactly.
     const materials = cloneMaterials(model);
     const flashOriginals = materials.map((material) => ({
         material,
         emissive: material.emissive ? material.emissive.clone() : null,
         intensity: material.emissiveIntensity !== undefined ? material.emissiveIntensity : null,
+        color: material.color ? material.color.clone() : null,
     }));
 
     const group = new THREE.Group();
@@ -230,6 +249,18 @@ export function spawnEnemy(typeId, position) {
     data.fireTimer = Math.random() * ENEMY.rangedFireInterval;
     // Speeder behavior: phase clock for the dash-on/dash-off zig-zag.
     data.speederTimer = Math.random() * (ENEMY.speederDashOn + ENEMY.speederDashOff);
+    // Silhouette blend: 0 = normal materials, 1 = fully the near-black outside look. The first
+    // frame recomputes it; `silhouetteDirty` tracks whether colors differ from their originals.
+    data.silhouette = 0;
+    data.silhouetteDirty = false;
+    // Dasher-trail damage tick clock (staggered so several enemies in one trail do not all tick
+    // on the same frame).
+    data.trailTickTimer = Math.random() * TRAIL.tickInterval;
+    // Frost Shot slow: multiplier and remaining seconds (see applySlow below).
+    data.slowFactor = 1;
+    data.slowTimer = 0;
+    // Kill attribution: which system last damaged this enemy ('shot', 'minion', 'trail', ...).
+    data.lastHitSource = 'shot';
 
     enemies.push(group);
     return group;
@@ -239,13 +270,20 @@ export function spawnEnemy(typeId, position) {
 
 // Applies damage to one enemy. Returns true when this damage killed it, false otherwise (also
 // false for unknown/already-dying enemies, so callers can avoid double kill credit).
-// Options: { knockback: distance, knockbackX, knockbackY } for the push direction.
+// Options:
+//   { knockback, knockbackX, knockbackY } — push direction and distance
+//   { silent }                            — skip the flash and sound (trail damage ticks)
+//   { source }                            — kill attribution ('shot', 'minion', 'trail', ...)
 export function damageEnemy(enemy, amount, options = {}) {
     if (!enemy || enemy.userData.dying) return false;
 
     enemy.userData.hp -= amount;
-    flashEnemy(enemy);
-    playSfx('hit'); // sfx_hit: "enemy gets hit"
+    enemy.userData.lastHitSource = options.source || 'shot';
+    if (!options.silent) {
+        flashEnemy(enemy);
+        // Panned hit sound: enemies off to the side of the screen hit quieter in that ear.
+        playSfxAt('hit', enemy.position.x, enemy.position.y, player.position.x, player.position.y);
+    }
 
     if (options.knockback > 0) {
         knockbackEnemy(enemy, options.knockbackX || 0, options.knockbackY || 0, options.knockback);
@@ -256,12 +294,24 @@ export function damageEnemy(enemy, amount, options = {}) {
         return true;
     }
 
-    playOneShot(enemy, enemy.userData.actions.hit);
+    if (!options.silent) playOneShot(enemy, enemy.userData.actions.hit);
     return false;
 }
 
-// Pushes an enemy away, one collision-checked step at a time (never through a wall). Tanks
-// ignore knockback entirely (they are immune to being pushed).
+// Applies a Frost Shot slow: movement is multiplied by `factor` for `duration` seconds. The
+// strongest active slow wins (kept by taking the minimum) and durations never stack beyond the
+// newest hit, so re-hits just refresh the window.
+export function applySlow(enemy, factor, duration) {
+    if (!enemy || enemy.userData.dying) return;
+    const data = enemy.userData;
+    data.slowFactor = Math.min(data.slowTimer > 0 ? data.slowFactor : 1, factor);
+    data.slowTimer = Math.max(data.slowTimer, duration);
+}
+
+// Pushes an enemy away, one collision-checked step at a time (never through a house). Tanks
+// ignore knockback entirely (they are immune to being pushed). The arena's boundary walls are
+// ignored on purpose: a shove can carry an enemy out of the arena (it walks back in as a
+// silhouette).
 export function knockbackEnemy(enemy, dirX, dirY, distance) {
     if (!enemy || enemy.userData.dying) return;
     if (enemy.userData.typeConfig.behavior === 'tank') return;
@@ -276,14 +326,14 @@ export function knockbackEnemy(enemy, dirX, dirY, distance) {
         const step = Math.min(KNOCKBACK_STEP, remaining);
         const nx = enemy.position.x + ux * step;
         const ny = enemy.position.y + uy * step;
-        if (!isMoveFree(collider, nx, ny)) break; // a wall absorbs the rest of the push
+        if (!isMoveFree(collider, nx, ny, true)) break; // a house absorbs the rest of the push
         enemy.position.x = nx;
         enemy.position.y = ny;
         remaining -= step;
     }
 }
 
-// Stuns an enemy for `duration` seconds (Parry shockwave): it stops moving and firing but stays
+// Stuns an enemy for `duration` seconds (Pusher shockwave): it stops moving and firing but stays
 // on the field and keeps animating its idle pose.
 export function stunEnemy(enemy, duration) {
     if (!enemy || enemy.userData.dying) return;
@@ -320,6 +370,10 @@ function killEnemy(enemy) {
     // Kills pay points (value per type from the config).
     addScore(data.typeConfig.score);
 
+    // Achievements: lifetime kill counters, class-specific kill trackers and the run's trail
+    // kill count all key off where the killing blow came from.
+    recordKill(data.lastHitSource, false);
+
     // Drop roll against the player's live drop chance (the Bloodthirst card replaces it with
     // ENEMY.HealthyDropChance).
     if (Math.random() < getStats().dropChance) {
@@ -348,6 +402,49 @@ function restoreFlash(enemy) {
         if (!entry.emissive) continue;
         entry.material.emissive.copy(entry.emissive);
         if (entry.intensity !== null) entry.material.emissiveIntensity = entry.intensity;
+    }
+}
+
+// --- Outside-arena and trail tints -------------------------------------------------
+
+// Blends every material's color between its original and the near-black silhouette based on
+// whether the enemy stands outside the arena. The blend runs over ENEMY.silhouetteBlend seconds
+// in both directions, so crossing the edge reads as a fade rather than a pop. Once fully back
+// inside (blend hits 0) the original colors are restored exactly and further writes stop.
+function updateSilhouette(enemy, delta) {
+    const data = enemy.userData;
+    const target = isOutsideArena(enemy.position.x, enemy.position.y) ? 1 : 0;
+    if (data.silhouette === target && !data.silhouetteDirty) return;
+
+    const step = delta / ENEMY.silhouetteBlend;
+    data.silhouette = target > data.silhouette
+        ? Math.min(target, data.silhouette + step)
+        : Math.max(target, data.silhouette - step);
+
+    for (const entry of data.flashOriginals) {
+        if (!entry.color) continue;
+        entry.material.color.copy(entry.color).lerp(SILHOUETTE_COLOR, data.silhouette);
+    }
+    data.silhouetteDirty = data.silhouette > 0;
+}
+
+// Applies (or clears) the cyan Dasher-trail tint via the emissive channel while the enemy stands
+// on a trail. The white hit flash has priority: it owns the emissive channel during its brief
+// window, and this function steps aside until it ends (the next frame then re-applies the tint).
+function updateTrailTint(enemy, inTrail) {
+    const data = enemy.userData;
+    if (data.flashTimer > 0) return;
+    if (!inTrail && !data.trailTinted) return;
+    data.trailTinted = inTrail;
+    for (const entry of data.flashOriginals) {
+        if (!entry.emissive) continue;
+        if (inTrail) {
+            entry.material.emissive.setHex(TRAIL.tint);
+            if (entry.intensity !== null) entry.material.emissiveIntensity = TRAIL.tintIntensity;
+        } else {
+            entry.material.emissive.copy(entry.emissive);
+            if (entry.intensity !== null) entry.material.emissiveIntensity = entry.intensity;
+        }
     }
 }
 
@@ -397,6 +494,10 @@ export function updateEnemies(delta) {
             if (data.flashTimer <= 0) restoreFlash(enemy);
         }
 
+        // Silhouette blend (outside the arena = near-black). Runs for corpses too, so an enemy
+        // killed outside stays dark until it is removed.
+        updateSilhouette(enemy, delta);
+
         // Dying: the corpse just counts down to removal (its Death clip is playing).
         if (data.dying) {
             data.dyingTimer -= delta;
@@ -416,6 +517,29 @@ export function updateEnemies(delta) {
                 data.currentAction = move;
             }
         }
+
+        // Frost Shot slow: tick the timer down (movement below reads the factor).
+        if (data.slowTimer > 0) {
+            data.slowTimer -= delta;
+            if (data.slowTimer <= 0) data.slowFactor = 1;
+        }
+
+        // Dasher trail: standing on one deals a silent tick every TRAIL.tickInterval seconds, and
+        // tints the enemy cyan while inside. Stunned enemies still burn.
+        const inTrail = isInsideTrail(enemy.position.x, enemy.position.y);
+        if (inTrail) {
+            data.trailTickTimer -= delta;
+            if (data.trailTickTimer <= 0) {
+                data.trailTickTimer = TRAIL.tickInterval;
+                damageEnemy(
+                    enemy,
+                    TRAIL.damagePerSecond * TRAIL.tickInterval,
+                    {silent: true, source: 'trail'},
+                );
+                if (data.dying) continue; // the tick killed it; the corpse handles its own fade
+            }
+        }
+        updateTrailTint(enemy, inTrail);
 
         // Stunned: no movement, no firing, no contact damage — only the idle animation.
         if (data.stunTimer > 0) {
@@ -500,12 +624,11 @@ export function updateEnemies(delta) {
         const startY = enemy.position.y;
 
         if (collider && moving) {
-            // Effective speed: base x type x endless growth, slowed inside a Dasher trail.
-            // The slow factor comes from the active class's ability (only the Dasher has trails).
-            const trailFactor = getTrailSpeedFactor(
-                enemy.position.x, enemy.position.y, getAbilityValues().trailSlowCommon ?? 1,
-            );
-            const speed = ENEMY.baseSpeed * data.typeConfig.speedMul * endlessSpeedMul * trailFactor;
+            // Effective speed: base x type x endless growth x Frost Shot slow. Boundary walls are
+            // ignored (isMoveFree's last argument), so an enemy spawned outside can walk straight
+            // into the arena and a shoved enemy can be carried back out.
+            const speed = ENEMY.baseSpeed * data.typeConfig.speedMul * endlessSpeedMul
+                * data.slowFactor;
 
             const stepLength = speed * delta;
             const subSteps = Math.max(1, Math.ceil(stepLength / MAX_MOVE_SUB_STEP));
@@ -515,18 +638,18 @@ export function updateEnemies(delta) {
             for (let i = 0; i < subSteps; i++) {
                 const nx = enemy.position.x + subX;
                 const ny = enemy.position.y + subY;
-                if (isMoveFree(collider, nx, ny)) {
+                if (isMoveFree(collider, nx, ny, true)) {
                     enemy.position.x = nx;
                     enemy.position.y = ny;
                     continue;
                 }
                 // Direct step blocked: retry as its two axis halves (the slide). Both sub-steps
                 // point toward the target, so a free half always makes lateral progress.
-                if (isMoveFree(collider, nx, enemy.position.y)) {
+                if (isMoveFree(collider, nx, enemy.position.y, true)) {
                     enemy.position.x = nx;
                     continue;
                 }
-                if (isMoveFree(collider, enemy.position.x, ny)) {
+                if (isMoveFree(collider, enemy.position.x, ny, true)) {
                     enemy.position.y = ny;
                     continue;
                 }
@@ -580,11 +703,16 @@ export function updateEnemies(delta) {
         if (behavior === 'ranged') {
             data.fireTimer -= delta;
             if (data.fireTimer <= 0) {
-                data.fireTimer = ENEMY.rangedFireInterval;
+                // Wave-5 attack escalation: fires faster as the wave ramps (1x outside it).
+                data.fireTimer = ENEMY.rangedFireInterval / endlessAttackMul;
+                // No firing while outside the arena: a silhouette walking in is harmless. (The
+                // boundary wall would block the shot anyway, but skipping the whole routine keeps
+                // an outside ranger from standing in a pointless firing loop.)
+                const outside = isOutsideArena(enemy.position.x, enemy.position.y);
                 const inRange = playerDistance <= ENEMY.rangedStandoff * 1.6;
                 // The visibility check runs against the player's REAL position — peeking around
                 // a corner should not let the ranger shoot through the house.
-                const clearShot = isLineSightClear(
+                const clearShot = !outside && isLineSightClear(
                     enemy.position.x, enemy.position.y,
                     player.position.x, player.position.y,
                     PROJECTILE.enemyRadius * COLLISION.projectileRadiusMul,
@@ -612,12 +740,13 @@ export function updateEnemies(delta) {
                     const dirToAimX = aimX - enemy.position.x;
                     const dirToAimY = aimY - enemy.position.y;
                     const aimLength = Math.max(Math.hypot(dirToAimX, dirToAimY), 1e-6);
-                    // The enemy object rides along as the bullet's `sender`, so a parry can bounce
-                    // this exact shot back into this exact ranger.
+                    // The enemy object rides along as the bullet's `sender`, so a reflected shot
+                    // can bounce back into this exact ranger.
                     spawnEnemyShot(
                         enemy.position.x, enemy.position.y,
                         dirToAimX / aimLength, dirToAimY / aimLength,
                         enemy,
+                        endlessAttackMul, // wave-5 escalation: faster shots
                     );
                     // A short attack animation plays with the shot (same clip as contact attack).
                     if (data.currentAction !== data.actions.attack) {
@@ -643,7 +772,7 @@ function hasLineOfSight(collider, from, to) {
     const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / ESCAPE_PROBE_SPACING));
     for (let i = 1; i <= steps; i++) {
         const t = i / steps;
-        if (!isMoveFree(collider, from.x + dx * t, from.y + dy * t)) return false;
+        if (!isMoveFree(collider, from.x + dx * t, from.y + dy * t, true)) return false;
     }
     return true;
 }
@@ -664,8 +793,8 @@ function pickEscapeWaypoint(collider, enemy, avoid) {
     const right = new THREE.Vector3(enemy.position.x - sideX, enemy.position.y - sideY, 0);
 
     const free = [];
-    if (isMoveFree(collider, left.x, left.y)) free.push(left);
-    if (isMoveFree(collider, right.x, right.y)) free.push(right);
+    if (isMoveFree(collider, left.x, left.y, true)) free.push(left);
+    if (isMoveFree(collider, right.x, right.y, true)) free.push(right);
     if (free.length === 0) return null;
     if (free.length === 1) return free[0];
 
@@ -747,4 +876,5 @@ export function resetEnemies() {
     for (const enemy of enemies.slice()) removeEnemy(enemy);
     endlessHpMul = 1;
     endlessSpeedMul = 1;
+    endlessAttackMul = 1;
 }

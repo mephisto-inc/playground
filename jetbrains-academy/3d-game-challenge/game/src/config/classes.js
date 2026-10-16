@@ -4,33 +4,35 @@
 
 import {ABILITY, PLAYER} from './tuning.js';
 
-// The three starter classes. `hearts` is the starting HP for the class: Parry/Dasher start at
+// The three starter classes. `hearts` is the starting HP for the class: Pusher/Dasher start at
 // PLAYER.baseHearts; Anchor starts two hearts lower (its minions compensate). Every class can
 // grow up to the global 7-heart cap with Titan Heart cards.
 export const CLASSES = [
     {
-        id: 'parry',
-        name: 'Parry',
+        id: 'pusher',
+        name: 'Pusher',
         icon: '🛡️',
         hearts: PLAYER.baseHearts,
         // The numbers interpolate the live values from tuning.js, so this text can never drift
         // from the actual balance.
-        description: `Double click/tap: raise a ${ABILITY.parryShield} s shield that cancels physical `
-            + `damage and reflects every projectile within ${ABILITY.parryReflectRadius} units straight `
+        description: `Double click/tap: raise a ${ABILITY.pushShield} s shield that cancels physical `
+            + `damage and reflects every projectile within ${ABILITY.pushReflectRadius} units straight `
             + `back at whoever fired it (bosses included), each reflected shot dealing `
-            + `${ABILITY.parryReflectDamage} damage. On parry, a shockwave deals `
-            + `${ABILITY.parryShockwaveBaseDamage} + current HP, stuns common enemies for `
-            + `${ABILITY.parryStun} s and knocks the Boss back. ${ABILITY.parryCooldown} s cooldown.`,
+            + `${ABILITY.pushReflectDamage} damage. A successful push fires a shockwave that deals `
+            + `${ABILITY.pushShockwaveBaseDamage} + current HP, stuns common enemies for `
+            + `${ABILITY.pushStun} s and shoves every common enemy ${ABILITY.pushKnockback} units away `
+            + `(the Boss gets knocked back). ${ABILITY.pushCooldown} s cooldown.`,
         ability: {
             // Shield window and numbers live in tuning.js so balance stays in one place; the
             // gameplay systems read this block through Player.getAbilityValues().
-            cooldown: ABILITY.parryCooldown,
-            shield: ABILITY.parryShield,
-            reflectRadius: ABILITY.parryReflectRadius,
-            reflectDamage: ABILITY.parryReflectDamage,
-            shockwaveRadius: ABILITY.parryShockwaveRadius,
-            shockwaveBaseDamage: ABILITY.parryShockwaveBaseDamage,
-            stun: ABILITY.parryStun,
+            cooldown: ABILITY.pushCooldown,
+            shield: ABILITY.pushShield,
+            reflectRadius: ABILITY.pushReflectRadius,
+            reflectDamage: ABILITY.pushReflectDamage,
+            shockwaveRadius: ABILITY.pushShockwaveRadius,
+            shockwaveBaseDamage: ABILITY.pushShockwaveBaseDamage,
+            stun: ABILITY.pushStun,
+            knockback: ABILITY.pushKnockback,
         },
     },
     {
@@ -41,11 +43,10 @@ export const CLASSES = [
         description: `Double click/tap: dash ${ABILITY.dashDistance} units instantly with `
             + `${ABILITY.dashExtraIFrames} s of extra invulnerability and `
             + `${ABILITY.dashCloneCount} shadow clones. The ground trail lasts `
-            + `${ABILITY.trailBaseDuration} s + ${ABILITY.trailPerHeart} s per current heart, slowing `
-            + `common enemies by ${Math.round((1 - ABILITY.trailSlowCommon) * 100)}% and the Boss by `
-            + `${Math.round((1 - ABILITY.trailSlowBoss) * 100)}%. ${ABILITY.dashCooldown} s cooldown.`,
+            + `${ABILITY.trailBaseDuration} s + ${ABILITY.trailPerHeart} s per current heart and `
+            + `damages everyone standing on it. ${ABILITY.dashCooldown} s cooldown.`,
         ability: {
-            // Dash movement, clone look and trail slow/width; all read from tuning.js.
+            // Dash movement, clone look and trail life/width; all read from tuning.js.
             cooldown: ABILITY.dashCooldown,
             distance: ABILITY.dashDistance,
             extraIFrames: ABILITY.dashExtraIFrames,
@@ -54,8 +55,6 @@ export const CLASSES = [
             trailBaseDuration: ABILITY.trailBaseDuration,
             trailPerHeart: ABILITY.trailPerHeart,
             trailWidth: ABILITY.trailWidth,
-            trailSlowCommon: ABILITY.trailSlowCommon,
-            trailSlowBoss: ABILITY.trailSlowBoss,
         },
     },
     {

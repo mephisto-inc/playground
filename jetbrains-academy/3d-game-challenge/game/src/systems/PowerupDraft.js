@@ -1,9 +1,11 @@
 import { DRAFT } from '../config/tuning.js';
 import { POWERUPS } from '../config/powerups.js';
+import { getActiveClassId } from '../entities/Player.js';
 import { playSfx } from './Audio.js';
 
 // Power-up draft system: every draft shows 3 DISTINCT cards; the same card may appear again in
-// later drafts. One reshuffle per run re-rolls the trio.
+// later drafts. One reshuffle per run re-rolls the trio. Cards with a `classId` only enter that
+// class's pool (e.g. Trail Master is Dasher-only), so the other classes never see them.
 //
 // This module only owns the two things the draft needs: the current offers and the reshuffle
 // budget. The UI (DraftModal) renders getOffers() and calls reshuffle(); picking a card goes
@@ -45,9 +47,11 @@ export function resetDraft() {
 }
 
 // Draws DRAFT.cardsShown distinct cards: shuffle a copy of the deck, take the first few. Distinct
-// within one draft; across drafts the same card can return.
+// within one draft; across drafts the same card can return. Class-restricted cards are filtered
+// out for every class except the one they belong to.
 function drawOffers() {
-    const deck = POWERUPS.slice();
+    const classId = getActiveClassId();
+    const deck = POWERUPS.filter((card) => !card.classId || card.classId === classId);
     for (let i = deck.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [deck[i], deck[j]] = [deck[j], deck[i]];

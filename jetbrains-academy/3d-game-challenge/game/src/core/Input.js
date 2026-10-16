@@ -10,10 +10,12 @@ import { MOVE } from '../config/tuning.js';
 //     the steering target through getMoveTarget(): the hero hops toward that point while it sits
 //     outside MOVE.deadzone. A touch drag steers like hovering a mouse; lifting the finger drops
 //     the target so the hero settles where the gesture ended.
-//   * Ability — a double click or double tap (two stationary releases within DOUBLE_TAP_MS and
-//     DOUBLE_TAP_MAX_DIST_PX of each other) fires onAbility() callbacks. main.js forwards that to
-//     Player.tryActivateAbility() only while WAVE_PLAYING, so a double click on a menu button can
-//     never trigger the class ability.
+//   * Ability — a double click or double tap fires onAbility() callbacks. The first tap must be a
+//     stationary release; the ability then fires the moment the second press lands (within
+//     DOUBLE_TAP_MS and DOUBLE_TAP_MAX_DIST_PX of the first), with no release delay. The pair is
+//     consumed on fire, so a third click starts over instead of chaining. main.js forwards that
+//     to Player.tryActivateAbility() only while WAVE_PLAYING, so a double click on a menu button
+//     can never trigger the class ability.
 //   * Camera — getPointerGroundPoint() feeds Camera's lead-toward-pointer; null when the pointer
 //     is inactive (no finger down) so the camera recentres.
 //
@@ -25,8 +27,8 @@ import { MOVE } from '../config/tuning.js';
 const TAP_MAX_MOVE_PX = 10;
 
 // Double-tap detection window and max distance between the two taps, in ms and client px.
-const DOUBLE_TAP_MS = 300;
-const DOUBLE_TAP_MAX_DIST_PX = 40;
+const DOUBLE_TAP_MS = 350;
+const DOUBLE_TAP_MAX_DIST_PX = 50;
 
 // --- Pointer state -------------------------------------------------------------
 const pointerNDC = new THREE.Vector2(); // latest pointer position in NDC (screen space)
@@ -42,6 +44,7 @@ let downY = 0;
 let lastTapTime = 0; // when the previous stationary release happened (0 = none)
 let lastTapX = 0;
 let lastTapY = 0;
+let tapConsumed = false; // this gesture's press already fired the double tap (skip its release)
 
 const abilityCallbacks = [];
 let initialized = false;
@@ -75,15 +78,27 @@ export function initInput() {
         pointerDownOnCanvas = true;
         downX = event.clientX;
         downY = event.clientY;
+        tapConsumed = false;
+
+        // Second press inside the window/distance of the previous stationary release: fire the
+        // ability right away (no waiting for the release) and consume the pair.
+        const now = performance.now();
+        const distance = Math.hypot(event.clientX - lastTapX, event.clientY - lastTapY);
+        if (lastTapTime && now - lastTapTime <= DOUBLE_TAP_MS && distance <= DOUBLE_TAP_MAX_DIST_PX) {
+            lastTapTime = 0;
+            tapConsumed = true;
+            for (const callback of abilityCallbacks) callback();
+        }
     });
 
     window.addEventListener('pointerup', (event) => {
         if (!pointerDownOnCanvas) return;
         pointerDownOnCanvas = false;
 
-        // Stationary release: judge it as a tap (double taps activate the ability).
+        // Stationary release: judge it as a tap (its press may already have fired the ability).
         const moved = Math.hypot(event.clientX - downX, event.clientY - downY);
-        if (moved <= TAP_MAX_MOVE_PX) registerTap(event);
+        if (moved <= TAP_MAX_MOVE_PX && !tapConsumed) registerTap(event);
+        tapConsumed = false;
 
         // A lifted touch stops steering; the hero settles where the gesture ended.
         if (event.pointerType === 'touch') pointerActive = false;
@@ -103,19 +118,10 @@ export function onAbility(callback) {
     abilityCallbacks.push(callback);
 }
 
-// Judges one stationary release: within the double-tap window and distance of the previous one
-// it fires the ability (and resets, so a third click starts over instead of chaining).
+// Records one stationary release as the first tap of a possible pair. The second press (in the
+// pointerdown handler above) is what actually fires the ability.
 function registerTap(event) {
-    const now = performance.now();
-    const distance = Math.hypot(event.clientX - lastTapX, event.clientY - lastTapY);
-
-    if (now - lastTapTime <= DOUBLE_TAP_MS && distance <= DOUBLE_TAP_MAX_DIST_PX) {
-        lastTapTime = 0; // consume the pair; no accidental triple-tap activation
-        for (const callback of abilityCallbacks) callback();
-        return;
-    }
-
-    lastTapTime = now;
+    lastTapTime = performance.now();
     lastTapX = event.clientX;
     lastTapY = event.clientY;
 }

@@ -3,17 +3,29 @@
 // balance change is a one-line edit here, and the draft UI can render any card generically.
 
 // Effect descriptor fields (any combination; an absent field means "do not touch"):
-//   fireRateMul    — multiply shots per second (cooldown is divided by this)
-//   projectilesAdd — add projectiles to every volley
-//   pierceAdd      — add targets a shot can pass through
-//   speedAdd       — add to the player's speed multiplier
-//   damageAdd      — add damage per shot
-//   rangeMul       — multiply the auto-shooter's targeting range
-//   maxHeartsAdd   — raise the max-heart cap (still clamped to the global 7)
-//   heal           — restore this many hearts immediately (clamped to max)
-//   iFramesSet     — set the invulnerability duration to this many seconds
-//   magnetMul      — multiply the health-pickup attraction radius
-//   dropChanceSet  — replace the enemy health-drop chance with this value
+//   fireRateMul           — multiply shots per second (cooldown is divided by this)
+//   projectilesAdd        — add projectiles to every volley
+//   pierceAdd             — add targets a shot can pass through
+//   speedAdd              — add to the player's speed multiplier
+//   damageAdd             — add damage per shot
+//   rangeMul              — multiply the auto-shooter's targeting range
+//   maxHeartsAdd          — change the max-heart cap (clamped to [1, global 7]; may be negative)
+//   heal                  — restore this many hearts immediately (clamped to max)
+//   iFramesSet            — set the invulnerability duration to this many seconds
+//   magnetMul             — multiply the health-pickup attraction radius
+//   dropChanceSet         — replace the enemy health-drop chance with this value
+//   critChanceAdd         — add to the chance a shot deals double damage
+//   thornsDamage          — damage dealt back to an enemy that touches the player
+//   berserkPerMissingHeart — extra shot damage per missing heart
+//   shotKnockback         — world units a shot pushes a common enemy it hits
+//   slowOnHitMul          — speed multiplier applied to enemies hit (0.6 = 40% slow)
+//   slowOnHitDuration     — seconds that slow lasts
+//   bulletRadiusMul       — multiply the hit radius of player/minion shots (visual size fixed)
+//   dodgeChanceAdd        — add to the chance to ignore an incoming hit entirely
+//   trailDurationAdd      — extra seconds of Dasher trail life
+//   trailWidthMul         — multiply the Dasher trail width
+// Card-level fields (outside `effect`):
+//   classId               — optional; the card only enters that class's draft pool
 import {ENEMY} from "./tuning.js";
 
 export const POWERUPS = [
@@ -86,6 +98,78 @@ export const POWERUPS = [
         name: 'Healthy',
         description: `Health drop chance goes from ${ENEMY.baseDropChance * 100}% to ${ENEMY.HealthyDropChance * 100}%.`,
         effect: {dropChanceSet: ENEMY.HealthyDropChance},
+    },
+    // --- Combat-trait cards (Bizarre-Brigade-flavored) ------------------------------------
+    {
+        id: 'criticalHit',
+        icon: '🎯',
+        name: 'Critical Hit',
+        description: '15% chance for a shot to deal double damage.',
+        effect: {critChanceAdd: 0.15},
+    },
+    {
+        id: 'thornSkin',
+        icon: '🌵',
+        name: 'Thorn Skin',
+        description: 'Enemies that touch you take 2 damage.',
+        effect: {thornsDamage: 2},
+    },
+    {
+        id: 'berserk',
+        icon: '😤',
+        name: 'Berserk',
+        description: '+0.5 damage per shot for every missing heart.',
+        effect: {berserkPerMissingHeart: 0.5},
+    },
+    {
+        id: 'concussiveShots',
+        icon: '💨',
+        name: 'Concussive Shots',
+        description: 'Shots knock common enemies back.',
+        effect: {shotKnockback: 2.5},
+    },
+    {
+        id: 'trailMaster',
+        icon: '🌀',
+        name: 'Trail Master',
+        description: 'Dasher trail lasts +1 s and is 25% wider.',
+        classId: 'dasher', // only the Dasher can draft this (its trail is the Dasher's ability)
+        effect: {trailDurationAdd: 1, trailWidthMul: 1.25},
+    },
+    {
+        id: 'frostShot',
+        icon: '❄️',
+        name: 'Frost Shot',
+        description: 'Hits slow enemies by 40% for 1 s.',
+        effect: {slowOnHitMul: 0.6, slowOnHitDuration: 1},
+    },
+    {
+        id: 'bigBullets',
+        icon: '⚪',
+        name: 'Big Bullets',
+        description: '+50% bullet hit size (the visuals stay sleek).',
+        effect: {bulletRadiusMul: 1.5},
+    },
+    {
+        id: 'evasion',
+        icon: '🍀',
+        name: 'Evasion',
+        description: '15% chance to ignore an incoming hit.',
+        effect: {dodgeChanceAdd: 0.15},
+    },
+    {
+        id: 'reckless',
+        icon: '💢',
+        name: 'Reckless',
+        description: '+3 damage per shot, but -1 max heart.',
+        effect: {damageAdd: 3, maxHeartsAdd: -1},
+    },
+    {
+        id: 'overflow',
+        icon: '🌊',
+        name: 'Overflow',
+        description: '+2 projectiles per volley, but 25% slower fire rate.',
+        effect: {projectilesAdd: 2, fireRateMul: 0.75},
     },
 ];
 

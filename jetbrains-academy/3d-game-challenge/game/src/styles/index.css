@@ -11,8 +11,11 @@
     --text-dim: #b9c6d4;
     --accent: #7ee2a8;
     --danger: #ff5a5a;
-    /* Screen vignette darkness at the edges. 0 disables it; tune freely. */
+    /* Screen vignette darkness at the edges and its color as an RGB triplet. main.js overwrites
+       both from config/tuning.js at startup; the values here are only the stylesheet fallback
+       (0 disables the vignette). */
     --vignette-strength: 0.55;
+    --vignette-color: 3, 10, 18;
 }
 
 * {
@@ -52,8 +55,9 @@ canvas.game {
 /* Screen vignette: a pure-CSS radial gradient that darkens the screen edges, giving the
    orthographic view a soft framing without any renderer work. It is the ::before of the
    overlay root, so it sits above the 3D canvas (z-index 10) but every HUD element and panel —
-   later children of #ui-root, painted in DOM order — still draws on top of it. Strength comes
-   from --vignette-strength (:root default 0.55; 0 disables). */
+   later children of #ui-root, painted in DOM order — still draws on top of it. Both strength
+   and color come from CSS variables set by main.js (see config/tuning.js VIGNETTE; the :root
+   values are fallbacks). */
 #ui-root::before {
     content: "";
     position: fixed;
@@ -61,10 +65,22 @@ canvas.game {
     pointer-events: none;
     background: radial-gradient(
         ellipse at center,
-        rgba(0, 0, 0, 0) 55%,
-        rgba(0, 0, 0, calc(var(--vignette-strength) * 0.35)) 80%,
-        rgba(0, 0, 0, var(--vignette-strength)) 100%
+        rgba(var(--vignette-color), 0) 55%,
+        rgba(var(--vignette-color), calc(var(--vignette-strength) * 0.35)) 80%,
+        rgba(var(--vignette-color), var(--vignette-strength)) 100%
     );
+}
+
+/* Build version badge (bottom-left): identifies the deployed distribution. Deliberately faint
+   and click-through — it never interferes with the game. */
+.version-tag {
+    position: fixed;
+    left: 10px;
+    bottom: 8px;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    opacity: 0.35;
+    pointer-events: none;
 }
 
 /* --- Shared glass panel + buttons --------------------------------------------------------- */

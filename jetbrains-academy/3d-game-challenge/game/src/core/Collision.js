@@ -42,8 +42,12 @@ export function registerCollider(owner, position, radius) {
 // Registers a static axis-aligned box obstacle (house or boundary wall) and returns it.
 // `halfWidth`/`halfDepth` are half-extents along world X/Y. Only quarter-turn yaws are used on
 // houses, so their footprints stay axis-aligned and a plain AABB is exact.
-export function registerBoxCollider(owner, position, halfWidth, halfDepth) {
-    const collider = { position, shape: 'box', halfWidth, halfDepth };
+//
+// `options.boundary` marks the arena's border walls: they still block the player and every
+// projectile, but enemies and the boss may ignore them (they spawn outside the arena and must
+// walk in; see isMoveFree's ignoreBoundary parameter).
+export function registerBoxCollider(owner, position, halfWidth, halfDepth, options = {}) {
+    const collider = { position, shape: 'box', halfWidth, halfDepth, boundary: !!options.boundary };
     colliders.set(owner, collider);
     return collider;
 }
@@ -83,13 +87,17 @@ export function circlesTouch(x1, y1, r1, x2, y2, r2) {
 // True if moving `mover` to (x, y) is allowed: it must land clear of every static box. Characters
 // are skipped entirely — they never block movement in this game.
 //
+// `ignoreBoundary` (enemies/boss only) skips the arena's border walls, so they can walk in from
+// their outside spawn points and get pushed back out by knockback; the player never passes it.
+//
 // The one exception: a mover already inside a box may take a step that does not deepen the
 // overlap, so it can always back out instead of being frozen (odd states like a house placed on
 // top of a character).
-export function isMoveFree(mover, x, y) {
+export function isMoveFree(mover, x, y, ignoreBoundary = false) {
     for (const other of colliders.values()) {
         if (other === mover) continue;
         if (other.shape !== 'box') continue;
+        if (ignoreBoundary && other.boundary) continue;
         const after = penetrationOf(x, y, mover.radius, other);
         if (after <= EPSILON) continue;
         const before = penetrationOf(mover.position.x, mover.position.y, mover.radius, other);

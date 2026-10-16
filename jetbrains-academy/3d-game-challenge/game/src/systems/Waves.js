@@ -99,8 +99,8 @@ function startWave(number) {
     scoreCheckpoint = null;
 
     if (number === 5) {
-        setEndlessScaling(1, 1); // growth restarts at 1x for the endless wave
-        setBossEndlessScaling(1);
+        setEndlessScaling(1, 1, 1); // growth restarts at 1x for the endless wave
+        setBossEndlessScaling(1, 1);
     }
 
     onWaveStarted(number); // achievements: Endless Frog at wave 5, damage tracker reset
@@ -117,15 +117,22 @@ export function updateWaves(delta) {
 
     waveElapsed += delta;
 
-    // Wave 5 growth: +10% HP and speed per minute, capped at 3x HP / 1.5x speed. HP is baked into
-    // each new spawn; speed applies live (Enemy/Boss read it from their setters).
+    // Wave 5 growth: +10% HP, speed and attack per minute, capped at 3x HP / 1.5x speed /
+    // 2x attack. HP is baked into each new spawn; speed and attack apply live (Enemy/Boss read
+    // them from their setters). Attack scales enemy shot speed, ranged fire rate, boss orb
+    // speed, boss phase pacing and the spawn interval (see the ramp below).
     let growthHpMul = 1;
+    let growthAttackMul = 1;
     if (wave === 5) {
         const minutes = waveElapsed / 60;
         growthHpMul = Math.min(1 + ENEMY.growthPerMinute * minutes, ENEMY.growthHpCap);
         const growthSpeedMul = Math.min(1 + ENEMY.growthPerMinute * minutes, ENEMY.growthSpeedCap);
-        setEndlessScaling(growthHpMul, growthSpeedMul);
-        setBossEndlessScaling(growthSpeedMul);
+        growthAttackMul = Math.min(
+            1 + ENEMY.growthAttackPerMinute * minutes,
+            ENEMY.growthAttackCap,
+        );
+        setEndlessScaling(growthHpMul, growthSpeedMul, growthAttackMul);
+        setBossEndlessScaling(growthSpeedMul, growthAttackMul);
         onEndlessTime(waveElapsed); // Marathon Frog achievement at 5 minutes
     }
 
@@ -171,12 +178,14 @@ export function updateWaves(delta) {
         return;
     }
 
-    // Spawning: at the wave's interval; in wave 5 ramping toward the endless minimum; while the
-    // wave-3 boss fight runs, the interval is stretched (spawn rate drops to 30% of normal).
+    // Spawning: at the wave's interval; in wave 5 ramping toward the endless minimum AND sped
+    // up by the attack growth (never below the 0.15 s floor); while the wave-3 boss fight runs,
+    // the interval is stretched (spawn rate drops to 30% of normal).
     let interval = definition.spawnInterval;
     if (wave === 5 && definition.rampSeconds) {
         const t = Math.min(waveElapsed / definition.rampSeconds, 1);
         interval += (definition.spawnIntervalMin - definition.spawnInterval) * t;
+        interval = Math.max(0.15, interval / growthAttackMul);
     }
     if (definition.bossSpawnRate && isBossAlive()) interval /= definition.bossSpawnRate;
 
@@ -189,7 +198,9 @@ export function updateWaves(delta) {
 
 // Attempts one spawn: skipped at the ENEMY.maxAlive cap (a runaway guard only — the wave's spawn
 // rate is what paces the arena), and retried spawn points are limited to the free ones (shuffled
-// so consecutive spawns do not all use the same corner).
+// so consecutive spawns do not all use the same corner). Every attempt lands within
+// ENEMY.spawnJitter units of its spawn point, so groups arriving from the forest do not stack on
+// one exact spot.
 function spawnOneEnemy(pool) {
     if (getAliveCount() >= ENEMY.maxAlive) return;
 
@@ -202,8 +213,12 @@ function spawnOneEnemy(pool) {
         [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
     }
     for (const point of candidates) {
-        if (isSpotFree(point.x, point.y, radius)) {
-            spawnEnemy(typeId, point);
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.sqrt(Math.random()) * ENEMY.spawnJitter; // even across the disc
+        const x = point.x + Math.cos(angle) * distance;
+        const y = point.y + Math.sin(angle) * distance;
+        if (isSpotFree(x, y, radius)) {
+            spawnEnemy(typeId, {x, y});
             return;
         }
     }

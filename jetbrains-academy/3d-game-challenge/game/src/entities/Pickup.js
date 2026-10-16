@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import { PICKUP } from '../config/tuning.js';
 
-// Pickup component: health items that enemies and bosses drop. The 3D asset set has no pickup
-// model, so a flat red heart built from a Shape keeps it readable from the top-down camera with
-// zero extra assets.
+// Pickup component: drop items that enemies and bosses leave behind. The 3D asset set has no
+// pickup model, so everything is built from flat shapes that stay readable from the top-down
+// camera with zero extra assets:
+//   * heart   — red heart (heals one heart; magnet-attracted; 30 s life)
+//   * powerup — purple diamond card (opens a bonus power-up draft; NOT magnet-attracted, must
+//               be walked or dashed over; 10 s life)
 
 // One heart shape, reused by every pickup's geometry (shapes are cheap to build once).
 function makeHeartShape() {
@@ -29,33 +32,51 @@ const heartMaterial = new THREE.MeshBasicMaterial({
     side: THREE.DoubleSide,
 });
 
-// Every live pickup: { mesh, age }.
+// The power-up drop is a square rotated 45 degrees into a diamond (a "card"), flat on the floor.
+const powerupGeometry = new THREE.PlaneGeometry(0.55, 0.55);
+const powerupMaterial = new THREE.MeshBasicMaterial({
+    color: 0x9b6bff,
+    side: THREE.DoubleSide,
+});
+
+// Every live pickup: { mesh, kind: 'heart' | 'powerup', age, t }.
 const pickups = [];
 let sceneRef = null;
-let elapsed = 0; // shared clock for the cosmetic heartbeat pulse
+let elapsed = 0; // shared clock for the cosmetic pulse
 
 // Spawns one heart at (x, y) on the ground. Called by Enemy/Boss on kill drops.
 export function spawnHeart(x, y) {
+    spawnPickup('heart', heartGeometry, heartMaterial, x, y);
+}
+
+// Spawns one power-up card at (x, y) on the ground. Called by Boss on its rare bonus drop.
+export function spawnPowerupDrop(x, y) {
+    spawnPickup('powerup', powerupGeometry, powerupMaterial, x, y);
+}
+
+function spawnPickup(kind, geometry, material, x, y) {
     if (!sceneRef) return;
-    const mesh = new THREE.Mesh(heartGeometry, heartMaterial);
+    const mesh = new THREE.Mesh(geometry, material);
     // ~0.84 units across, sized against the 1.0-unit player.
     mesh.scale.setScalar(0.6);
     mesh.position.set(x, y, 0.15);
-    mesh.rotation.z = Math.random() * Math.PI * 2; // random spin so drops do not look stamped
+    // Random spin so drops do not look stamped; the diamond gets an extra 45 degrees to face
+    // the camera as a diamond rather than a square.
+    mesh.rotation.z = Math.random() * Math.PI * 2 + (kind === 'powerup' ? Math.PI / 4 : 0);
     sceneRef.add(mesh);
-    pickups.push({ mesh, age: 0, t: Math.random() * Math.PI * 2 });
+    pickups.push({ mesh, kind, age: 0, t: Math.random() * Math.PI * 2 });
 }
 
-// Advances every pickup: heartbeat pulse, magnet attraction and collection.
+// Advances every pickup: heartbeat pulse, magnet attraction (hearts only) and collection.
 //
 //   * `playerX/playerY` — the hero's ground position.
 //   * `magnetRadius`    — the pickup attraction radius (doubled by the Point Magnet card).
 //
-// Returns how many hearts were collected this frame; Combat applies the healing and the pickup
-// sound, keeping this module free of Player imports.
+// Returns { hearts, powerups }: how many of each were collected this frame. Combat applies the
+// healing/sound/draft logic, keeping this module free of Player and Run imports.
 export function updatePickups(delta, playerX, playerY, magnetRadius) {
     elapsed += delta;
-    let collected = 0;
+    const collected = { hearts: 0, powerups: 0 };
 
     for (let i = pickups.length - 1; i >= 0; i--) {
         const pickup = pickups[i];
@@ -67,12 +88,14 @@ export function updatePickups(delta, playerX, playerY, magnetRadius) {
 
         if (distance <= PICKUP.collectRadius) {
             // Close enough: consume it.
-            collected++;
+            collected[pickup.kind === 'powerup' ? 'powerups' : 'hearts']++;
             removePickupAt(i);
             continue;
         }
 
-        if (distance <= magnetRadius && distance > 1e-6) {
+        // Power-up cards are never magnet-attracted (they must be walked/dashed over), so the
+        // pull only applies to hearts.
+        if (pickup.kind === 'heart' && distance <= magnetRadius && distance > 1e-6) {
             // Magnet pull: move toward the player fast enough to feel snappy, but never
             // overshooting past them in one frame.
             const pull = Math.min(distance, 8 * delta);
@@ -80,8 +103,8 @@ export function updatePickups(delta, playerX, playerY, magnetRadius) {
             pickup.mesh.position.y += (dy / distance) * pull;
         }
 
-        // Cosmetic heartbeat: the heart stays flat on the floor (z fixed — a vertical bob dipped
-        // the flat mesh under the floor plane and read as the heart blinking out) and instead
+        // Cosmetic heartbeat: the pickup stays flat on the floor (z fixed — a vertical bob dipped
+        // the flat mesh under the floor plane and read as the item blinking out) and instead
         // pulsates its size around the base 0.6 scale, plus a slow spin so drops still read as
         // alive.
         const pulse = 1 + PICKUP.pulseAmplitude
@@ -89,12 +112,30 @@ export function updatePickups(delta, playerX, playerY, magnetRadius) {
         pickup.mesh.scale.setScalar(0.6 * pulse);
         pickup.mesh.rotation.z += delta * 0.8;
 
-        // Uncollected hearts are eventually removed, so the floor does not litter over a long run.
-        if (pickup.age >= PICKUP.lifetime) {
+        // Uncollected items are eventually removed, so the floor does not litter over a long run.
+        // Power-up cards expire faster than hearts (they are worth much more).
+        const lifetime = pickup.kind === 'powerup' ? PICKUP.powerupLifetime : PICKUP.lifetime;
+        if (pickup.age >= lifetime) {
             removePickupAt(i);
         }
     }
 
+    return collected;
+}
+
+// Collects every pickup whose center lies within `radius` of (x, y) instantly, ignoring the
+// magnet rules — used by the Dasher to vacuum drops touched by a dash (dash pickups are queued
+// on the Player and handled by Combat like normal pickups). Returns { hearts, powerups }.
+export function sweepPickups(x, y, radius) {
+    const collected = { hearts: 0, powerups: 0 };
+    for (let i = pickups.length - 1; i >= 0; i--) {
+        const pickup = pickups[i];
+        const dx = pickup.mesh.position.x - x;
+        const dy = pickup.mesh.position.y - y;
+        if (Math.hypot(dx, dy) > radius) continue;
+        collected[pickup.kind === 'powerup' ? 'powerups' : 'hearts']++;
+        removePickupAt(i);
+    }
     return collected;
 }
 

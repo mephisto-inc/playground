@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getEnemies } from './Enemy.js';
+import { getEnemies, isOutsideArena } from './Enemy.js';
 import { spawnMinionShot } from './Projectile.js';
 import { assetUrl } from '../core/Assets.js';
 import { isLineSightClear } from '../core/Collision.js';
@@ -132,6 +132,8 @@ function findNearestEnemy(enemies, position, range) {
     let bestDistanceSq = range * range;
     for (const enemy of enemies) {
         if (enemy.userData.dying) continue;
+        // Silhouettes outside the arena are never targeted (the shot would die on the wall).
+        if (isOutsideArena(enemy.position.x, enemy.position.y)) continue;
         const dx = enemy.position.x - position.x;
         const dy = enemy.position.y - position.y;
         const distanceSq = dx * dx + dy * dy;
@@ -175,7 +177,7 @@ function fireVolley(origin, target, stats, ability) {
             origin.y,
             Math.cos(angle),
             Math.sin(angle),
-            { damage, speed: PROJECTILE.playerSpeed },
+            { damage, speed: PROJECTILE.playerSpeed, radiusMul: stats.bulletRadiusMul },
         );
         // Minion shots copy the player's pierce count.
         if (bullet) bullet.pierce = stats.pierce;

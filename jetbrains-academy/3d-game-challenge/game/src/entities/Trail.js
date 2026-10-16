@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 
 // Trail component (Dasher class): the ground trail left by the dash. It is a translucent strip
-// lying on the floor that slows enemies standing on it — common enemies more than the Boss.
+// lying on the floor that damages anyone standing on it (see TRAIL in tuning.js and the tick
+// logic in Enemy.js / Boss.js). It no longer slows.
 //
 // The trail is purely geometric: one quad per dash (a stretched plane), fading out over its
-// lifetime. Slowdown queries test the enemy's ground position against each live segment.
+// lifetime. Queries test the enemy's ground position against each live segment.
 
 // Shared unit plane: scaled per trail (length x width) so no geometry is built per dash.
 const quadGeometry = new THREE.PlaneGeometry(1, 1);
@@ -59,12 +60,9 @@ export function updateTrails(delta) {
     }
 }
 
-// Speed multiplier for a character standing at (x, y): 1 outside every trail, otherwise the
-// given in-trail factor (the caller passes the class ability's value — common enemies use one,
-// the Boss a weaker one). When trails overlap the strongest slow wins, enforced by taking the
-// minimum.
-export function getTrailSpeedFactor(x, y, inTrailFactor) {
-    let factor = 1;
+// True when (x, y) lies on any live trail. Enemies/bosses use this both for the damage ticks
+// and for the cyan in-trail tint.
+export function isInsideTrail(x, y) {
     for (const trail of trails) {
         // Distance from the point to the trail segment, compared against the half-width.
         const dx = trail.x2 - trail.x1;
@@ -78,10 +76,10 @@ export function getTrailSpeedFactor(x, y, inTrailFactor) {
         const closestX = trail.x1 + dx * t;
         const closestY = trail.y1 + dy * t;
         if (Math.hypot(x - closestX, y - closestY) <= trail.width / 2) {
-            factor = Math.min(factor, inTrailFactor);
+            return true;
         }
     }
-    return factor;
+    return false;
 }
 
 // Removes every trail (new run / reset). Called by Run.resetWorld().

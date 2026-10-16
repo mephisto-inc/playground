@@ -6,12 +6,20 @@ import { ABILITY, COLLISION, ENEMY, PICKUP, PLAYER } from '../config/tuning.js';
 import { getClass } from '../config/classes.js';
 import { clearMinions, createMinions, updateMinions } from './Minion.js';
 import { spawnTrail } from './Trail.js';
+import { sweepPickups } from './Pickup.js';
 import { addPierceToPlayerShots } from './Projectile.js';
 import { playSfx } from '../systems/Audio.js';
-import { unlockAchievement } from '../systems/Achievements.js';
+import {
+    recordCardCollected,
+    recordClassPlayed,
+    recordCloseCall,
+    recordDash,
+    recordShieldBlock,
+    unlockAchievement,
+} from '../systems/Achievements.js';
 
 // Player component: owns Tode the Frog — the model, the pointer-steered hop, the heart/HP
-// stats every power-up mutates, i-frames and hit flash, and the class ability (Parry shield,
+// stats every power-up mutates, i-frames and hit flash, and the class ability (Pusher shield,
 // Dasher dash, Anchor minions).
 //
 // The player group carries only the ground position; the model child carries facing and the
@@ -80,7 +88,7 @@ function measureRadius(object) {
 // --- Visual hit centre -------------------------------------------------------
 
 // The ground-plane centre of the model's current world bounds. While Tode leans through a hop,
-// the visible body shifts ahead of his feet, so hostile-bullet hits, parry reflections and body
+// the visible body shifts ahead of his feet, so hostile-bullet hits, reflected shots and body
 // contact all test against this point (via getHitCenter()) instead of player.position — they
 // register where the frog visibly is. Recomputed once per live frame in updatePlayer().
 const hitCenter = new THREE.Vector2();
@@ -115,18 +123,32 @@ function updateHitCenter() {
 //   iFrames          — invulnerability after a hit, in seconds
 //   magnetRadius     — health-pickup attraction radius
 //   dropChance       — enemy health-drop probability
+//   critChance       — chance a shot deals double damage
+//   thornsDamage     — damage dealt back to an enemy that touches the hero
+//   berserkPerMissingHeart — bonus shot damage per missing heart
+//   shotKnockback    — world units a shot shoves a common enemy it hits
+//   slowOnHitMul     — speed multiplier a shot applies to the enemy it hits (0 = no slow)
+//   slowOnHitDuration — seconds that slow lasts
+//   bulletRadiusMul  — multiplier on the friendly shots' hit radius (visuals unchanged)
+//   dodgeChance      — chance to ignore an incoming hit entirely
+//   trailDurationAdd — extra seconds of Dasher trail life
+//   trailWidthMul    — multiplier on the Dasher trail width
 let stats = makeBaseStats();
-let classId = 'parry';
+let classId = 'pusher';
 let collectedCards = []; // card ids in pickup order (HUD badges + game-over recap)
 let dead = false;
 let iframes = 0;         // remaining invulnerability seconds
 let deathAnimTime = 0;   // progress through the defeat animation
 
+// Pending pickups swept up by the last dash(es), drained once per frame by Combat (which owns
+// healing and the bonus-draft hand-off). See consumeDashPickups().
+let dashPickupQueue = { hearts: 0, powerups: 0 };
+
 // Ability state (only one class is active per run, so one set of timers is enough).
 let cooldownRemaining = 0;
-let shieldRemaining = 0;      // Parry shield window
-let parrySucceeded = false;   // did this parry block/reflect anything?
-let parryBurstPending = false; // shockwave owed to Combat (see consumeParryBurst)
+let shieldRemaining = 0;      // Pusher shield window
+let pushSucceeded = false;    // did this push block/reflect anything?
+let pushBurstPending = false; // shockwave owed to Combat (see consumePushBurst)
 
 // Dash shadow clones: { mesh/clone, life } — cosmetic afterimages fading along the dash path.
 const dashClones = [];
@@ -154,6 +176,17 @@ function makeBaseStats() {
         iFrames: PLAYER.baseIFrames,
         magnetRadius: PICKUP.magnetRadius,
         dropChance: ENEMY.baseDropChance,
+        // Card-only stats: zero/neutral until a matching card is picked.
+        critChance: 0,
+        thornsDamage: 0,
+        berserkPerMissingHeart: 0,
+        shotKnockback: 0,
+        slowOnHitMul: 0,
+        slowOnHitDuration: 0,
+        bulletRadiusMul: 1,
+        dodgeChance: 0,
+        trailDurationAdd: 0,
+        trailWidthMul: 1,
     };
 }
 
@@ -178,10 +211,14 @@ export function configureClass(nextClassId) {
     deathAnimTime = 0;
     cooldownRemaining = 0;
     shieldRemaining = 0;
-    parrySucceeded = false;
-    parryBurstPending = false;
+    pushSucceeded = false;
+    pushBurstPending = false;
+    dashPickupQueue = { hearts: 0, powerups: 0 };
     clearDashClones();
     clearMinions();
+
+    // Achievements: World Tour counts the classes a save has ever started a run with.
+    recordClassPlayed(classId);
 
     resetPlayer();
     if (definition.ability.minionCount) {
@@ -194,6 +231,12 @@ export function configureClass(nextClassId) {
 // minions read their numbers through this, so each class retunes its ability in one place.
 export function getAbilityValues() {
     return getClass(classId).ability;
+}
+
+// The active class's id ('pusher' | 'dasher' | 'anchor'). The draft reads this to exclude
+// class-restricted cards from other classes' pools.
+export function getActiveClassId() {
+    return classId;
 }
 
 // --- Power-up application ----------------------------------------------------
@@ -215,7 +258,12 @@ export function applyCard(card) {
     if (effect.damageAdd) stats.damage += effect.damageAdd;
     if (effect.rangeMul) stats.range *= effect.rangeMul;
     if (effect.maxHeartsAdd) {
-        stats.maxHearts = Math.min(PLAYER.maxHearts, stats.maxHearts + effect.maxHeartsAdd);
+        // Clamped at both ends: Reckless may push the cap down, but never below 1 heart.
+        stats.maxHearts = Math.max(1, Math.min(
+            PLAYER.maxHearts,
+            stats.maxHearts + effect.maxHeartsAdd,
+        ));
+        stats.hearts = Math.min(stats.hearts, stats.maxHearts); // a lowered cap trims current HP
         // "Full Hearts" achievement: reaching the global 7-heart cap.
         if (stats.maxHearts >= PLAYER.maxHearts) unlockAchievement('fullHearts');
     }
@@ -223,16 +271,34 @@ export function applyCard(card) {
     if (effect.iFramesSet !== undefined) stats.iFrames = effect.iFramesSet;
     if (effect.magnetMul) stats.magnetRadius *= effect.magnetMul;
     if (effect.dropChanceSet !== undefined) stats.dropChance = effect.dropChanceSet;
+    if (effect.critChanceAdd) stats.critChance += effect.critChanceAdd;
+    if (effect.thornsDamage) stats.thornsDamage += effect.thornsDamage;
+    if (effect.berserkPerMissingHeart) {
+        stats.berserkPerMissingHeart += effect.berserkPerMissingHeart;
+    }
+    if (effect.shotKnockback) stats.shotKnockback += effect.shotKnockback;
+    if (effect.slowOnHitMul) {
+        stats.slowOnHitMul = effect.slowOnHitMul; // a fixed value, re-picking just refreshes it
+        stats.slowOnHitDuration = effect.slowOnHitDuration || stats.slowOnHitDuration;
+    }
+    if (effect.bulletRadiusMul) stats.bulletRadiusMul *= effect.bulletRadiusMul;
+    if (effect.dodgeChanceAdd) stats.dodgeChance += effect.dodgeChanceAdd;
+    if (effect.trailDurationAdd) stats.trailDurationAdd += effect.trailDurationAdd;
+    if (effect.trailWidthMul) stats.trailWidthMul *= effect.trailWidthMul;
 
     // Keep the cooldown above a sane floor so stacked Quick Triggers cannot reach zero delay.
     stats.fireCooldown = Math.max(0.1, stats.fireCooldown);
+
+    // Achievements: Decked Out counts the cards held in a single run.
+    recordCardCollected(collectedCards.length);
 }
 
 // --- Damage, healing, i-frames ----------------------------------------------
 
 // Applies damage unless it is prevented. Returns what happened:
-//   'shielded' — the Parry shield cancelled physical damage (and the shockwave is owed)
+//   'shielded' — the Pusher shield cancelled physical damage (and the shockwave is owed)
 //   'immune'   — i-frames are running; the hit is ignored
+//   'dodged'   — the Evasion card rolled; the hit is ignored entirely
 //   'hit'      — damage landed
 //   'dead'     — damage landed and killed the player
 // `kind` is 'physical' (enemy contact, boss dash) or 'projectile' — the shield cancels only
@@ -240,16 +306,21 @@ export function applyCard(card) {
 export function damagePlayer(amount, kind = 'physical') {
     if (dead) return 'dead';
     if (kind === 'physical' && shieldRemaining > 0) {
-        // Shield works: flag the success (sound + shockwave) and cancel the hit.
-        if (!parrySucceeded) {
-            parrySucceeded = true;
-            parryBurstPending = true;
-            playSfx('parry');
-            playParryImpact(); // VFX: flash + expanding ring
+        // Shield works: flag the success (sound + shockwave) and cancel the hit. Every cancelled
+        // physical hit counts toward the Bulwark achievement, not just the first of a window.
+        recordShieldBlock();
+        if (!pushSucceeded) {
+            pushSucceeded = true;
+            pushBurstPending = true;
+            playSfx('parry'); // the sfx_parry asset keeps its name
+            playPushImpact(); // VFX: flash + expanding ring
         }
         return 'shielded';
     }
     if (iframes > 0) return 'immune';
+    if (stats.dodgeChance > 0 && Math.random() < stats.dodgeChance) {
+        return 'dodged'; // Evasion: the hit is ignored, i-frames are not consumed
+    }
 
     stats.hearts -= amount;
     iframes = stats.iFrames;
@@ -261,6 +332,8 @@ export function damagePlayer(amount, kind = 'physical') {
         deathAnimTime = 0;
         return 'dead';
     }
+    // Surviving a hit on exactly one heart is the Close Call achievement.
+    if (stats.hearts === 1) recordCloseCall();
     return 'hit';
 }
 
@@ -283,26 +356,28 @@ export function isShieldActive() {
     return shieldRemaining > 0;
 }
 
-// Marks this parry as successful (used by Combat's projectile reflection, which happens outside
+// Marks this push as successful (used by Combat's projectile reflection, which happens outside
 // damagePlayer). Plays the success sound once.
-export function markParrySuccess() {
-    if (parrySucceeded) return;
-    parrySucceeded = true;
-    parryBurstPending = true;
-    playSfx('parry');
-    playParryImpact(); // VFX: flash + expanding ring
+export function markPushSuccess() {
+    if (pushSucceeded) return;
+    pushSucceeded = true;
+    pushBurstPending = true;
+    playSfx('parry'); // the sfx_parry asset keeps its name; only internals were renamed
+    playPushImpact(); // VFX: flash + expanding ring
 }
 
-// Hands Combat the pending parry shockwave exactly once (null when none is owed). Combat applies
-// the AoE damage/stun/boss-knockback because it already owns enemy damage bookkeeping.
-export function consumeParryBurst() {
-    if (!parryBurstPending) return null;
-    parryBurstPending = false;
+// Hands Combat the pending push shockwave exactly once (null when none is owed). Combat applies
+// the AoE damage/stun/knockback because it already owns enemy damage bookkeeping.
+export function consumePushBurst() {
+    if (!pushBurstPending) return null;
+    pushBurstPending = false;
     const ability = getAbilityValues();
     return {
         radius: ability.shockwaveRadius,
         // Shockwave damage is the class's base plus current HP.
         damage: ability.shockwaveBaseDamage + stats.hearts,
+        // How far the shockwave shoves enemies (tanks excepted, handled by knockbackEnemy).
+        knockback: ability.knockback || 0,
     };
 }
 
@@ -313,11 +388,11 @@ export function tryActivateAbility() {
     if (dead || cooldownRemaining > 0 || !model) return;
     const ability = getAbilityValues();
 
-    if (classId === 'parry') {
+    if (classId === 'pusher') {
         cooldownRemaining = ability.cooldown;
         shieldRemaining = ability.shield;
-        parrySucceeded = false;
-        showParryGlow(); // VFX: the shield lights up for its shield window
+        pushSucceeded = false;
+        showPushGlow(); // VFX: the shield lights up for its shield window
     } else if (classId === 'dasher') {
         cooldownRemaining = ability.cooldown;
         performDash(ability);
@@ -352,15 +427,48 @@ function performDash(ability) {
     move.start.copy(player.position);
     move.target.copy(player.position);
 
-    // Trail lifetime scales with current HP (base + per-heart bonus from the class ability).
-    const duration = ability.trailBaseDuration + ability.trailPerHeart * stats.hearts;
-    spawnTrail(startX, startY, player.position.x, player.position.y, duration, ability.trailWidth);
+    // Trail lifetime scales with current HP (base + per-heart bonus from the class ability),
+    // plus the Trail Master card's flat bonus; its width follows the same card's multiplier.
+    const duration = ability.trailBaseDuration + ability.trailPerHeart * stats.hearts
+        + stats.trailDurationAdd;
+    spawnTrail(
+        startX, startY, player.position.x, player.position.y,
+        duration, ability.trailWidth * stats.trailWidthMul,
+    );
+
+    // The dash sweeps up every pickup it crosses (hearts AND bonus power-up cards), so dashing
+    // through a drop collects it. The counts are queued and drained by Combat, which owns the
+    // healing and the bonus-draft hand-off.
+    sweepDashPickups(startX, startY, player.position.x, player.position.y);
 
     spawnDashClones(startX, startY, player.position.x, player.position.y, ability);
 
     // The ability's extra invulnerability (never shortens an i-frame window already running).
     iframes = Math.max(iframes, ability.extraIFrames);
+    // Achievements: Blink counts lifetime dashes.
+    recordDash();
     playSfx('dash');
+}
+
+// Collects pickups along the dash segment: the path is sampled every ~1 unit and each sample
+// sweeps the pickup collect radius plus a little grace, so nothing visibly touched is missed.
+// Results accumulate into dashPickupQueue for Combat to drain (consumeDashPickups).
+function sweepDashPickups(x1, y1, x2, y2) {
+    const length = Math.hypot(x2 - x1, y2 - y1);
+    const samples = Math.max(1, Math.ceil(length));
+    for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        const swept = sweepPickups(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, 1.0);
+        dashPickupQueue.hearts += swept.hearts;
+        dashPickupQueue.powerups += swept.powerups;
+    }
+}
+
+// Hands Combat everything the dashes have swept up since the last call and clears the queue.
+export function consumeDashPickups() {
+    const result = dashPickupQueue;
+    dashPickupQueue = { hearts: 0, powerups: 0 };
+    return result;
 }
 
 // Unit direction for the dash: toward the pointer's ground position when one exists, otherwise
@@ -424,20 +532,20 @@ function clearDashClones() {
     dashClones.length = 0;
 }
 
-// --- Parry VFX -----------------------------------------------------------------
+// --- Push VFX -----------------------------------------------------------------
 
-// The parry has a readable visual: a pulsing blue glow while the shield is up, a white-blue
-// impact flash plus an expanding shiny-blue ring when a parry actually succeeds, and a quick
+// The push has a readable visual: a pulsing pale-jade glow while the shield is up, a near-white
+// impact flash plus an expanding pale-jade ring when a push actually succeeds, and a quick
 // collapse when the shield expires having parried nothing. Every piece is a flat additive mesh
 // parented to the player group, so it follows Tode's hop and allocates nothing during play.
 // This is presentation only — the shield's behavior never reads any of it.
-const PARRY_GLOW_COLOR = 0x3fa9ff;   // shield glow blue
-const PARRY_IMPACT_COLOR = 0xd6efff; // near-white flash on a successful parry
-const PARRY_RING_COLOR = 0x59b7ff;   // shiny blue of the expanding shockwave ring
+const PUSH_GLOW_COLOR = 0x8fe6c9;   // soft pale-jade shield glow (wind/force palette)
+const PUSH_IMPACT_COLOR = 0xeafff5; // near-white flash on a successful push
+const PUSH_RING_COLOR = 0xbdf5e6;   // pale jade of the expanding shockwave ring
 
 // Builds one flat fx mesh in the group's XY plane (this is a Z-up world, so no rotation is
 // needed — the same trick the heart pickups use) and attaches it to the player, hidden.
-function createParryFx(geometry, color, z) {
+function createPushFx(geometry, color, z) {
     const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
         color,
         transparent: true,
@@ -452,98 +560,98 @@ function createParryFx(geometry, color, z) {
     return mesh;
 }
 
-const parryGlow = createParryFx(
-    new THREE.RingGeometry(ABILITY.parryGlowRadius * 0.5, ABILITY.parryGlowRadius, 40),
-    PARRY_GLOW_COLOR,
+const pushGlow = createPushFx(
+    new THREE.RingGeometry(ABILITY.pushGlowRadius * 0.5, ABILITY.pushGlowRadius, 40),
+    PUSH_GLOW_COLOR,
     0.12,
 );
-const parryImpact = createParryFx(new THREE.CircleGeometry(0.5, 24), PARRY_IMPACT_COLOR, 0.14);
+const pushImpact = createPushFx(new THREE.CircleGeometry(0.5, 24), PUSH_IMPACT_COLOR, 0.14);
 // The ring's base outer radius is exactly 1, so the animation scales the mesh by the active
-// class's shockwave radius and the visual reaches precisely as far as the parry AoE really does.
-const parryRing = createParryFx(new THREE.RingGeometry(0.72, 1, 40), PARRY_RING_COLOR, 0.13);
+// class's shockwave radius and the visual reaches precisely as far as the push AoE really does.
+const pushRing = createPushFx(new THREE.RingGeometry(0.72, 1, 40), PUSH_RING_COLOR, 0.13);
 
-// Parry fx state machine: 'none' | 'glow' | 'impact' | 'ring' | 'fail'.
-let parryFxState = 'none';
-let parryFxTime = 0;  // seconds into the current state
-let parryFxClock = 0; // free-running clock driving the glow's pulse
+// Push fx state machine: 'none' | 'glow' | 'impact' | 'ring' | 'fail'.
+let pushFxState = 'none';
+let pushFxTime = 0;  // seconds into the current state
+let pushFxClock = 0; // free-running clock driving the glow's pulse
 
 // Shield activated: show the pulsing glow.
-function showParryGlow() {
-    parryFxState = 'glow';
-    parryFxTime = 0;
-    parryGlow.scale.setScalar(1);
-    parryGlow.visible = true;
-    parryImpact.visible = false;
-    parryRing.visible = false;
+function showPushGlow() {
+    pushFxState = 'glow';
+    pushFxTime = 0;
+    pushGlow.scale.setScalar(1);
+    pushGlow.visible = true;
+    pushImpact.visible = false;
+    pushRing.visible = false;
 }
 
-// Parry succeeded: the glow gives way to the impact flash, then the expanding ring.
-function playParryImpact() {
-    parryFxState = 'impact';
-    parryFxTime = 0;
-    parryGlow.visible = false;
-    parryImpact.scale.setScalar(0.6);
-    parryImpact.material.opacity = 0.9;
-    parryImpact.visible = true;
-    parryRing.visible = false;
+// Push succeeded: the glow gives way to the impact flash, then the expanding ring.
+function playPushImpact() {
+    pushFxState = 'impact';
+    pushFxTime = 0;
+    pushGlow.visible = false;
+    pushImpact.scale.setScalar(0.6);
+    pushImpact.material.opacity = 0.9;
+    pushImpact.visible = true;
+    pushRing.visible = false;
 }
 
-// Shield expired with no parry: the glow collapses inward quickly.
-function playParryFail() {
-    parryFxState = 'fail';
-    parryFxTime = 0;
-    parryGlow.visible = true; // collapses from wherever the glow pulse left it
-    parryImpact.visible = false;
-    parryRing.visible = false;
+// Shield expired with no push: the glow collapses inward quickly.
+function playPushFail() {
+    pushFxState = 'fail';
+    pushFxTime = 0;
+    pushGlow.visible = true; // collapses from wherever the glow pulse left it
+    pushImpact.visible = false;
+    pushRing.visible = false;
 }
 
-// Hides every parry fx mesh (death, new run).
-function hideParryFx() {
-    parryFxState = 'none';
-    parryFxTime = 0;
-    parryGlow.visible = false;
-    parryImpact.visible = false;
-    parryRing.visible = false;
+// Hides every push fx mesh (death, new run).
+function hidePushFx() {
+    pushFxState = 'none';
+    pushFxTime = 0;
+    pushGlow.visible = false;
+    pushImpact.visible = false;
+    pushRing.visible = false;
 }
 
-// Advances the parry visual state machine. Called every live frame from updatePlayer().
-function updateParryFx(delta) {
-    parryFxClock += delta;
-    const pulse = 0.5 + 0.5 * Math.sin(parryFxClock * 14); // 0..1, ~2.2 Hz heartbeat
+// Advances the push visual state machine. Called every live frame from updatePlayer().
+function updatePushFx(delta) {
+    pushFxClock += delta;
+    const pulse = 0.5 + 0.5 * Math.sin(pushFxClock * 14); // 0..1, ~2.2 Hz heartbeat
 
-    switch (parryFxState) {
+    switch (pushFxState) {
         case 'glow': {
-            parryGlow.material.opacity = 0.3 + 0.3 * pulse;
-            parryGlow.scale.setScalar(1 + 0.06 * pulse);
+            pushGlow.material.opacity = 0.3 + 0.3 * pulse;
+            pushGlow.scale.setScalar(1 + 0.06 * pulse);
             break;
         }
         case 'impact': {
-            parryFxTime += delta;
-            const p = Math.min(parryFxTime / ABILITY.parryImpactDuration, 1);
-            parryImpact.scale.setScalar(0.6 + 0.7 * p);
-            parryImpact.material.opacity = 0.9 * (1 - 0.6 * p);
+            pushFxTime += delta;
+            const p = Math.min(pushFxTime / ABILITY.pushImpactDuration, 1);
+            pushImpact.scale.setScalar(0.6 + 0.7 * p);
+            pushImpact.material.opacity = 0.9 * (1 - 0.6 * p);
             if (p >= 1) {
-                parryFxState = 'ring';
-                parryFxTime = 0;
-                parryImpact.visible = false;
-                parryRing.visible = true;
+                pushFxState = 'ring';
+                pushFxTime = 0;
+                pushImpact.visible = false;
+                pushRing.visible = true;
             }
             break;
         }
         case 'ring': {
-            parryFxTime += delta;
-            const p = Math.min(parryFxTime / ABILITY.parryRingDuration, 1);
-            parryRing.scale.setScalar(1 + (getAbilityValues().shockwaveRadius - 1) * p);
-            parryRing.material.opacity = 0.85 * (1 - p);
-            if (p >= 1) hideParryFx();
+            pushFxTime += delta;
+            const p = Math.min(pushFxTime / ABILITY.pushRingDuration, 1);
+            pushRing.scale.setScalar(1 + (getAbilityValues().shockwaveRadius - 1) * p);
+            pushRing.material.opacity = 0.85 * (1 - p);
+            if (p >= 1) hidePushFx();
             break;
         }
         case 'fail': {
-            parryFxTime += delta;
-            const p = Math.min(parryFxTime / ABILITY.parryFailDuration, 1);
-            parryGlow.scale.setScalar(1 - 0.6 * p);
-            parryGlow.material.opacity = 0.5 * (1 - p);
-            if (p >= 1) hideParryFx();
+            pushFxTime += delta;
+            const p = Math.min(pushFxTime / ABILITY.pushFailDuration, 1);
+            pushGlow.scale.setScalar(1 - 0.6 * p);
+            pushGlow.material.opacity = 0.5 * (1 - p);
+            if (p >= 1) hidePushFx();
             break;
         }
         default:
@@ -557,7 +665,7 @@ function updateParryFx(delta) {
 // movement, timers, model orientation, i-frame flash and the minions' orbit/shots.
 export function updatePlayer(delta) {
     if (dead) {
-        hideParryFx(); // a run that ended mid-glow leaves no rings burning on the corpse
+        hidePushFx(); // a run that ended mid-glow leaves no rings burning on the corpse
         return;
     }
 
@@ -571,14 +679,14 @@ export function updatePlayer(delta) {
     if (cooldownRemaining > 0) cooldownRemaining = Math.max(0, cooldownRemaining - delta);
     if (shieldRemaining > 0) {
         shieldRemaining = Math.max(0, shieldRemaining - delta);
-        // A parry that blocked nothing by the time the shield drops has failed.
-        if (shieldRemaining === 0 && !parrySucceeded) {
-            playSfx('parry_failed');
-            playParryFail(); // VFX: the glow collapses
+        // A push that blocked nothing by the time the shield drops has failed.
+        if (shieldRemaining === 0 && !pushSucceeded) {
+            playSfx('parry_failed'); // the sfx_parry_failed asset keeps its name
+            playPushFail(); // VFX: the glow collapses
         }
     }
     updateDashClones(delta);
-    updateParryFx(delta);
+    updatePushFx(delta);
 
     // Hop steering: while idle, aim a new hop at the pointer if it is outside the deadzone.
     if (move.progress >= 1) {
@@ -779,7 +887,7 @@ export function resetPlayer() {
     // Fresh velocity reading: rangers must not lead the first shot of a run by the last run's
     // movement (velocity is written every live frame in updatePlayer).
     player.userData.velocity = { x: 0, y: 0 };
-    hideParryFx(); // no leftover glow/flash/ring from the previous run
+    hidePushFx(); // no leftover glow/flash/ring from the previous run
     player.visible = true;
     if (model) {
         model.rotation.z = 0;

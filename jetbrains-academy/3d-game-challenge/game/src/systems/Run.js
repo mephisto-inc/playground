@@ -1,4 +1,4 @@
-import { STATE, setState } from '../core/StateMachine.js';
+import { STATE, getState, setState } from '../core/StateMachine.js';
 import { snapCameraTo } from '../world/Camera.js';
 import player, {
     applyCard,
@@ -11,7 +11,7 @@ import { clearTrails } from '../entities/Trail.js';
 import { clearMinions } from '../entities/Minion.js';
 import { resetEnemies } from '../entities/Enemy.js';
 import { resetBoss } from '../entities/Boss.js';
-import { onPlayerDeath, resetCombat } from './Combat.js';
+import { onPlayerDeath, onPowerupCollected, resetCombat } from './Combat.js';
 import {
     advanceAfterDraft,
     registerClearHandler,
@@ -29,6 +29,7 @@ import { checkNewRecord, getRunUnlocks, resetRunTracking } from './Achievements.
 
 let initialized = false;
 let lastCommit = null; // the Score.commitScore() result of the run that just ended
+let bonusDraft = false; // true while the open draft came from a power-up drop, not a wave clear
 
 // Wires the cross-module callbacks. Called once from main.js after all assets load.
 export function initRun() {
@@ -40,9 +41,22 @@ export function initRun() {
 
     // Waves reports a cleared wave; the run opens the power-up draft (after waves 1-4).
     registerClearHandler(() => {
+        bonusDraft = false;
         openDraft();
         setState(STATE.POWERUP_DRAFT);
     });
+
+    // Combat reports a collected power-up drop; the run opens the bonus draft.
+    onPowerupCollected(() => openBonusDraft());
+}
+
+// Opens the bonus draft granted by a collected power-up drop. Unlike a wave draft, the run
+// (and the wave) does not advance when the card is picked: play simply resumes where it was.
+export function openBonusDraft() {
+    if (getState() !== STATE.WAVE_PLAYING) return; // never fight an already-open draft
+    bonusDraft = true;
+    openDraft();
+    setState(STATE.POWERUP_DRAFT);
 }
 
 // Starts a fresh run with the chosen class (from the character-selection modal).
@@ -52,15 +66,21 @@ export function beginRun(classId) {
     resetScore();
     resetRunTracking();    // achievements' per-run trackers
     resetDraft();          // 3 fresh offers + the once-per-run reshuffle
+    bonusDraft = false;
     snapCameraTo(player.position);
     startWaves();          // running = true, wave 1 begins
     setState(STATE.WAVE_PLAYING);
 }
 
-// Applies the chosen draft card and resumes play at the next wave.
+// Applies the chosen draft card and resumes play. A wave draft advances to the next wave; a
+// bonus draft from a power-up drop resumes the SAME wave where it was frozen.
 export function completeDraft(card) {
     applyCard(card);
-    advanceAfterDraft(); // starts the next wave (audio stage follows inside)
+    if (bonusDraft) {
+        bonusDraft = false;
+    } else {
+        advanceAfterDraft(); // starts the next wave (audio stage follows inside)
+    }
     setState(STATE.WAVE_PLAYING);
 }
 

@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { cloneModel, enableShadows, loadGLTF, normalizeModel } from '../core/Assets.js';
 import { registerBoxCollider } from '../core/Collision.js';
-import { COLLISION } from '../config/tuning.js';
+import { COLLISION, TREES } from '../config/tuning.js';
 
 // Houses component: places the five fixed houses. Houses block both movement and shots (they
 // register box colliders), and four of them double as cover for the 8 spawn points behind them.
+// A house standing between the camera and the player also fades to TREES.fadeOpacity — the same
+// look and timing as the arena's trees (see updateHouseFade at the bottom).
 //
 // Placement notes:
 //   * Positions and model files come from the house table below.
@@ -27,6 +29,25 @@ const HOUSES = [
 // 87.48 x 58.32 arena and the ~1-unit player.
 const HOUSE_HEIGHT = 4.95;
 
+// The live houses for the occlusion fade: { object (the placed group), materials, opacity }.
+// updateHouseFade drives them; placed houses never move, so only the opacity changes.
+const houses = [];
+
+// Occlusion-fade detection (same rule as world/Trees.js, sized for a whole building): a house
+// farther than HOUSE_FADE_RADIUS from the player is never checked, and it counts as occluding
+// when its centre sits within HOUSE_FADE_LATERAL of the player's view column and on the camera
+// side of it. HOUSE_FADE_LATERAL is about the largest house's footprint half-diagonal
+// (6.3 / 2 * sqrt(2) ~= 4.45), so any house wide enough to hide Tode still triggers.
+const HOUSE_FADE_RADIUS = 12;
+const HOUSE_FADE_LATERAL = 4.5;
+
+// Ground-plane basis of the fixed isometric camera (azimuth -45 deg): the view direction's
+// ground projection is (-0.707, 0.707); screen-right is (0.707, 0.707). Same as world/Trees.js.
+const FADE_FORWARD_X = -Math.SQRT1_2;
+const FADE_FORWARD_Y = Math.SQRT1_2;
+const FADE_RIGHT_X = Math.SQRT1_2;
+const FADE_RIGHT_Y = Math.SQRT1_2;
+
 // Maximum footprint (the longer of the two ground-plane extents) a house may occupy. Corner
 // houses sit 12.06 units inside the walls on X (31.68 vs 43.74) and 10.44 on Y (18.72 vs
 // 29.16), so even a full 6.3-unit footprint leaves 8.9 units (X) / 7.3 units (Y) of walking
@@ -47,6 +68,18 @@ async function placeHouse(definition, mapGroup) {
 
     const model = cloneModel(template);
     enableShadows(model);
+
+    // The materials the occlusion fade touches. Each house loads its own GLB (and the template is
+    // discarded), so these are already exclusive to this house — no per-instance clone needed.
+    const materials = new Set();
+    model.traverse((child) => {
+        if (!child.isMesh) return;
+        if (Array.isArray(child.material)) {
+            for (const material of child.material) materials.add(material);
+        } else if (child.material) {
+            materials.add(child.material);
+        }
+    });
 
     // First normalization: scale to the target height with the model's own proportions.
     normalizeModel(model, { targetHeight: HOUSE_HEIGHT, yaw });
@@ -88,6 +121,15 @@ async function placeHouse(definition, mapGroup) {
     const halfWidth = (size.x / 2) * COLLISION.houseRadiusMul;
     const halfDepth = (size.y / 2) * COLLISION.houseRadiusMul;
     registerBoxCollider(group, group.position, halfWidth, halfDepth);
+
+    // Register the fade entry last: the group's final position is the fade's reference point.
+    houses.push({ object: group, materials, opacity: 1 });
+}
+
+// Ground positions of every house centre. The tree scatter (world/Trees.js) uses these to keep
+// its twisted trees clear of the buildings.
+export function getHouseCenters() {
+    return HOUSES.map((house) => ({ x: house.x, y: house.y }));
 }
 
 // Loads every house model and places the five houses. Called once from main.js with the arena
@@ -100,6 +142,45 @@ export async function initHouses(mapGroup) {
             await placeHouse(definition, mapGroup);
         } catch (error) {
             console.error(`Failed to load house model ${definition.asset}.glb`, error);
+        }
+    }
+}
+
+// Per-frame occlusion fade, called from main.js next to the trees' (and skipped in the main
+// menu, like the trees). A house inside HOUSE_FADE_RADIUS of the player fades toward
+// TREES.fadeOpacity when it stands on the player's view column between the camera and the
+// player, and fades back to fully opaque when clear. Fade speed: TREES.fadeDuration seconds for
+// a full swing — the exact look of the arena's trees.
+export function updateHouseFade(delta, playerPosition) {
+    if (houses.length === 0) return;
+
+    const radiusSq = HOUSE_FADE_RADIUS * HOUSE_FADE_RADIUS;
+    const step = TREES.fadeDuration > 0 ? delta / TREES.fadeDuration : 1;
+
+    for (const house of houses) {
+        const dx = house.object.position.x - playerPosition.x;
+        const dy = house.object.position.y - playerPosition.y;
+
+        let target = 1;
+        if (dx * dx + dy * dy <= radiusSq) {
+            const along = dx * FADE_FORWARD_X + dy * FADE_FORWARD_Y;
+            if (along < 0) { // nearer the camera than the player along the view direction
+                const lateral = Math.abs(dx * FADE_RIGHT_X + dy * FADE_RIGHT_Y);
+                if (lateral <= HOUSE_FADE_LATERAL) target = TREES.fadeOpacity;
+            }
+        }
+
+        if (house.opacity === target) continue;
+        house.opacity = target < house.opacity
+            ? Math.max(target, house.opacity - step)
+            : Math.min(target, house.opacity + step);
+
+        // transparent is enabled only while fading, exactly like the trees: a fully opaque house
+        // renders in the opaque pass (correct depth sorting).
+        const transparent = house.opacity < 1;
+        for (const material of house.materials) {
+            material.transparent = transparent;
+            material.opacity = house.opacity;
         }
     }
 }

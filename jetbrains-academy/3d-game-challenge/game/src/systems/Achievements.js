@@ -30,6 +30,25 @@ let damagedThisWave = false;
 // Wave 5 survival seconds so far (Marathon Frog tracker).
 let endlessSeconds = 0;
 
+// Trail kills during the current run (Ghost Trail tracker); reset each run.
+let runTrailKills = 0;
+
+// Lifetime counters (persisted in localStorage under STORAGE_KEYS.counters). They feed the
+// cumulative achievements: Sharpshooter (300 kills), Arena Champion (5 bosses), Bulwark
+// (25 shield blocks), Power Shove (50 pushes), Blink (100 dashes), Swarm (100 minion kills)
+// and World Tour (a run with each of the three classes).
+let counters = loadJSON(STORAGE_KEYS.counters, {});
+
+function saveCounters() {
+    saveJSON(STORAGE_KEYS.counters, counters);
+}
+
+// Adds `amount` to one lifetime counter and persists the result.
+function bumpCounter(field, amount = 1) {
+    counters[field] = (counters[field] || 0) + amount;
+    saveCounters();
+}
+
 // --- Registry API -------------------------------------------------------------
 
 // Adds a new achievement definition. `icon` and `description` get defaults when omitted.
@@ -94,12 +113,74 @@ export function isUnlocked(id) {
     return unlocked.has(id);
 }
 
-// Wipes every unlock (persisted and in-memory). Safe mid-run: the per-run trackers and the
-// registry itself are untouched, so achievements can be earned again immediately.
+// Wipes every unlock (persisted and in-memory) and the lifetime counters, so a wiped save starts
+// from a truly clean slate (otherwise the very next kill would re-unlock a cumulative
+// achievement from the old totals). Safe mid-run: the registry itself is untouched.
 export function resetAchievements() {
     unlocked = new Set();
     runUnlocks = [];
+    counters = {};
     saveJSON(STORAGE_KEYS.achievements, []);
+    saveCounters();
+}
+
+// --- Lifetime / per-run trackers (called by the entities and Combat) -----------
+
+// One enemy or boss died to `source` ('shot', 'minion', 'trail', 'reflect', 'shockwave',
+// 'thorns'). Bosses additionally count toward Arena Champion.
+export function recordKill(source, isBoss = false) {
+    bumpCounter('kills');
+    if (counters.kills >= 300) unlockAchievement('sharpshooter');
+    if (isBoss) {
+        bumpCounter('bossKills');
+        if (counters.bossKills >= 5) unlockAchievement('arenaChampion');
+    }
+    if (source === 'trail') {
+        runTrailKills++;
+        if (runTrailKills >= 15) unlockAchievement('ghostTrail');
+    }
+    if (source === 'minion') {
+        bumpCounter('minionKills');
+        if (counters.minionKills >= 100) unlockAchievement('swarm');
+    }
+}
+
+// One enemy shoved by the Pusher shockwave (Power Shove at 50 total).
+export function recordPush() {
+    bumpCounter('pushes');
+    if (counters.pushes >= 50) unlockAchievement('powerShove');
+}
+
+// One Dasher dash (Blink at 100 total).
+export function recordDash() {
+    bumpCounter('dashes');
+    if (counters.dashes >= 100) unlockAchievement('blink');
+}
+
+// One physical hit cancelled by the Pusher shield (Bulwark at 25 total).
+export function recordShieldBlock() {
+    bumpCounter('shieldBlocks');
+    if (counters.shieldBlocks >= 25) unlockAchievement('bulwark');
+}
+
+// The player was hurt and survived at exactly one heart (Close Call).
+export function recordCloseCall() {
+    unlockAchievement('closeCall');
+}
+
+// A run started with `classId` (World Tour once all three classes have been played).
+export function recordClassPlayed(classId) {
+    if (!counters.classesPlayed) counters.classesPlayed = [];
+    if (!counters.classesPlayed.includes(classId)) {
+        counters.classesPlayed.push(classId);
+        saveCounters();
+    }
+    if (counters.classesPlayed.length >= 3) unlockAchievement('worldTour');
+}
+
+// How many cards the player holds this run (Decked Out at 12 in a single run).
+export function recordCardCollected(runCardCount) {
+    if (runCardCount >= 12) unlockAchievement('deckedOut');
 }
 
 // --- Run lifecycle hooks (called by Run / Waves / Combat) ---------------------
@@ -109,11 +190,12 @@ export function getRunUnlocks() {
     return runUnlocks.slice();
 }
 
-// Fresh run: clears the per-run trackers.
+// Fresh run: clears the per-run trackers (lifetime counters are untouched).
 export function resetRunTracking() {
     runUnlocks = [];
     damagedThisWave = false;
     endlessSeconds = 0;
+    runTrailKills = 0;
 }
 
 // A wave began: Endless Frog unlocks on reaching wave 5; the damage tracker restarts for the

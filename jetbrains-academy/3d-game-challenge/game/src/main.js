@@ -4,8 +4,9 @@ import './styles/index.css';
 import renderer from './core/Renderer.js';
 import camera, { updateCamera } from './world/Camera.js';
 import { initArena, map, resetArenaRotation, spinArena } from './world/Arena.js';
-import { initHouses } from './world/Houses.js';
-import { LIGHTS } from './config/tuning.js';
+import { initHouses, updateHouseFade } from './world/Houses.js';
+import { initTrees, updateTreeFade } from './world/Trees.js';
+import { LIGHTS, VIGNETTE } from './config/tuning.js';
 import { STATE, getState, onStateChange } from './core/StateMachine.js';
 import { getPointerGroundPoint, initInput, onAbility } from './core/Input.js';
 import player, {
@@ -78,6 +79,12 @@ initAudio();
 // --- World --------------------------------------------------------------------
 initArena(scene);
 await initHouses(map);
+await initTrees(map); // the forest ring + the inner twisted-tree scatter (decoration only)
+
+// Vignette: the stylesheet's radial gradient (#ui-root::before) reads these two variables.
+// Pushing them from tuning keeps the CSS defaults as a fallback only.
+document.documentElement.style.setProperty('--vignette-strength', String(VIGNETTE.strength));
+document.documentElement.style.setProperty('--vignette-color', VIGNETTE.color);
 
 // --- Player, enemies, boss ------------------------------------------------------
 initPlayer(scene);
@@ -134,6 +141,12 @@ renderer.setAnimationLoop(() => {
     // POWERUP_DRAFT, PAUSE_MENU and CHARACTER_SELECTION freeze the world (time step = 0).
 
     updateCamera(delta, getPointerGroundPoint(), player.position);
+    // Occlusion fades: player-only, and skipped in the main menu (player hidden, world spinning —
+    // trees and houses should not flicker behind the rotating arena).
+    if (state !== STATE.MAIN_MENU) {
+        updateTreeFade(delta, player.position);
+        updateHouseFade(delta, player.position);
+    }
     updateHUD();
     renderer.render(scene, camera);
 });

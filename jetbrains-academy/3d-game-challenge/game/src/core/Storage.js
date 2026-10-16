@@ -7,6 +7,7 @@ export const STORAGE_KEYS = {
     bestScore: 'tode3d.bestScore',       // highest score ever reached
     achievements: 'tode3d.achievements', // array of unlocked achievement ids
     volume: 'tode3d.volume',             // master volume 0..1
+    counters: 'tode3d.counters',         // lifetime achievement counters (kills, dashes, ...)
 };
 
 // Reads a number, falling back when missing or unreadable. Returns `fallback` for NaN too, so a

@@ -1,6 +1,7 @@
 import { BOSS, COLLISION, ENEMY, PICKUP, PROJECTILE } from '../config/tuning.js';
 import player, {
-    consumeParryBurst,
+    consumeDashPickups,
+    consumePushBurst,
     damagePlayer,
     getAbilityValues,
     getHitCenter,
@@ -9,10 +10,11 @@ import player, {
     isDead,
     isInvulnerable,
     isShieldActive,
-    markParrySuccess,
+    markPushSuccess,
     updatePlayer,
 } from '../entities/Player.js';
 import {
+    applySlow,
     damageEnemy,
     getEnemies,
     knockbackEnemy,
@@ -28,8 +30,9 @@ import {
 import { updatePickups } from '../entities/Pickup.js';
 import { updateTrails } from '../entities/Trail.js';
 import { playSfx } from './Audio.js';
-import { markPlayerDamaged } from './Achievements.js';
+import { markPlayerDamaged, recordPush } from './Achievements.js';
 import { getCollider, isLineSightClear } from '../core/Collision.js';
+import { STATE, getState } from '../core/StateMachine.js';
 
 // Combat system: the per-frame conductor for everything that fights while WAVE_PLAYING. It owns
 // the ORDER of a frame — move the player, move the enemies and boss, fire the auto-shooter,
@@ -37,8 +40,9 @@ import { getCollider, isLineSightClear } from '../core/Collision.js';
 // decoupled modules and nobody else calls each other's update functions.
 //
 // Damage bookkeeping lives where the HP lives: this module only ROUTES results. Kills, score,
-// drops and death clips are Enemy.js/Boss.js's business; i-frames and the parry are Player.js's;
-// projectile flight is Projectile.js's.
+// drops and death clips are Enemy.js/Boss.js's business; i-frames and the push shield are
+// Player.js's; projectile flight is Projectile.js's. Card traits (crit, frost, knockback,
+// thorns, evasion) are resolved here because this is where shots and contacts meet their target.
 
 // The auto-shooter's timing: one volley every stats.fireCooldown seconds while a VISIBLE target
 // is in range (findNearestTarget also requires a clear line of sight). `fireTimer` counts down
@@ -49,14 +53,29 @@ let fireTimer = 0;
 // Set by Run.beginRun(): called exactly once when the player's HP reaches zero.
 let deathCallback = null;
 
+// Set by Run.initRun(): opens one bonus power-up draft per collected power-up drop. Kept as a
+// callback so Combat never imports the run/draft systems (and their UI imports) directly.
+let powerupCallback = null;
+
+// Power-up drops collected while a draft was already open (possible on the exact frame a wave
+// clears). They are held here and opened one per WAVE_PLAYING frame once play resumes, so no
+// collected card is ever lost to a modal-state race.
+let pendingPowerups = 0;
+
 // Registers the run's death handler (Run.endRun).
 export function onPlayerDeath(callback) {
     deathCallback = callback;
 }
 
+// Registers the bonus-draft handler (Run.openBonusDraft).
+export function onPowerupCollected(callback) {
+    powerupCallback = callback;
+}
+
 // Clears the per-run timing state. Called by Run.beginRun()/resetWorld().
 export function resetCombat() {
     fireTimer = 0;
+    pendingPowerups = 0;
 }
 
 // One combat frame. Called from main.js only while WAVE_PLAYING.
@@ -69,7 +88,7 @@ export function updateCombat(delta) {
     // 2. ...then the player's auto-shooter picks its moment...
     updateAutoShooter(delta);
 
-    // 3. ...the parry shield keeps flipping whatever hostile bullet touches it...
+    // 3. ...the push shield keeps flipping whatever hostile bullet touches it...
     reflectWithShield();
 
     // 4. ...and bullets fly. Hostile and friendly fire are resolved from the returned events.
@@ -80,25 +99,38 @@ export function updateCombat(delta) {
     // 5. Body contact (after movement, so it reflects this frame's positions).
     resolveContactDamage();
 
-    // 6. The parry shockwave, when a successful parry is waiting for it.
-    applyParryBurst();
+    // 6. The push shockwave, when a successful push is waiting for it.
+    applyPushBurst();
 
-    // 7. Pickups: magnet + collection, then healing. PICKUP.heal is the hearts restored per
-    //    collected heart; healing a full-HP player is a no-op by design (healPlayer clamps), so
-    //    no special check is needed here.
+    // 7. Pickups: magnet + collection, plus whatever the dashes swept up this frame. Hearts
+    //    heal (PICKUP.heal each; healing a full-HP player is a no-op by design), power-up cards
+    //    open a bonus draft.
     const collected = updatePickups(
         delta, player.position.x, player.position.y, getStats().magnetRadius,
     );
-    if (collected > 0) {
-        healPlayer(collected * PICKUP.heal);
-        playSfx('heart'); // health pickup sound
-    }
+    const swept = consumeDashPickups();
+    handlePickups(collected.hearts + swept.hearts, collected.powerups + swept.powerups);
 
-    // 8. Dasher trails fade and expire (their slow effect is read by movers each frame).
+    // 8. Dasher trails fade and expire (their damage ticks are read by movers each frame).
     updateTrails(delta);
 
     // 9. Last: if that was the final heart, hand over to the run (defeat animation + state).
     if (isDead() && deathCallback) deathCallback();
+}
+
+// Hearts heal immediately with the pickup sound; power-up cards are queued for a bonus draft.
+// A queued card only opens while WAVE_PLAYING, one per frame at most — a card collected on the
+// exact frame a wave clears opens once play resumes instead of fighting the wave draft.
+function handlePickups(hearts, powerups) {
+    if (hearts > 0) {
+        healPlayer(hearts * PICKUP.heal);
+        playSfx('heart'); // health pickup sound
+    }
+    pendingPowerups += powerups;
+    if (pendingPowerups > 0 && getState() === STATE.WAVE_PLAYING && powerupCallback) {
+        pendingPowerups--;
+        powerupCallback();
+    }
 }
 
 // --- Auto-shooter -------------------------------------------------------------
@@ -121,7 +153,7 @@ function updateAutoShooter(delta) {
 // player cannot actually shoot: a target behind a house (no clear line of sight, tested against
 // the same static boxes projectiles collide with, at the shot's real hit radius) is filtered
 // out, so the volley never pours into a wall. A farther visible enemy wins over a nearer hidden
-// one.
+// one. Enemies outside the arena are naturally excluded: the boundary wall blocks the line.
 function findNearestTarget(range) {
     let best = null;
     let bestDistanceSq = range * range;
@@ -146,7 +178,9 @@ function findNearestTarget(range) {
 }
 
 // Fires `stats.projectiles` shots in a small fan (the Multi-Shot card) toward the target,
-// leading its velocity by a fraction of the flight time. Pierce is carried per bullet.
+// leading its velocity by a fraction of the flight time. Pierce is carried per bullet. Each shot
+// rolls its own Critical Hit (double damage) and carries the live Berserk bonus (damage per
+// missing heart); the Big Bullets card rides along as a hit-radius multiplier.
 function fireVolley(target) {
     const stats = getStats();
     const originX = player.position.x;
@@ -165,26 +199,36 @@ function fireVolley(target) {
     const count = Math.max(1, stats.projectiles);
     const offset = ((count - 1) / 2) * spread;
 
+    // Berserk: extra damage for every heart missing right now.
+    const missingHearts = Math.max(0, stats.maxHearts - stats.hearts);
+    const baseDamage = stats.damage + stats.berserkPerMissingHeart * missingHearts;
+
     for (let i = 0; i < count; i++) {
         const angle = baseAngle - offset + i * spread;
+        let damage = baseDamage;
+        if (stats.critChance > 0 && Math.random() < stats.critChance) damage *= 2;
         const bullet = spawnPlayerShot(
             originX,
             originY,
             Math.cos(angle),
             Math.sin(angle),
-            { damage: stats.damage, speed: PROJECTILE.playerSpeed },
+            {
+                damage,
+                speed: PROJECTILE.playerSpeed,
+                radiusMul: stats.bulletRadiusMul, // Big Bullets: wider hit radius only
+            },
         );
         if (bullet) bullet.pierce = stats.pierce;
     }
     playSfx('shoot'); // laser shot
 }
 
-// --- Parry interactions ---------------------------------------------------------
+// --- Push interactions ---------------------------------------------------------
 
 // While the shield is up, any hostile projectile that enters its circle (radius from the active
 // class's ability) is reflected back at player speed (Projectile.reflectProjectilesNear). The
-// circle is centred on Tode's VISUAL position (the lean shifts his body), so the parry catches
-// what visually touches him. A reflection is a successful parry.
+// circle is centred on Tode's VISUAL position (the lean shifts his body), so the push catches
+// what visually touches him. A reflection is a successful push.
 function reflectWithShield() {
     if (!isShieldActive()) return;
     const center = getHitCenter();
@@ -192,13 +236,14 @@ function reflectWithShield() {
     const reflected = reflectProjectilesNear(
         center.x, center.y, ability.reflectRadius, ability.reflectDamage,
     );
-    if (reflected > 0) markParrySuccess(); // plays sfx_parry once and arms the shockwave
+    if (reflected > 0) markPushSuccess(); // plays the parry sfx once and arms the shockwave
 }
 
-// Applies the pending parry shockwave once: AoE damage to everything in radius, a stun for
-// common enemies, and plain knockback for the boss.
-function applyParryBurst() {
-    const burst = consumeParryBurst();
+// Applies the pending push shockwave once: AoE damage to everything in radius, a stun AND a
+// strong shove for common enemies (tanks are immune to knockback, so they are only stunned),
+// and plain knockback for the boss.
+function applyPushBurst() {
+    const burst = consumePushBurst();
     if (!burst) return;
     const ability = getAbilityValues();
 
@@ -215,29 +260,53 @@ function applyParryBurst() {
                 knockback: BOSS.knockbackDistance,
                 knockbackX: enemy.position.x - px,
                 knockbackY: enemy.position.y - py,
+                source: 'shockwave',
             });
+            recordPush(); // the boss got shoved too
         } else {
-            damageEnemy(enemy, burst.damage);
+            damageEnemy(enemy, burst.damage, {source: 'shockwave'});
             stunEnemy(enemy, ability.stun);
+            if (enemy.userData.typeConfig.behavior !== 'tank' && burst.knockback > 0
+                && !enemy.userData.dying) {
+                knockbackEnemy(
+                    enemy,
+                    enemy.position.x - px,
+                    enemy.position.y - py,
+                    burst.knockback,
+                );
+                recordPush(); // achievements: Power Shove counts shoved enemies
+            }
         }
     }
 }
 
 // --- Hit resolution ----------------------------------------------------------------
 
-// Friendly bullets that touched an enemy this frame: route to the right HP owner.
+// Friendly bullets that touched an enemy this frame: route to the right HP owner, then apply the
+// on-hit card traits — Concussive Shots knock the target back along the bullet's travel and
+// Frost Shot slows it (the boss is immune to both; it only takes the damage).
 function resolveEnemyHits(enemyHits) {
+    const stats = getStats();
     for (const { bullet, enemy } of enemyHits) {
+        const options = {source: bullet.source || 'shot'};
         if (enemy.userData.isBoss) {
-            damageBoss(bullet.damage);
-        } else {
-            damageEnemy(enemy, bullet.damage);
+            damageBoss(bullet.damage, options);
+            continue;
+        }
+        damageEnemy(enemy, bullet.damage, options);
+        if (enemy.userData.dying) continue; // no point slowing/knocking a corpse
+        if (stats.slowOnHitMul > 0 && stats.slowOnHitDuration > 0) {
+            applySlow(enemy, stats.slowOnHitMul, stats.slowOnHitDuration);
+        }
+        if (stats.shotKnockback > 0) {
+            knockbackEnemy(enemy, bullet.speedX, bullet.speedY, stats.shotKnockback);
         }
     }
 }
 
 // Hostile bullets that reached the player this frame. The projectile is already consumed by
-// Projectile.js; here only the damage happens (i-frames are enforced inside damagePlayer).
+// Projectile.js; here only the damage happens (i-frames and the Evasion dodge are enforced inside
+// damagePlayer).
 function resolvePlayerHits(playerHits) {
     for (let i = 0; i < playerHits.length; i++) {
         const result = damagePlayer(PROJECTILE.damage, 'projectile');
@@ -246,19 +315,27 @@ function resolvePlayerHits(playerHits) {
 }
 
 // Enemies overlapping the player deal 1 physical damage and are knocked back. Skipped entirely
-// while the player is invulnerable, so i-frames are true ghosting (no damage, no push). The
-// boss is excluded: its body push lives in Boss.js.
+// while the player is invulnerable, so i-frames are true ghosting (no damage, no push). Thorn
+// Skin answers a landed hit with damage back at the toucher (a shielded or dodged hit does not,
+// since nothing actually landed). The boss is excluded: its body push lives in Boss.js.
 function resolveContactDamage() {
     if (isDead() || isInvulnerable()) return;
+    const stats = getStats();
 
     for (const enemy of getEnemies()) {
         if (enemy.userData.isBoss || enemy.userData.dying) continue;
         if (!enemy.userData.touchingPlayer) continue;
 
         const result = damagePlayer(1, 'physical');
-        if (result === 'hit' || result === 'dead') markPlayerDamaged();
+        if (result === 'hit' || result === 'dead') {
+            markPlayerDamaged();
+            if (stats.thornsDamage > 0) {
+                damageEnemy(enemy, stats.thornsDamage, {source: 'thorns'});
+            }
+        }
 
-        // Knock the enemy away from the player, along the contact line.
+        // Knock the enemy away from the player, along the contact line (a corpse is skipped by
+        // knockbackEnemy itself).
         knockbackEnemy(
             enemy,
             enemy.position.x - player.position.x,

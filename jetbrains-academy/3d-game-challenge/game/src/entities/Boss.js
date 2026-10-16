@@ -15,15 +15,16 @@ import {
     registerCollider,
     unregisterCollider,
 } from '../core/Collision.js';
-import { BOSS, COLLISION, ENEMY, SPAWN_POINTS } from '../config/tuning.js';
+import { BOSS, COLLISION, ENEMY, SPAWN_POINTS, TRAIL } from '../config/tuning.js';
 import { BOSS_TYPE } from '../config/enemies.js';
-import player, { damagePlayer, getAbilityValues, getHitCenter, isInvulnerable } from './Player.js';
-import { addToEnemyList, removeFromEnemyList } from './Enemy.js';
-import { getTrailSpeedFactor } from './Trail.js';
-import { spawnHeart } from './Pickup.js';
+import player, { damagePlayer, getHitCenter, isInvulnerable } from './Player.js';
+import { addToEnemyList, isOutsideArena, removeFromEnemyList } from './Enemy.js';
+import { isInsideTrail } from './Trail.js';
+import { spawnHeart, spawnPowerupDrop } from './Pickup.js';
 import { spawnBossOrb } from './Projectile.js';
-import { playSfx } from '../systems/Audio.js';
+import { playSfxAt } from '../systems/Audio.js';
 import { addScore } from '../systems/Score.js';
+import { recordKill } from '../systems/Achievements.js';
 
 // Boss component: the Arena Lord (Pigeon). One instance at most. Spawns at a random one of the
 // 8 spawn points, chasing the player through a two-phase cycle:
@@ -51,6 +52,10 @@ let sceneRef = null;
 let prepared = null; // { template, scale, groundOffset, radius, clips }
 let boss = null;     // the live boss group, or null
 let endlessSpeedMul = 1;
+let endlessAttackMul = 1; // wave-5 escalation: scales orb speed and phase pacing (1 outside)
+
+// The near-black silhouette color (single shared instance; materials lerp toward it).
+const SILHOUETTE_COLOR = new THREE.Color(ENEMY.silhouetteColor);
 
 // --- Loading ---------------------------------------------------------------
 
@@ -129,6 +134,7 @@ export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1) {
         material,
         emissive: material.emissive ? material.emissive.clone() : null,
         intensity: material.emissiveIntensity !== undefined ? material.emissiveIntensity : null,
+        color: material.color ? material.color.clone() : null, // for the outside silhouette blend
     }));
 
     const group = new THREE.Group();
@@ -179,10 +185,19 @@ export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1) {
     data.stateTimer = BOSS.phaseAChase;
     data.dashDirection = { x: 0, y: 0 };
     data.dashHit = false;
+    // Silhouette blend while outside the arena (see Enemy.updateSilhouette's twin below).
+    data.silhouette = 0;
+    data.silhouetteDirty = false;
+    // Dasher-trail damage tick clock (staggered like the common enemies').
+    data.trailTickTimer = Math.random() * TRAIL.tickInterval;
+    data.trailTinted = false; // whether the cyan trail tint is currently applied
+    // Kill attribution: which system last damaged the boss ('shot', 'reflect', ...).
+    data.lastHitSource = 'shot';
 
     boss = group;
     addToEnemyList(group); // targeting + projectile hit detection see the boss
-    playSfx('boss_spawn'); // plays when any boss appears
+    // Panned spawn sting: the boss may appear far off to one side of the view.
+    playSfxAt('boss_spawn', group.position.x, group.position.y, player.position.x, player.position.y);
     return group;
 }
 
@@ -203,14 +218,21 @@ function pickSpawnPoint() {
 // --- Damage / knockback / death ----------------------------------------------
 
 // Applies damage to the boss. Returns true when this damage killed it. Options mirror
-// damageEnemy's: { knockback, knockbackX, knockbackY } (the parry shockwave knocks it back).
+// damageEnemy's:
+//   { knockback, knockbackX, knockbackY } — push direction and distance (the push shockwave)
+//   { silent }                            — skip the flash and sound (trail damage ticks)
+//   { source }                            — kill attribution ('shot', 'trail', ...)
 export function damageBoss(amount, options = {}) {
     if (!boss || boss.userData.dying) return false;
 
     const data = boss.userData;
     data.hp -= amount;
-    flashBoss();
-    playSfx('hit');
+    data.lastHitSource = options.source || 'shot';
+    if (!options.silent) {
+        flashBoss();
+        // Panned hit sound, like the common enemies' (the boss is big and often off-centre).
+        playSfxAt('hit', boss.position.x, boss.position.y, player.position.x, player.position.y);
+    }
 
     if (options.knockback > 0) {
         knockbackBoss(options.knockbackX || 0, options.knockbackY || 0, options.knockback);
@@ -220,12 +242,13 @@ export function damageBoss(amount, options = {}) {
         killBoss();
         return true;
     }
-    playOneShot(boss, data.actions.hit);
+    if (!options.silent) playOneShot(boss, data.actions.hit);
     return false;
 }
 
-// Pushes the boss away, collision-checked step by step (the parry shockwave uses this — the
-// boss only ever gets knocked back, never stunned or killed by it).
+// Pushes the boss away, collision-checked step by step (the push shockwave uses this — the
+// boss only ever gets knocked back, never stunned or killed by it). Boundary walls are ignored
+// on purpose: a shove can carry the boss out of the arena (it walks back in as a silhouette).
 function knockbackBoss(dirX, dirY, distance) {
     if (!boss || boss.userData.dying) return;
     const collider = boss.userData.collider;
@@ -239,7 +262,7 @@ function knockbackBoss(dirX, dirY, distance) {
         const step = Math.min(PUSH_STEP, remaining);
         const nx = boss.position.x + ux * step;
         const ny = boss.position.y + uy * step;
-        if (!isMoveFree(collider, nx, ny)) break;
+        if (!isMoveFree(collider, nx, ny, true)) break;
         boss.position.x = nx;
         boss.position.y = ny;
         remaining -= step;
@@ -271,6 +294,10 @@ function killBoss() {
 
     addScore(BOSS_TYPE.score); // points from the config
 
+    // Achievements: boss kills count toward lifetime totals (Arena Champion) and the kill-source
+    // attribution rides along (trail, reflect, ...).
+    recordKill(data.lastHitSource, true);
+
     // Guaranteed heart drops: an inclusive random count in [heartDropsMin, heartDropsMax],
     // scattered slightly around the body.
     const min = BOSS.heartDropsMin;
@@ -283,6 +310,11 @@ function killBoss() {
             boss.position.x + Math.cos(angle) * radius,
             boss.position.y + Math.sin(angle) * radius,
         );
+    }
+
+    // Bonus drop: a chance of a purple power-up card that opens a free draft when collected.
+    if (Math.random() < BOSS.powerupDropChance) {
+        spawnPowerupDrop(boss.position.x, boss.position.y);
     }
 }
 
@@ -303,6 +335,9 @@ export function updateBoss(delta) {
         if (data.flashTimer <= 0) restoreBossMaterials();
     }
 
+    // Silhouette blend (outside the arena = near-black). Runs for the corpse too.
+    updateBossSilhouette(delta);
+
     // Death: play out the corpse, then remove it.
     if (data.dying) {
         data.dyingTimer -= delta;
@@ -316,6 +351,21 @@ export function updateBoss(delta) {
         if (data.oneShotRemaining <= 0) resumeLoopAction();
     }
 
+    // Dasher trail: silent damage ticks while standing on one, plus the faint cyan tint.
+    const inTrail = isInsideTrail(boss.position.x, boss.position.y);
+    if (inTrail) {
+        data.trailTickTimer -= delta;
+        if (data.trailTickTimer <= 0) {
+            data.trailTickTimer = TRAIL.tickInterval;
+            damageBoss(
+                TRAIL.damagePerSecond * TRAIL.tickInterval,
+                {silent: true, source: 'trail'},
+            );
+            if (data.dying) return; // the tick killed it; the corpse block above takes over
+        }
+    }
+    updateBossTrailTint(inTrail);
+
     const toPlayerX = player.position.x - boss.position.x;
     const toPlayerY = player.position.y - boss.position.y;
     const playerDistance = Math.max(Math.hypot(toPlayerX, toPlayerY), 1e-6);
@@ -328,12 +378,8 @@ export function updateBoss(delta) {
     let moving = false;
 
     if (data.state === 'chaseA' || data.state === 'chaseB') {
-        // Chase: walk toward the player, slowed inside a Dasher trail (the factor comes from the
-        // active class's ability). The per-wave speed multiplier rides in data.speedMul.
-        const trailFactor = getTrailSpeedFactor(
-            boss.position.x, boss.position.y, getAbilityValues().trailSlowBoss ?? 1,
-        );
-        const speed = ENEMY.baseSpeed * data.speedMul * endlessSpeedMul * trailFactor;
+        // Chase: walk toward the player. The per-wave speed multiplier rides in data.speedMul.
+        const speed = ENEMY.baseSpeed * data.speedMul * endlessSpeedMul;
         moveBoss(collider, dirToPlayerX, dirToPlayerY, speed, delta);
         faceBoss(dirToPlayerX, dirToPlayerY);
         moving = true;
@@ -357,10 +403,13 @@ export function updateBoss(delta) {
         faceBoss(dirToPlayerX, dirToPlayerY);
         if (data.stateTimer <= 0) {
             // The volley starts a one-shot (Bite_Front); its timer blends back to the walk loop
-            // by itself, so no resumeLoopAction() here — that would cut the bite short.
-            fireOrbVolley();
+            // by itself, so no resumeLoopAction() here — that would cut the bite short. While
+            // outside the arena the volley is skipped (a silhouette is harmless) but the phase
+            // cycle continues.
+            if (!isOutsideArena(boss.position.x, boss.position.y)) fireOrbVolley();
             data.state = 'chaseB';
-            data.stateTimer = BOSS.phaseBChase;
+            // Wave-5 attack escalation: shorter chase phases between volleys (1x outside it).
+            data.stateTimer = BOSS.phaseBChase / endlessAttackMul;
         }
     } else if (data.state === 'telegraph') {
         // Red and stationary, tracking the player until the dash locks in.
@@ -396,7 +445,7 @@ export function updateBoss(delta) {
                 data.dashHit = true;
                 damagePlayer(BOSS.dashDamage, 'physical');
                 data.state = 'chaseA'; // the impact ends the dash early
-                data.stateTimer = BOSS.phaseAChase;
+                data.stateTimer = BOSS.phaseAChase / endlessAttackMul;
             }
         }
 
@@ -404,7 +453,7 @@ export function updateBoss(delta) {
         if (data.stateTimer <= 0 || blocked) {
             if (data.state === 'dash') { // not already ended by the hit above
                 data.state = 'chaseA';
-                data.stateTimer = BOSS.phaseAChase;
+                data.stateTimer = BOSS.phaseAChase / endlessAttackMul;
             }
         }
     }
@@ -447,16 +496,18 @@ function moveBoss(collider, dirX, dirY, speed, delta) {
     for (let i = 0; i < subSteps; i++) {
         const nx = boss.position.x + subX;
         const ny = boss.position.y + subY;
-        if (isMoveFree(collider, nx, ny)) {
+        // Boundary walls are ignored (last argument): the boss may spawn outside and walk in,
+        // and a shove can carry it back out.
+        if (isMoveFree(collider, nx, ny, true)) {
             boss.position.x = nx;
             boss.position.y = ny;
             continue;
         }
-        if (isMoveFree(collider, nx, boss.position.y)) {
+        if (isMoveFree(collider, nx, boss.position.y, true)) {
             boss.position.x = nx;
             continue;
         }
-        if (isMoveFree(collider, boss.position.x, ny)) {
+        if (isMoveFree(collider, boss.position.x, ny, true)) {
             boss.position.y = ny;
             continue;
         }
@@ -516,6 +567,8 @@ function pushPlayerOut(bossCollider) {
 function fireOrbVolley() {
     if (!boss) return;
     playOneShot(boss, boss.userData.actions.volley || boss.userData.actions.attack);
+    // Wave-5 attack escalation rides on top of the per-wave orb speed.
+    const orbSpeedMul = boss.userData.orbSpeedMul * endlessAttackMul;
     for (let i = 0; i < BOSS.orbCount; i++) {
         const angle = (i / BOSS.orbCount) * Math.PI * 2;
         spawnBossOrb(
@@ -523,7 +576,7 @@ function fireOrbVolley() {
             boss.position.y,
             Math.cos(angle),
             Math.sin(angle),
-            boss.userData.orbSpeedMul,
+            orbSpeedMul,
             boss,
         );
     }
@@ -604,6 +657,52 @@ function restoreBossMaterials() {
     }
 }
 
+// --- Outside-arena and trail tints -------------------------------------------------
+
+// Blends every material's color between its original and the near-black silhouette while the
+// boss is outside the arena (see Enemy.updateSilhouette — same rules, same blend time). Once
+// fully back inside the original colors are restored exactly.
+function updateBossSilhouette(delta) {
+    if (!boss) return;
+    const data = boss.userData;
+    const target = isOutsideArena(boss.position.x, boss.position.y) ? 1 : 0;
+    if (data.silhouette === target && !data.silhouetteDirty) return;
+
+    const step = delta / ENEMY.silhouetteBlend;
+    data.silhouette = target > data.silhouette
+        ? Math.min(target, data.silhouette + step)
+        : Math.max(target, data.silhouette - step);
+
+    for (const entry of data.flashOriginals) {
+        if (!entry.color) continue;
+        entry.material.color.copy(entry.color).lerp(SILHOUETTE_COLOR, data.silhouette);
+    }
+    data.silhouetteDirty = data.silhouette > 0;
+}
+
+// Applies (or clears) the faint cyan Dasher-trail tint while the boss stands on a trail. The
+// white hit flash and the red dash telegraph both have priority (they own the emissive channel
+// during their windows); this function steps aside until they end.
+function updateBossTrailTint(inTrail) {
+    if (!boss) return;
+    const data = boss.userData;
+    if (data.flashTimer > 0 || data.state === 'telegraph') return;
+    if (!inTrail && !data.trailTinted) return;
+    data.trailTinted = inTrail;
+    for (const entry of data.flashOriginals) {
+        if (!entry.emissive) continue;
+        if (inTrail) {
+            entry.material.emissive.setHex(TRAIL.tint);
+            if (entry.intensity !== null) {
+                entry.material.emissiveIntensity = TRAIL.bossTintIntensity;
+            }
+        } else {
+            entry.material.emissive.copy(entry.emissive);
+            if (entry.intensity !== null) entry.material.emissiveIntensity = entry.intensity;
+        }
+    }
+}
+
 // --- Queries / removal / reset -------------------------------------------------------
 
 // True while a boss exists and is not dying (Waves uses this to end wave 3, drive the wave-5
@@ -619,9 +718,11 @@ export function getBossInfo() {
     return { hp: boss.userData.hp, maxHp: boss.userData.maxHp };
 }
 
-// Wave-5 endless growth hook (speed applies live to the dashing/walking speeds).
-export function setBossEndlessScaling(speedMul) {
+// Wave-5 endless growth hook: speed applies live to the dashing/walking speeds, attack scales
+// orb speed and the chase phases between volleys/dashes.
+export function setBossEndlessScaling(speedMul, attackMul) {
     endlessSpeedMul = speedMul;
+    endlessAttackMul = attackMul;
 }
 
 // Detaches the boss (kill-complete, or a fresh run through resetBoss).
@@ -637,4 +738,5 @@ function removeBoss() {
 export function resetBoss() {
     removeBoss();
     endlessSpeedMul = 1;
+    endlessAttackMul = 1;
 }

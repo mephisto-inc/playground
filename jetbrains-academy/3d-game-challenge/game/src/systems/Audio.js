@@ -7,7 +7,7 @@ import { STATE, getState, onStateChange } from '../core/StateMachine.js';
 //
 // Graph:
 //   music tracks -> musicBus gain -> low-pass filter -> masterGain -> destination
-//   sfx          -> sfxBus gain ---------------------> masterGain -> destination
+//   sfx          -> [stereo panner] -> sfxBus gain --> masterGain -> destination
 //
 // The low-pass sits on the music branch only: PAUSE_MENU, POWERUP_DRAFT and GAME_OVER muffle the
 // music while sound effects stay crisp. The master gain (persisted, driven by the pause panel)
@@ -181,19 +181,52 @@ function getBuffer(fileName) {
 
 // --- Sound effects -----------------------------------------------------------
 
-// Plays a one-shot sound effect by short name ('jump', 'parry', ...). Silent no-op before the
-// first gesture or if the asset failed to load — a missing sound must never break gameplay.
-export function playSfx(name) {
+// Plays a one-shot sound effect by short name ('jump', 'parry', ...). Options:
+//   { pan } — stereo position in [-1, 1] (0 = centre); values are clamped to +-AUDIO.sfxPanMax.
+//             Environments without StereoPannerNode fall back to centre. Silent no-op before
+//             the first gesture or if the asset failed to load — a missing sound must never
+//             break gameplay.
+export function playSfx(name, options = {}) {
     if (!ctx || ctx.state !== 'running' || !sfxBus) return;
     getBuffer(`sfx_${name}.wav`)
         .then((buffer) => {
             if (!buffer || ctx.state !== 'running') return;
             const source = ctx.createBufferSource();
             source.buffer = buffer;
-            source.connect(sfxBus);
+            const pan = clampPan(options.pan || 0);
+            if (pan !== 0 && typeof ctx.createStereoPanner === 'function') {
+                const panner = ctx.createStereoPanner();
+                panner.pan.value = pan;
+                source.connect(panner);
+                panner.connect(sfxBus);
+            } else {
+                source.connect(sfxBus); // centred or no panner support
+            }
             source.start();
         })
         .catch(() => { /* asset missing: stay silent */ });
+}
+
+// Plays a sound effect positioned in the world: the stereo pan follows how far to the RIGHT of
+// the listener (the player) the source sits, projected on the camera's screen-right vector. The
+// isometric camera sits at azimuth -45 degrees, so screen-right on the ground plane is
+// (cos 45, sin 45) = (0.707, 0.707). No distance attenuation — only the stereo placement.
+export function playSfxAt(name, x, y, listenerX, listenerY) {
+    const dx = x - listenerX;
+    const dy = y - listenerY;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 1e-4) {
+        playSfx(name); // on top of the player: no direction to pan toward
+        return;
+    }
+    const pan = ((dx + dy) * Math.SQRT1_2 / distance) * AUDIO.sfxPanMax;
+    playSfx(name, { pan });
+}
+
+// Clamps a pan value to the allowed range (also catches NaN from caller mistakes).
+function clampPan(value) {
+    if (!Number.isFinite(value)) return 0;
+    return Math.min(AUDIO.sfxPanMax, Math.max(-AUDIO.sfxPanMax, value));
 }
 
 // --- Music -------------------------------------------------------------------

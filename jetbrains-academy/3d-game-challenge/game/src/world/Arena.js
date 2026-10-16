@@ -42,15 +42,17 @@ function makeFloor() {
     return floor;
 }
 
-// A large dark plane under the floor: everything beyond the arena edge reads as a void instead
-// of the page background. Sized far larger than the arena so no reachable viewpoint sees its
-// edge, but kept inside the camera's far plane.
+// A large dark-green plane under the floor: everything beyond the arena edge reads as the
+// forest floor instead of a void. Lit (MeshStandardMaterial) on purpose so the trees and
+// characters in the ring cast their shadows onto it. Sized far larger than the arena so no
+// reachable viewpoint sees its edge, but kept inside the camera's far plane.
 function makeBackdrop() {
     const backdrop = new THREE.Mesh(
         new THREE.PlaneGeometry(ARENA.backdropSize, ARENA.backdropSize),
-        new THREE.MeshBasicMaterial({ color: ARENA.backdropColor }),
+        new THREE.MeshStandardMaterial({ color: ARENA.backdropColor, roughness: 1, metalness: 0 }),
     );
     backdrop.position.z = ARENA.backdropZ; // just under the floor, so the two never z-fight
+    backdrop.receiveShadow = true; // tree/house shadows render on the dark forest ground
     return backdrop;
 }
 
@@ -72,13 +74,15 @@ function addBoundaryWalls() {
 
     for (const [x, y, halfWidth, halfDepth] of walls) {
         // Walls never move, so a bare Object3D as the registry key is enough; it is never added
-        // to the scene graph.
+        // to the scene graph. `boundary: true` lets enemies/the boss ignore these boxes when
+        // moving (they spawn outside and walk in), while the player and shots still stop at them.
         const owner = new THREE.Object3D();
         registerBoxCollider(
             owner,
             new THREE.Vector3(x, y, 0),
             halfWidth,
             halfDepth,
+            { boundary: true },
         );
     }
 }

@@ -10,19 +10,25 @@ export const ARENA = {
     wallThickness: 2,        // depth of the invisible boundary wall colliders
     backdropSize: 4000,      // dark plane under the floor, sized to always fill the view
     backdropZ: -1,           // slightly below the floor so the two never z-fight
-    backdropColor: 0x111111, // near-black void beyond the arena
+    // The ground beyond the arena reads as a dark forest floor (not a void). Lit on purpose
+    // (MeshStandardMaterial) so characters and trees cast shadows onto it.
+    backdropColor: 0x0d1f12,
 };
 
-// Spawn points: 8 spots on the outer edge, two per corner house — one on the edge beside the
-// house and one on the edge behind it, so an enemy always steps out from behind cover instead
-// of popping into view. Each point sits 2.7 units beyond the house's worst-case face (the
-// footprint cap), keeping at least 4.5 units of clearance to the boundary walls, so even a
-// tank (~1-unit radius) walks out instead of wedging.
+// Spawn points: 8 spots OUTSIDE the arena — 4 at the side midpoints and 4 at the corners, just
+// beyond the boundary walls (the walls sit right at the edge plus ARENA.wallThickness). Enemies
+// and the boss walk in from the forest: while outside they read as dark silhouettes and cannot
+// be targeted or fire. Each spawn gets a small random jitter (ENEMY.spawnJitter) so groups do
+// not stack on one exact pixel.
 export const SPAWN_POINTS = [
-    {x: 37.53, y: 18.72}, {x: 31.68, y: 24.57},   // NE corner (house at 31.68, 18.72)
-    {x: -37.53, y: 18.72}, {x: -31.68, y: 24.57}, // NW corner (house at -31.68, 18.72)
-    {x: 37.53, y: -18.72}, {x: 31.68, y: -24.57}, // SE corner (house at 31.68, -18.72)
-    {x: -37.53, y: -18.72}, {x: -31.68, y: -24.57}, // SW corner (house at -31.68, -18.72)
+    {x: 49.74, y: 0},        // East midpoint
+    {x: -49.74, y: 0},       // West midpoint
+    {x: 0, y: 35.16},        // North midpoint
+    {x: 0, y: -35.16},       // South midpoint
+    {x: 49.74, y: 35.16},    // NE corner
+    {x: -49.74, y: 35.16},   // NW corner
+    {x: 49.74, y: -35.16},   // SE corner
+    {x: -49.74, y: -35.16},  // SW corner
 ];
 
 // --- Camera ------------------------------------------------------------------
@@ -41,17 +47,67 @@ export const CAMERA = {
 };
 
 // --- Lights ------------------------------------------------------------------
+// Night look: a pale-blue moonlight and a deeper blue ambient. The shadows and the dark-green
+// ground carry most of the atmosphere; the vignette (below) frames it.
 export const LIGHTS = {
-    ambientColor: 0xd0e5ff, // light blue
-    ambientIntensity: 0.75,
-    dirColor: 0xffffff,
-    dirIntensity: 1.1,
+    ambientColor: 0x8fb3ff, // deep blue night fill
+    ambientIntensity: 0.45,
+    dirColor: 0xbfd4ff,     // moonlight
+    dirIntensity: 0.927,    // moonlight intensity (0.9 raised by 3%)
     dirPosition: {x: 15, y: -20, z: 30},
-    // Shadow camera half-extents: covers the whole arena plus a margin so no shadow pops.
-    shadowHalfX: 53.1,
-    shadowHalfY: 38.7,
+    // Shadow camera half-extents: covers the whole arena PLUS the forest ring, so tree shadows
+    // render from the ring edge inward with no pop. Widening this spreads the fixed 4096 texels
+    // over more ground — a deliberate tradeoff, revisit if the shadows read too soft.
+    shadowHalfX: 76,
+    shadowHalfY: 61,
     shadowNear: 1,
     shadowFar: 120,
+};
+
+// --- Vignette ----------------------------------------------------------------
+// Screen-edge darkening, applied by main.js to the CSS variables the stylesheet's radial
+// gradient reads (see styles/index.css #ui-root::before).
+export const VIGNETTE = {
+    strength: 0.6,          // 0 disables the vignette; 1 is a heavy frame
+    color: '3, 10, 18',     // bluish-black RGB triplet used inside rgba(...)
+};
+
+// --- Trees -------------------------------------------------------------------
+// The forest: pines fill the dark ring beyond the walls; twisted trees scatter inside the arena.
+// Trees are pure decoration — no colliders, so nothing interacts with them except the camera
+// (they fade when they occlude the player) and the shadow map.
+export const TREES = {
+    pines: ['rfnxJv0Rqa', 'igSu0cPoBz', '79gmlLnweB', 'Zt62gceKXZ'], // 4 Pine variants
+    twisted: ['9aWlx82xUf', 'GVTsMmuzv7', '7PDBpElkQr'],              // 3 Twisted Tree variants
+    // Height of each tree at scale 1, in world units. The boss is 3.5 units tall, so the forest
+    // pines read at about boss height (some a bit taller, some shorter).
+    pineHeightMin: 3.2,
+    pineHeightMax: 4.2,
+    twistedHeightMin: 2.5,
+    twistedHeightMax: 3.6,
+    // Per-instance random size variation around the type's height range.
+    heightJitterMin: 0.85,
+    heightJitterMax: 1.15,
+    // Forest ring: random points between ringStart and ringDepth units beyond the wall edge.
+    // ringStart keeps the pines right up against the arena walls (the tree line hugs the wall).
+    ringStart: 0.5,
+    ringDepth: 26,
+    ringAttempts: 6000,     // candidate tries for ring placement
+    ringCount: 900,         // pines actually placed (min-spacing filtered) — a dense forest
+    minSpacing: 1.7,        // minimum ground distance between any two trees
+    // Inside scatter: twisted trees over the arena floor, avoiding houses, spawn lanes and the
+    // center clearing.
+    scatterAttempts: 600,
+    scatterCount: 60,
+    houseClearance: 5.5,    // keep this far away from every house center
+    spawnLaneClearance: 3.5, // keep this far away from the 8 spawn -> center walking lines
+    centerClearance: 6,     // keep the player's starting area open
+    arenaMargin: 3,         // keep trees this far inside the walls
+    // Occlusion fade: a tree that stands between the camera and the player fades to
+    // fadeOpacity over fadeDuration seconds (player-only; enemies do not trigger it).
+    fadeOpacity: 0.5,
+    fadeDuration: 0.25,
+    fadeCheckRadius: 10,    // trees farther than this from the player are never checked
 };
 
 // --- Player ------------------------------------------------------------------
@@ -116,6 +172,17 @@ export const ENEMY = {
     growthPerMinute: 0.10,
     growthHpCap: 3,
     growthSpeedCap: 1.5,
+    // Independent attack escalation for wave 5: +10% "attack speed" per minute, capped at 2x.
+    // Scales enemy shot speed, ranged fire rate, boss orb speed, boss chase/charge pacing and
+    // the spawn interval (more enemies as the attack ramps).
+    growthAttackPerMinute: 0.10,
+    growthAttackCap: 2,
+    // Spawn-point jitter: every spawn lands within this many units of its point.
+    spawnJitter: 1.5,
+    // Outside the arena an enemy/boss renders as a near-black silhouette; it blends back to its
+    // normal materials over this many seconds once its center crosses the floor edge.
+    silhouetteColor: 0x0a0a0a,
+    silhouetteBlend: 0.25,
     // Ranged behavior: it tries to sit at this distance band and fires at the player.
     rangedStandoff: 12,      // preferred distance from the player
     rangedBand: 2,           // +/- band around the standoff where it stops closing
@@ -150,7 +217,8 @@ export const BOSS = {
     phaseBChase: 1.5,        // seconds of chasing between dashes
     heartDropsMin: 1,        // boss kills drop this many hearts...
     heartDropsMax: 2,        // ...up to this many (inclusive random range)
-    knockbackDistance: 2.5,  // how far the parry shockwave pushes the boss
+    knockbackDistance: 2.5,  // how far the push shockwave shoves the boss
+    powerupDropChance: 0.2,  // chance a boss kill also drops a bonus power-up card (0.2 = 20%)
 };
 
 // --- Projectiles -------------------------------------------------------------
@@ -177,6 +245,19 @@ export const PICKUP = {
     pulseHz: 1.6,
     heal: 1,             // hearts restored per pickup
     lifetime: 30,        // seconds before an uncollected heart is removed
+    // Bonus power-up drop (boss kills): despawns faster than hearts, is NOT magnet-attracted —
+    // it is collected by walking or dashing over it.
+    powerupLifetime: 10, // seconds before an uncollected power-up drop is removed
+};
+
+// --- Trail -------------------------------------------------------------------
+// The Dasher's ground trail. It no longer slows; standing in it takes damage on a fixed tick.
+export const TRAIL = {
+    damagePerSecond: 2,   // damage dealt per full second inside the trail
+    tickInterval: 0.5,    // seconds between damage ticks (so each tick deals 2 * 0.5 = 1 damage)
+    tint: 0x4dd2ff,       // enemies inside the trail blend toward this color (the trail's cyan)
+    tintIntensity: 0.35,  // emissive strength of the common-enemy tint
+    bossTintIntensity: 0.18, // the boss tints fainter than common enemies
 };
 
 // --- Power-up draft ----------------------------------------------------------
@@ -195,6 +276,7 @@ export const AUDIO = {
     crossfadeLong: 1.0,
     trackLength: 9,           // seconds; every bgm_* track except bgm_boss_step3
     bossStep3Length: 19,      // seconds; bgm_boss_step3.wav
+    sfxPanMax: 0.4,           // strongest stereo pan for positional SFX (playSfxAt)
 };
 
 // --- Class abilities ---------------------------------------------------------
@@ -202,20 +284,21 @@ export const AUDIO = {
 // own ability block; the code reads the ACTIVE class's block (Player.getAbilityValues), so a
 // class can override any of these by using a literal instead of the ABILITY reference.
 export const ABILITY = {
-    // Parry
-    parryCooldown: 0.5,        // seconds
-    parryShield: 0.6,          // seconds the shield stays up
-    parryReflectRadius: 7,     // radius of the shield circle that flips hostile projectiles
-    parryShockwaveRadius: 7,   // radius of the parry's damage shockwave
-    parryShockwaveBaseDamage: 3, // shockwave damage is this + current hearts
-    parryStun: ENEMY.stunDuration, // stun applied to surviving common enemies
-    parryReflectDamage: 5,     // damage a reflected projectile deals (normal shots use
-                               // PROJECTILE.damage)
-    // Parry visual timings (cosmetic only — shield/reflect behavior never reads these):
-    parryGlowRadius: 3,      // soft blue glow ring's outer radius while the shield is up
-    parryImpactDuration: 0.03, // white-blue impact flash right when a parry succeeds
-    parryRingDuration: 0.1,    // shiny-blue ring expanding to the shockwave radius after the flash
-    parryFailDuration: 0.15,   // collapse of the glow when the shield expires with no parry
+    // Pusher (the renamed Parry class; shield + reflect + shockwave, now also shoving)
+    pushCooldown: 0.5,        // seconds
+    pushShield: 0.6,          // seconds the shield stays up
+    pushReflectRadius: 7,     // radius of the shield circle that flips hostile projectiles
+    pushShockwaveRadius: 7,   // radius of the push's damage shockwave
+    pushShockwaveBaseDamage: 3, // shockwave damage is this + current hearts
+    pushStun: ENEMY.stunDuration, // stun applied to surviving common enemies
+    pushReflectDamage: 5,     // damage a reflected projectile deals (normal shots use
+                              // PROJECTILE.damage)
+    pushKnockback: 6,         // how far the shockwave shoves every common enemy away
+    // Push visual timings (cosmetic only — shield/reflect behavior never reads these):
+    pushGlowRadius: 3,      // soft pale-jade glow ring's outer radius while the shield is up
+    pushImpactDuration: 0.03, // near-white impact flash right when a push succeeds
+    pushRingDuration: 0.1,    // pale-jade ring expanding to the shockwave radius after the flash
+    pushFailDuration: 0.15,   // collapse of the glow when the shield expires with no push
     // Dasher
     dashCooldown: 0.5,         // seconds
     dashDistance: 10,          // world units covered instantly
@@ -224,9 +307,7 @@ export const ABILITY = {
     dashCloneLife: 0.35,       // seconds each clone takes to fade
     trailBaseDuration: 2.0,    // trail life = base + per-heart bonus seconds
     trailPerHeart: 0.5,
-    trailWidth: 3,             // world units across the slow zone
-    trailSlowCommon: 0.5,      // common enemy speed multiplier inside the trail (50% slow)
-    trailSlowBoss: 0.75,       // boss speed multiplier inside the trail (25% slow)
+    trailWidth: 3,             // world units across the damaging trail (see TRAIL above)
     // Anchor
     minionCount: 3,            // orbiting minions
     minionOrbitRadius: 1.7,    // world units from the player
