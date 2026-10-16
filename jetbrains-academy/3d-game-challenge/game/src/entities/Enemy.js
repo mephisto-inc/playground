@@ -77,6 +77,30 @@ let endlessHpMul = 1;
 let endlessSpeedMul = 1;
 let endlessAttackMul = 1;
 
+// Doom mode: the one-way late-run escalation Waves flips on when the score crosses each doom
+// threshold. `doomMul` compounds by 2 per tier (x2, x4, x8, ...) and scales enemy damage, shot
+// speed, attack pacing, the boss's orbs/contact hits and this module's ranger cadence below;
+// `doomHpMul` compounds by 3 per tier and bakes into every new spawn's HP. Reset with the world.
+let doomMul = 1;
+let doomHpMul = 1;
+
+// Sets the current doom multipliers (1 = off). Waves calls this with 2^tier and 3^tier as the
+// run's score crosses each doom threshold.
+export function setDoomScaling(damageMul, hpMul) {
+    doomMul = damageMul;
+    doomHpMul = hpMul;
+}
+
+// Current doom damage/speed multiplier (read by Combat and Boss.js).
+export function getDoomMul() {
+    return doomMul;
+}
+
+// Current doom HP multiplier (applied to every enemy/boss spawn).
+export function getDoomHpMul() {
+    return doomHpMul;
+}
+
 // The near-black silhouette color (single shared instance; materials lerp toward it).
 const SILHOUETTE_COLOR = new THREE.Color(ENEMY.silhouetteColor);
 
@@ -224,8 +248,8 @@ export function spawnEnemy(typeId, position) {
 
     const data = group.userData;
     data.typeConfig = type;
-    data.maxHp = Math.ceil(type.hp * endlessHpMul); // wave-5 growth bakes into the spawn;
-    // health is whole numbers everywhere, so grown HP rounds UP (2.2 -> 3), never down.
+    data.maxHp = Math.ceil(type.hp * endlessHpMul * doomHpMul); // wave-5 growth and the doom HP
+    // tripling bake into the spawn; health is whole numbers, so grown HP rounds UP (2.2 -> 3).
     data.hp = data.maxHp;
     data.collider = registerCollider(group, group.position, typePrepared.radius);
     data.touchingPlayer = false;
@@ -524,16 +548,22 @@ export function updateEnemies(delta) {
             if (data.slowTimer <= 0) data.slowFactor = 1;
         }
 
-        // Dasher trail: standing on one deals a silent tick every TRAIL.tickInterval seconds, and
-        // tints the enemy cyan while inside. Stunned enemies still burn.
+        // Dasher trail: standing on one deals a silent tick every TRAIL.tickInterval seconds for
+        // TRAIL.damageBase + TRAIL.damagePerHeart per current heart (the Pusher shockwave's
+        // damage formula), scaled by the Trail Master card and rolling Critical Hit like a shot.
+        // The trail also tints the enemy cyan while inside. Stunned enemies still burn.
         const inTrail = isInsideTrail(enemy.position.x, enemy.position.y);
         if (inTrail) {
             data.trailTickTimer -= delta;
             if (data.trailTickTimer <= 0) {
                 data.trailTickTimer = TRAIL.tickInterval;
+                const stats = getStats();
+                let damage = (TRAIL.damageBase + stats.hearts * TRAIL.damagePerHeart)
+                    * stats.trailDamageMul;
+                if (stats.critChance > 0 && Math.random() < stats.critChance) damage *= 2;
                 damageEnemy(
                     enemy,
-                    TRAIL.damagePerSecond * TRAIL.tickInterval,
+                    damage,
                     {silent: true, source: 'trail'},
                 );
                 if (data.dying) continue; // the tick killed it; the corpse handles its own fade
@@ -703,8 +733,9 @@ export function updateEnemies(delta) {
         if (behavior === 'ranged') {
             data.fireTimer -= delta;
             if (data.fireTimer <= 0) {
-                // Wave-5 attack escalation: fires faster as the wave ramps (1x outside it).
-                data.fireTimer = ENEMY.rangedFireInterval / endlessAttackMul;
+                // Wave-5 attack escalation and the doom multiplier: fires faster as they ramp
+                // (both 1x outside their escalation).
+                data.fireTimer = ENEMY.rangedFireInterval / (endlessAttackMul * doomMul);
                 // No firing while outside the arena: a silhouette walking in is harmless. (The
                 // boundary wall would block the shot anyway, but skipping the whole routine keeps
                 // an outside ranger from standing in a pointless firing loop.)
@@ -746,7 +777,8 @@ export function updateEnemies(delta) {
                         enemy.position.x, enemy.position.y,
                         dirToAimX / aimLength, dirToAimY / aimLength,
                         enemy,
-                        endlessAttackMul, // wave-5 escalation: faster shots
+                        // Wave-5 escalation speeds shots up; the doom multiplier compounds on top.
+                        endlessAttackMul * doomMul,
                     );
                     // A short attack animation plays with the shot (same clip as contact attack).
                     if (data.currentAction !== data.actions.attack) {
@@ -877,4 +909,6 @@ export function resetEnemies() {
     endlessHpMul = 1;
     endlessSpeedMul = 1;
     endlessAttackMul = 1;
+    doomMul = 1;
+    doomHpMul = 1;
 }

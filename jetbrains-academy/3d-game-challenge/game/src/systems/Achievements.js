@@ -33,10 +33,16 @@ let endlessSeconds = 0;
 // Trail kills during the current run (Ghost Trail tracker); reset each run.
 let runTrailKills = 0;
 
+// Enemies shoved by the Pusher shockwave during the current run (Power Shove tracker); reset
+// each run. A single-run target keeps the achievement reachable in one good Pusher run instead
+// of a slow lifetime grind.
+let runPushes = 0;
+
 // Lifetime counters (persisted in localStorage under STORAGE_KEYS.counters). They feed the
 // cumulative achievements: Sharpshooter (300 kills), Arena Champion (5 bosses), Bulwark
-// (25 shield blocks), Power Shove (50 pushes), Blink (100 dashes), Swarm (100 minion kills)
-// and World Tour (a run with each of the three classes).
+// (25 shield blocks), Blink (100 dashes), Swarm (100 minion kills) and World Tour (a run with
+// each of the three classes). 'pushes' is still tracked here as a running stat, but Power Shove
+// now counts within a single run (see recordPush).
 let counters = loadJSON(STORAGE_KEYS.counters, {});
 
 function saveCounters() {
@@ -145,10 +151,11 @@ export function recordKill(source, isBoss = false) {
     }
 }
 
-// One enemy shoved by the Pusher shockwave (Power Shove at 50 total).
+// One enemy shoved by the Pusher shockwave (Power Shove at 50 within a single run).
 export function recordPush() {
     bumpCounter('pushes');
-    if (counters.pushes >= 50) unlockAchievement('powerShove');
+    runPushes++;
+    if (runPushes >= 50) unlockAchievement('powerShove');
 }
 
 // One Dasher dash (Blink at 100 total).
@@ -183,11 +190,11 @@ export function recordCardCollected(runCardCount) {
     if (runCardCount >= 12) unlockAchievement('deckedOut');
 }
 
-// The run's live score reached the breaking point (The Million). Called by Score.addScore on
-// every gain, so the achievement pops the moment the counter crosses a million mid-run.
-const MILLION_SCORE = 1_000_000;
+// The run's live score reached the breaking point (The 50K). Called by Score.addScore on every
+// gain, so the achievement pops the moment the counter crosses 50,000 mid-run.
+const THE_50K_SCORE = 50_000;
 export function markScore(total) {
-    if (total >= MILLION_SCORE) unlockAchievement('theMillion');
+    if (total >= THE_50K_SCORE) unlockAchievement('the50k');
 }
 
 // --- Run lifecycle hooks (called by Run / Waves / Combat) ---------------------
@@ -203,6 +210,7 @@ export function resetRunTracking() {
     damagedThisWave = false;
     endlessSeconds = 0;
     runTrailKills = 0;
+    runPushes = 0;
 }
 
 // A wave began: Endless Frog unlocks on reaching wave 5; the damage tracker restarts for the

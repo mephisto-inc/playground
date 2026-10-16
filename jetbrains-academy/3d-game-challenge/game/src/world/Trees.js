@@ -124,9 +124,11 @@ function distanceToSegment(px, py, ax, ay, bx, by) {
     return Math.hypot(px - (ax + abx * t), py - (ay + aby * t));
 }
 
-// True when `point` keeps at least TREES.minSpacing from every already-placed tree.
-function isFarFromPlaced(point, placed) {
-    const minSq = TREES.minSpacing * TREES.minSpacing;
+// True when `point` keeps at least `minSpacing` from every already-placed tree. The ring uses
+// TREES.minSpacing (a tight tree line); the inner scatter passes TREES.scatterSpacing (larger,
+// so the inside trees spread out instead of clumping).
+function isFarFromPlaced(point, placed, minSpacing) {
+    const minSq = minSpacing * minSpacing;
     for (const other of placed) {
         const dx = point.x - other.x;
         const dy = point.y - other.y;
@@ -146,7 +148,7 @@ export async function initTrees(mapGroup) {
     let ringPlaced = 0;
     for (let attempt = 0; attempt < TREES.ringAttempts && ringPlaced < TREES.ringCount; attempt++) {
         const point = randomRingPoint();
-        if (!point || !isFarFromPlaced(point, placed)) continue;
+        if (!point || !isFarFromPlaced(point, placed, TREES.minSpacing)) continue;
         const tree = plantTree(
             mapGroup, TREES.pines, TREES.pineHeightMin, TREES.pineHeightMax, point.x, point.y,
         );
@@ -155,11 +157,12 @@ export async function initTrees(mapGroup) {
         ringPlaced++;
     }
 
-    // The inner scatter: twisted trees, same attempt-budget pattern.
+    // The inner scatter: twisted trees, same attempt-budget pattern, spread apart by the wider
+    // scatter spacing.
     let scatterPlaced = 0;
     for (let attempt = 0; attempt < TREES.scatterAttempts && scatterPlaced < TREES.scatterCount; attempt++) {
         const point = randomScatterPoint();
-        if (!point || !isFarFromPlaced(point, placed)) continue;
+        if (!point || !isFarFromPlaced(point, placed, TREES.scatterSpacing)) continue;
         const tree = plantTree(
             mapGroup, TREES.twisted, TREES.twistedHeightMin, TREES.twistedHeightMax,
             point.x, point.y,
@@ -201,10 +204,15 @@ export function updateTreeFade(delta, playerPosition) {
             : Math.min(target, tree.opacity + step);
 
         // transparent is enabled only while fading: a fully opaque tree renders in the opaque
-        // pass (correct depth sorting), and toggling it needs no shader rebuild.
+        // pass (correct depth sorting). Flipping the flag MUST bump needsUpdate — three.js bakes
+        // the opaque/transparent mode into the compiled shader (the opaque variant forces alpha
+        // to 1), so without a recompile the opacity change is ignored.
         const transparent = tree.opacity < 1;
         for (const material of tree.materials) {
-            material.transparent = transparent;
+            if (material.transparent !== transparent) {
+                material.transparent = transparent;
+                material.needsUpdate = true;
+            }
             material.opacity = tree.opacity;
         }
     }

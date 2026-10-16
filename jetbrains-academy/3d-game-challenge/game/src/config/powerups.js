@@ -14,7 +14,7 @@
 //   iFramesSet            — set the invulnerability duration to this many seconds
 //   magnetMul             — multiply the health-pickup attraction radius
 //   dropChanceSet         — replace the enemy health-drop chance with this value
-//   critChanceAdd         — add to the chance a shot deals double damage
+//   critChanceAdd         — add to the chance a damage roll (shots, shockwave, trail ticks) doubles
 //   thornsDamage          — damage dealt back to an enemy that touches the player
 //   berserkPerMissingHeart — extra shot damage per missing heart
 //   shotKnockback         — world units a shot pushes a common enemy it hits
@@ -24,6 +24,7 @@
 //   dodgeChanceAdd        — add to the chance to ignore an incoming hit entirely
 //   trailDurationAdd      — extra seconds of Dasher trail life
 //   trailWidthMul         — multiply the Dasher trail width
+//   trailDamageMul        — multiply the Dasher trail's tick damage
 // Card-level fields (outside `effect`):
 //   classId               — optional; the card only enters that class's draft pool
 import {ENEMY} from "./tuning.js";
@@ -104,7 +105,7 @@ export const POWERUPS = [
         id: 'criticalHit',
         icon: '🎯',
         name: 'Critical Hit',
-        description: '15% chance for a shot to deal double damage.',
+        description: '15% chance for a hit to deal double damage (shots, shockwave, trail).',
         effect: {critChanceAdd: 0.15},
     },
     {
@@ -132,9 +133,10 @@ export const POWERUPS = [
         id: 'trailMaster',
         icon: '🌀',
         name: 'Trail Master',
-        description: 'Dasher trail lasts +1 s and is 25% wider.',
-        classId: 'dasher', // only the Dasher can draft this (its trail is the Dasher's ability)
-        effect: {trailDurationAdd: 1, trailWidthMul: 1.25},
+        description: 'Trail lasts +1 s, is 25% wider and deals triple damage.',
+        // No classId: any class can draft it (only the Dasher ever leaves trails, so for the
+        // others it is a filler pick).
+        effect: {trailDurationAdd: 1, trailWidthMul: 1.25, trailDamageMul: 3},
     },
     {
         id: 'frostShot',
@@ -161,8 +163,8 @@ export const POWERUPS = [
         id: 'reckless',
         icon: '💢',
         name: 'Reckless',
-        description: '+3 damage per shot, but -1 max heart.',
-        effect: {damageAdd: 3, maxHeartsAdd: -1},
+        description: '+5 damage per shot, but -1 max heart.',
+        effect: {damageAdd: 5, maxHeartsAdd: -1},
     },
     {
         id: 'overflow',

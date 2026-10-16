@@ -3,6 +3,7 @@ import { TOTAL_WAVES, getWaveDef } from '../config/waves.js';
 import {
     getAliveCount,
     getEnemyRadius,
+    setDoomScaling,
     setEndlessScaling,
     spawnEnemy,
 } from '../entities/Enemy.js';
@@ -46,6 +47,12 @@ let bossPending = false;      // a boss should spawn (at start, or after the wav
 let bossWasAlive = false;     // polls the alive -> dead transition for the death moment
 let scoreCheckpoint = null;   // wave 5: score at the last boss death (null before the first boss)
 
+// Doom mode: the first tier hits at ENEMY.doomScore, then every next tier needs half the
+// previous step, rounded up to 1,000 points. Each tier doubles enemy damage/speed/attack pacing
+// and triples the HP of new spawns; it stays for the rest of the run (the world reset clears it
+// via Enemy.resetEnemies).
+let doomTier = 0;
+
 // Registers the wave-clear handler. Run.js calls this once; the handler receives the wave number.
 export function registerClearHandler(callback) {
     clearHandler = callback;
@@ -68,6 +75,7 @@ export function resetWaves() {
     bossPending = false;
     bossWasAlive = false;
     scoreCheckpoint = null;
+    doomTier = 0;
 }
 
 // Starts the wave after the one that just cleared. Called by Run when the draft closes.
@@ -132,6 +140,16 @@ export function updateWaves(delta) {
     waveElapsed += delta;
     runElapsed += delta;
 
+    // Doom escalation: the first tier hits at ENEMY.doomScore, then each next tier needs half
+    // the previous step, rounded up to 1,000 points (50k -> +25k -> +13k -> +7k -> +4k -> +2k ->
+    // +1k -> ...). Damage, shot speed and attack pacing double per tier; newly spawned enemies
+    // and bosses triple their HP per tier. Checked every tick in any wave; it never turns off.
+    const tier = doomTierForScore(getScore());
+    if (tier !== doomTier) {
+        doomTier = tier;
+        setDoomScaling(Math.pow(2, tier), Math.pow(3, tier));
+    }
+
     // Wave 5 growth: +10% HP, speed and attack per minute. HP and attack are UNCAPPED (the wave
     // must eventually defeat the player); speed is capped at 1.5x. HP is baked into each new
     // spawn; speed and attack apply live (Enemy/Boss read them from their setters). Attack
@@ -157,12 +175,13 @@ export function updateWaves(delta) {
             || getScore() - scoreCheckpoint >= definition.bossRespawnScore;
         if (gateOpen) {
             // The wave definition carries the boss's speed and orb-speed multipliers (wave 5
-            // runs 10% faster than wave 3) and the knockback-immunity flag.
+            // runs 10% faster than wave 3), the knockback-immunity flag and the HP-rage flag.
             const boss = spawnBoss(
                 definition.bossHp * growthHpMul,
                 definition.bossSpeedMul,
                 definition.bossOrbSpeedMul,
                 !!definition.bossKnockbackImmune,
+                !!definition.bossHpRage,
             );
             if (boss) {
                 bossPending = false;
@@ -208,6 +227,21 @@ export function updateWaves(delta) {
         spawnTimer -= interval;
         spawnOneEnemy(definition.pool);
     }
+}
+
+// Doom tier for a score: the first Doom at ENEMY.doomScore (50k), then each next tier needs half
+// the previous step rounded UP to the next 1,000 points — 50k, +25k, +13k, +7k, +4k, +2k, +1k,
+// then +1k forever (the step can never round below 1,000).
+function doomTierForScore(score) {
+    let tier = 0;
+    let threshold = ENEMY.doomScore;
+    let step = ENEMY.doomScore / 2;
+    while (score >= threshold) {
+        tier++;
+        threshold += Math.ceil(step / 1000) * 1000;
+        step /= 2;
+    }
+    return tier;
 }
 
 // Attempts one spawn: skipped at the ENEMY.maxAlive cap (a runaway guard only — the wave's spawn

@@ -18,7 +18,7 @@ export function resetScore() {
 }
 
 // Adds points (kills, wave bonus). Fractional values are rounded to keep the HUD integer-clean.
-// Every gain is also offered to the achievements (The Million unlocks the moment the running
+// Every gain is also offered to the achievements (The 50K unlocks the moment the running
 // total crosses its threshold).
 export function addScore(points) {
     score += Math.round(points);

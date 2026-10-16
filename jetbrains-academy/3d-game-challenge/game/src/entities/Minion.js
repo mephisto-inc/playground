@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getEnemies, isOutsideArena } from './Enemy.js';
+import { getEnemies } from './Enemy.js';
 import { spawnMinionShot } from './Projectile.js';
 import { assetUrl } from '../core/Assets.js';
 import { isLineSightClear } from '../core/Collision.js';
@@ -22,8 +22,9 @@ import { COLLISION, PLAYER, PROJECTILE } from '../config/tuning.js';
 let texture = null;
 let texturePromise = null;
 
-// Minion instances: { group, timer, angleOffset }. The group holds the sprite; the orbit math
-// sets the group position every frame.
+// Minion instances: { group, timer, rateMul, angleOffset }. The group holds the sprite; the orbit
+// math sets the group position every frame. Each minion keeps its own shot timer and its own
+// random rate offset (rateMul), so the three fire on fully independent cadences.
 const minions = [];
 let elapsed = 0;
 
@@ -79,6 +80,7 @@ export async function createMinions(scene, ability) {
         minions.push({
             group,
             timer: Math.random() * ability.minionInterval, // desync the first shots
+            rateMul: 1 + (Math.random() * 2 - 1) * ability.minionRateJitter, // own fire rate
             angleOffset: (i / count) * Math.PI * 2, // spread evenly around the orbit
         });
     }
@@ -95,7 +97,7 @@ export function updateMinions(delta, playerPos, stats, ability) {
 
     // Fire-rate copy: how much faster the player shoots than at base (1.0 = no Quick Trigger).
     const fireRateMul = PLAYER.baseFireCooldown / Math.max(stats.fireCooldown, 0.05);
-    const interval = ability.minionInterval / fireRateMul;
+    const baseInterval = ability.minionInterval / fireRateMul;
     // Range copy: extra vision relative to the player (ability.rangeMul).
     const range = stats.range * ability.rangeMul;
     const enemies = getEnemies();
@@ -109,6 +111,8 @@ export function updateMinions(delta, playerPos, stats, ability) {
             ability.orbitHeight,
         );
 
+        // Each minion fires on its own interval: the copied base rate times its personal offset.
+        const interval = baseInterval * minion.rateMul;
         minion.timer += delta;
         if (minion.timer < interval) continue;
         minion.timer -= interval;
@@ -124,16 +128,15 @@ export function updateMinions(delta, playerPos, stats, ability) {
 
 // Finds the closest enemy (circle centres on the ground plane) within `range` of a position,
 // skipping corpses and enemies with no clear shot: the line from the minion's orbit point must
-// stay clear of every house/wall box for the shot's hit radius (the configurable one, matching
-// what really stops the bullet), so minions never fire into a house wall. A farther visible
-// enemy wins over a nearer hidden one.
+// stay clear of every house box for the shot's hit radius (the configurable one, matching what
+// really stops the bullet), so minions never fire into a house wall. The border walls are
+// ignored — minion shots fly over them like the player's, so enemies walking in from the forest
+// are valid targets too. A farther visible enemy wins over a nearer hidden one.
 function findNearestEnemy(enemies, position, range) {
     let best = null;
     let bestDistanceSq = range * range;
     for (const enemy of enemies) {
         if (enemy.userData.dying) continue;
-        // Silhouettes outside the arena are never targeted (the shot would die on the wall).
-        if (isOutsideArena(enemy.position.x, enemy.position.y)) continue;
         const dx = enemy.position.x - position.x;
         const dy = enemy.position.y - position.y;
         const distanceSq = dx * dx + dy * dy;
@@ -141,6 +144,7 @@ function findNearestEnemy(enemies, position, range) {
         if (!isLineSightClear(
             position.x, position.y, enemy.position.x, enemy.position.y,
             PROJECTILE.playerRadius * COLLISION.projectileRadiusMul,
+            true,
         )) {
             continue;
         }

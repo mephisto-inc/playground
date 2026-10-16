@@ -123,7 +123,7 @@ function updateHitCenter() {
 //   iFrames          — invulnerability after a hit, in seconds
 //   magnetRadius     — health-pickup attraction radius
 //   dropChance       — enemy health-drop probability
-//   critChance       — chance a shot deals double damage
+//   critChance       — chance a damage roll (shots, shockwave, trail ticks) deals double damage
 //   thornsDamage     — damage dealt back to an enemy that touches the hero
 //   berserkPerMissingHeart — bonus shot damage per missing heart
 //   shotKnockback    — world units a shot shoves a common enemy it hits
@@ -133,6 +133,7 @@ function updateHitCenter() {
 //   dodgeChance      — chance to ignore an incoming hit entirely
 //   trailDurationAdd — extra seconds of Dasher trail life
 //   trailWidthMul    — multiplier on the Dasher trail width
+//   trailDamageMul   — multiplier on the Dasher trail's tick damage
 let stats = makeBaseStats();
 let classId = 'pusher';
 let collectedCards = []; // card ids in pickup order (HUD badges + game-over recap)
@@ -149,6 +150,11 @@ let cooldownRemaining = 0;
 let shieldRemaining = 0;      // Pusher shield window
 let pushSucceeded = false;    // did this push block/reflect anything?
 let pushBurstPending = false; // shockwave owed to Combat (see consumePushBurst)
+
+// Boss-wave slow: hop-speed multiplier (1 = normal) and its remaining seconds. The strongest
+// active slow wins and timers never shorten, mirroring Enemy.applySlow.
+let slowFactor = 1;
+let slowTimer = 0;
 
 // Dash shadow clones: { mesh/clone, life } — cosmetic afterimages fading along the dash path.
 const dashClones = [];
@@ -187,6 +193,7 @@ function makeBaseStats() {
         dodgeChance: 0,
         trailDurationAdd: 0,
         trailWidthMul: 1,
+        trailDamageMul: 1,
     };
 }
 
@@ -285,6 +292,7 @@ export function applyCard(card) {
     if (effect.dodgeChanceAdd) stats.dodgeChance += effect.dodgeChanceAdd;
     if (effect.trailDurationAdd) stats.trailDurationAdd += effect.trailDurationAdd;
     if (effect.trailWidthMul) stats.trailWidthMul *= effect.trailWidthMul;
+    if (effect.trailDamageMul) stats.trailDamageMul *= effect.trailDamageMul;
 
     // Keep the cooldown above a sane floor so stacked Quick Triggers cannot reach zero delay.
     stats.fireCooldown = Math.max(0.1, stats.fireCooldown);
@@ -364,6 +372,19 @@ export function markPushSuccess() {
     pushBurstPending = true;
     playSfx('parry'); // the sfx_parry asset keeps its name; only internals were renamed
     playPushImpact(); // VFX: flash + expanding ring
+}
+
+// Applies the boss wave's slow: hop movement is multiplied by `factor` for `duration` seconds.
+// The strongest active slow wins (kept by taking the minimum) and the timer never shortens.
+export function applyPlayerSlow(factor, duration) {
+    slowFactor = Math.min(slowTimer > 0 ? slowFactor : 1, factor);
+    slowTimer = Math.max(slowTimer, duration);
+}
+
+// The current slow multiplier (1 = unaffected). Combat reads it to slow the auto-shooter's
+// cadence and its shots while the effect lasts; everything snaps back the moment it ends.
+export function getSlowFactor() {
+    return slowFactor;
 }
 
 // Hands Combat the pending push shockwave exactly once (null when none is owed). Combat applies
@@ -676,7 +697,13 @@ export function updatePlayer(delta) {
 
     // Timers.
     if (iframes > 0) iframes = Math.max(0, iframes - delta);
-    if (cooldownRemaining > 0) cooldownRemaining = Math.max(0, cooldownRemaining - delta);
+    if (slowTimer > 0) {
+        slowTimer = Math.max(0, slowTimer - delta);
+        if (slowTimer === 0) slowFactor = 1; // the boss wave's slow has worn off
+    }
+    // The class ability's cooldown (push/dash) ticks slower while the boss wave's slow is
+    // active, so a slowed Dasher/Pusher waits longer; it snaps back the moment the slow ends.
+    if (cooldownRemaining > 0) cooldownRemaining = Math.max(0, cooldownRemaining - delta * slowFactor);
     if (shieldRemaining > 0) {
         shieldRemaining = Math.max(0, shieldRemaining - delta);
         // A push that blocked nothing by the time the shield drops has failed.
@@ -710,7 +737,7 @@ export function updatePlayer(delta) {
     // Advance the hop with collision sub-stepping (slide along obstacle faces when the direct
     // step is blocked, exactly like the enemies' movement).
     if (move.progress < 1) {
-        const groundSpeed = PLAYER.baseSpeed * stats.speedMul;
+        const groundSpeed = PLAYER.baseSpeed * stats.speedMul * slowFactor; // includes the wave slow
         const targetProgress = Math.min(move.progress + (delta * groundSpeed) / PLAYER.hopDistance, 1);
         const hopLength = move.start.distanceTo(move.target);
         const subProgress = hopLength > 0 ? Math.min(MAX_MOVE_SUB_STEP / hopLength, 1) : 1;
@@ -803,7 +830,7 @@ function orientModel(yaw, lean) {
 // that nose-down until touch-down. Magnitude grows with hop speed, so faster hops lean more.
 function currentLean() {
     const amplitude = Math.min(
-        PLAYER.baseSpeed * stats.speedMul * PLAYER.leanPerSpeed,
+        PLAYER.baseSpeed * stats.speedMul * slowFactor * PLAYER.leanPerSpeed,
         PLAYER.leanMax,
     );
     const progress = move.progress;
@@ -884,6 +911,8 @@ export function resetPlayer() {
     move.start.copy(player.position);
     move.target.copy(player.position);
     iframes = 0;
+    slowFactor = 1;
+    slowTimer = 0;
     // Fresh velocity reading: rangers must not lead the first shot of a run by the last run's
     // movement (velocity is written every live frame in updatePlayer).
     player.userData.velocity = { x: 0, y: 0 };

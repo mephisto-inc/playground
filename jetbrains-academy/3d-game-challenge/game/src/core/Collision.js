@@ -109,9 +109,14 @@ export function isMoveFree(mover, x, y, ignoreBoundary = false) {
 
 // True if a projectile (or any transient circle) may sit at (x, y): static boxes only, no
 // "was inside" forgiveness — a shot that ends up inside a house must die, not slide along it.
-export function isObstacleFree(x, y, radius) {
+//
+// `ignoreBoundary` skips the arena's border walls, so shots fly over them: the player must be
+// able to hit the silhouettes walking in from the forest (the walls are invisible anyway). The
+// house boxes always block.
+export function isObstacleFree(x, y, radius, ignoreBoundary = false) {
     for (const other of colliders.values()) {
         if (other.shape !== 'box') continue;
+        if (ignoreBoundary && other.boundary) continue;
         if (penetrationOf(x, y, radius, other) > EPSILON) return false;
     }
     return true;
@@ -124,13 +129,18 @@ export function isObstacleFree(x, y, radius) {
 // lines that would only graze a house corner. Character circles are ignored — they never stop
 // projectiles.
 //
+// `ignoreBoundary` skips the arena's border walls (the player auto-shooter and minions pass it:
+// shots fly over those invisible walls, so forest silhouettes stay targetable). House boxes
+// always block.
+//
 // Implementation: the slab method clips the segment against each inflated AABB; if any part of
 // the segment (t in [0, 1]) falls inside one, the line is blocked.
-export function isLineSightClear(x1, y1, x2, y2, margin) {
+export function isLineSightClear(x1, y1, x2, y2, margin, ignoreBoundary = false) {
     const dx = x2 - x1;
     const dy = y2 - y1;
     for (const other of colliders.values()) {
         if (other.shape !== 'box') continue;
+        if (ignoreBoundary && other.boundary) continue;
 
         const minX = other.position.x - other.halfWidth - margin;
         const maxX = other.position.x + other.halfWidth + margin;

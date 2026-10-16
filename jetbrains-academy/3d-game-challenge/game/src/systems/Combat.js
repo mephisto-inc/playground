@@ -5,6 +5,7 @@ import player, {
     damagePlayer,
     getAbilityValues,
     getHitCenter,
+    getSlowFactor,
     getStats,
     healPlayer,
     isDead,
@@ -16,6 +17,7 @@ import player, {
 import {
     applySlow,
     damageEnemy,
+    getDoomMul,
     getEnemies,
     knockbackEnemy,
     stunEnemy,
@@ -137,12 +139,13 @@ function handlePickups(hearts, powerups) {
 
 // Fires a volley at the nearest live enemy in range. Runs on stats.fireCooldown (Shortened by
 // the Quick Trigger card); multi-shot fans the extra projectiles; aim leads the target's motion.
+// While the boss wave's slow is active the timer ticks slower, so shots come slower too.
 function updateAutoShooter(delta) {
     const stats = getStats();
     const target = findNearestTarget(stats.range);
     if (!target) return; // no target: leave the timer where it is
 
-    fireTimer -= delta;
+    fireTimer -= delta * getSlowFactor();
     if (fireTimer > 0) return;
     fireTimer = stats.fireCooldown;
 
@@ -153,7 +156,8 @@ function updateAutoShooter(delta) {
 // player cannot actually shoot: a target behind a house (no clear line of sight, tested against
 // the same static boxes projectiles collide with, at the shot's real hit radius) is filtered
 // out, so the volley never pours into a wall. A farther visible enemy wins over a nearer hidden
-// one. Enemies outside the arena are naturally excluded: the boundary wall blocks the line.
+// one. The border walls are ignored — shots fly over them, so enemies still walking in from the
+// forest are valid targets.
 function findNearestTarget(range) {
     let best = null;
     let bestDistanceSq = range * range;
@@ -168,6 +172,7 @@ function findNearestTarget(range) {
         if (!isLineSightClear(
             originX, originY, enemy.position.x, enemy.position.y,
             PROJECTILE.playerRadius * COLLISION.projectileRadiusMul,
+            true,
         )) {
             continue;
         }
@@ -180,16 +185,18 @@ function findNearestTarget(range) {
 // Fires `stats.projectiles` shots in a small fan (the Multi-Shot card) toward the target,
 // leading its velocity by a fraction of the flight time. Pierce is carried per bullet. Each shot
 // rolls its own Critical Hit (double damage) and carries the live Berserk bonus (damage per
-// missing heart); the Big Bullets card rides along as a hit-radius multiplier.
+// missing heart); the Big Bullets card rides along as a hit-radius multiplier. The boss wave's
+// slow is read here: slowed shots spawn slower (and the lead compensates for that speed).
 function fireVolley(target) {
     const stats = getStats();
     const originX = player.position.x;
     const originY = player.position.y;
+    const shotSpeed = PROJECTILE.playerSpeed * getSlowFactor();
 
     const dx = target.position.x - originX;
     const dy = target.position.y - originY;
     const distance = Math.max(Math.hypot(dx, dy), 1e-4);
-    const flightTime = distance / PROJECTILE.playerSpeed;
+    const flightTime = distance / shotSpeed;
     const velocity = target.userData.velocity || { x: 0, y: 0 };
     const aimX = target.position.x + velocity.x * flightTime * PROJECTILE.aimLeadFactor;
     const aimY = target.position.y + velocity.y * flightTime * PROJECTILE.aimLeadFactor;
@@ -214,7 +221,7 @@ function fireVolley(target) {
             Math.sin(angle),
             {
                 damage,
-                speed: PROJECTILE.playerSpeed,
+                speed: shotSpeed,
                 radiusMul: stats.bulletRadiusMul, // Big Bullets: bigger sphere and hit radius
             },
         );
@@ -247,6 +254,7 @@ function applyPushBurst() {
     const burst = consumePushBurst();
     if (!burst) return;
     const ability = getAbilityValues();
+    const stats = getStats();
 
     const px = player.position.x;
     const py = player.position.y;
@@ -256,11 +264,15 @@ function applyPushBurst() {
         const distance = Math.hypot(enemy.position.x - px, enemy.position.y - py);
         if (distance > reach) continue;
 
+        // Critical Hit: the shockwave rolls per target, like every shot does.
+        let damage = burst.damage;
+        if (stats.critChance > 0 && Math.random() < stats.critChance) damage *= 2;
+
         if (enemy.userData.isBoss) {
             // The wave-5 boss ignores the shove entirely; skip both the knockback and its Power
             // Shove count (a shove that never happened must not tick the achievement).
             const shoved = !enemy.userData.knockbackImmune;
-            damageBoss(burst.damage, {
+            damageBoss(damage, {
                 knockback: shoved ? BOSS.knockbackDistance : 0,
                 knockbackX: enemy.position.x - px,
                 knockbackY: enemy.position.y - py,
@@ -268,7 +280,7 @@ function applyPushBurst() {
             });
             if (shoved) recordPush(); // the boss got shoved too
         } else {
-            damageEnemy(enemy, burst.damage, {source: 'shockwave'});
+            damageEnemy(enemy, damage, {source: 'shockwave'});
             stunEnemy(enemy, ability.stun);
             if (enemy.userData.typeConfig.behavior !== 'tank' && burst.knockback > 0
                 && !enemy.userData.dying) {
@@ -310,27 +322,30 @@ function resolveEnemyHits(enemyHits) {
 
 // Hostile bullets that reached the player this frame. The projectile is already consumed by
 // Projectile.js; here only the damage happens (i-frames and the Evasion dodge are enforced inside
-// damagePlayer).
+// damagePlayer). The doom multiplier compounds the damage of every hostile shot.
 function resolvePlayerHits(playerHits) {
+    const damage = PROJECTILE.damage * getDoomMul();
     for (let i = 0; i < playerHits.length; i++) {
-        const result = damagePlayer(PROJECTILE.damage, 'projectile');
+        const result = damagePlayer(damage, 'projectile');
         if (result === 'hit' || result === 'dead') markPlayerDamaged();
     }
 }
 
-// Enemies overlapping the player deal 1 physical damage and are knocked back. Skipped entirely
-// while the player is invulnerable, so i-frames are true ghosting (no damage, no push). Thorn
-// Skin answers a landed hit with damage back at the toucher (a shielded or dodged hit does not,
-// since nothing actually landed). The boss is excluded: its body push lives in Boss.js.
+// Enemies overlapping the player deal 1 physical damage scaled by the doom multiplier and are
+// knocked back. Skipped entirely while the player is invulnerable, so i-frames are true ghosting
+// (no damage, no push). Thorn Skin answers a landed hit with damage back at the toucher (a
+// shielded or dodged hit does not, since nothing actually landed). The boss is excluded: its
+// body push lives in Boss.js.
 function resolveContactDamage() {
     if (isDead() || isInvulnerable()) return;
     const stats = getStats();
+    const contactDamage = getDoomMul();
 
     for (const enemy of getEnemies()) {
         if (enemy.userData.isBoss || enemy.userData.dying) continue;
         if (!enemy.userData.touchingPlayer) continue;
 
-        const result = damagePlayer(1, 'physical');
+        const result = damagePlayer(contactDamage, 'physical');
         if (result === 'hit' || result === 'dead') {
             markPlayerDamaged();
             if (stats.thornsDamage > 0) {

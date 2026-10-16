@@ -11,6 +11,7 @@
 //                      wave-3 base)
 //   bossOrbSpeedMul  — multiplier on the boss's orb speed that wave
 //   bossKnockbackImmune — wave 5 only: the boss ignores push knockback (never shoved)
+//   bossHpRage       — wave 5 only: attack breathers shrink as the boss's HP drops (none at 10%)
 //   bossSpawnRate    — spawn-rate multiplier while the boss lives (enemy pressure during the
 //                      boss fight)
 //   bossRespawnScore — wave 5: score earned after the boss dies before the next one spawns
@@ -59,8 +60,10 @@ export const WAVES = [
         bossSpeedMul: 0.77,   // +10% over wave 3's 0.7
         bossOrbSpeedMul: 1.1, // +10% over wave 3's orbs
         bossKnockbackImmune: true, // the endless boss is unstoppable: pushes only damage it
-        // After the boss dies, the next one spawns once this much score is earned.
-        bossRespawnScore: 5000,
+        bossHpRage: true, // HP-driven rage: the attack breathers vanish as it nears death
+        // After the boss dies, the next one spawns once this much score is earned (the kill's
+        // own 1,000 points are excluded, since the counter starts at the death moment).
+        bossRespawnScore: 1000,
         clearBonusMul: 0, // wave 5 never ends, so it has no clear bonus
     },
 ];

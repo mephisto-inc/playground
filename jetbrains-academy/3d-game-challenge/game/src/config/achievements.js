@@ -8,7 +8,7 @@ export const ACHIEVEMENTS = [
     { id: 'crowdedPond', name: 'Crowded Pond', icon: '🐟', description: 'Clear Wave 4.' },
     { id: 'endlessFrog', name: 'Endless Frog', icon: '🌊', description: 'Reach Wave 5.' },
     { id: 'marathonFrog', name: 'Marathon Frog', icon: '⏱️', description: 'Survive 5 minutes in Wave 5.' },
-    { id: 'theMillion', name: 'The Million', icon: '💰', description: 'Reach 1,000,000 score in a single run.' },
+    { id: 'the50k', name: 'The 50K', icon: '💰', description: 'Reach 50,000 score in a single run.' },
     { id: 'untouchable', name: 'Untouchable', icon: '✨', description: 'Clear any wave without taking damage.' },
     { id: 'fullHearts', name: 'Full Hearts', icon: '💖', description: 'Reach the maximum of 7 hearts.' },
     { id: 'newRecord', name: 'New Record', icon: '🏆', description: 'Beat your own best score.' },
@@ -20,7 +20,7 @@ export const ACHIEVEMENTS = [
     { id: 'deckedOut', name: 'Decked Out', icon: '🃏', description: 'Collect 12 power-ups in a single run.' },
     // Class-specific milestones.
     { id: 'bulwark', name: 'Bulwark', icon: '🛡️', description: 'Block 25 hits with the Pusher shield in total.' },
-    { id: 'powerShove', name: 'Power Shove', icon: '💨', description: 'Push 50 enemies with the Pusher shockwave in total.' },
+    { id: 'powerShove', name: 'Power Shove', icon: '💨', description: 'Push 50 enemies with the Pusher shockwave in a single run.' },
     { id: 'blink', name: 'Blink', icon: '⚡', description: 'Dash 100 times in total.' },
     { id: 'ghostTrail', name: 'Ghost Trail', icon: '🌀', description: 'Defeat 15 enemies with the trail in a single run.' },
     { id: 'swarm', name: 'Swarm', icon: '🐝', description: 'Defeat 100 enemies with Minions in total.' },

@@ -86,8 +86,8 @@ export const BOSS_TYPE = {
     // The file ships Idle and Dance as separate clips; Idle reads calmer while charging the
     // volley. TODO: try Dance if the pigeon should feel goofier.
     idleClip: 'Dance',
-    // Jump wind-ups the dash telegraph, Bite_Front pecks out the orb volley (see
-    // Boss.fireOrbVolley).
+    // Jump wind-ups the dash telegraph and the quick attacks (shockwave/summon); Bite_Front pecks
+    // out the orb volley and the spiral storm (see Boss.startRandomAttack).
     attackClip: 'Jump',
     volleyClip: 'Bite_Front',
     hitClip: 'HitRecieve', // NOTE: misspelled in the file; keep the exact name

@@ -7,10 +7,17 @@ import { completeDraft } from '../systems/Run.js';
 // resumes play. The system side (offers, reshuffle budget) lives in PowerupDraft.js; picking
 // routes through Run.completeDraft() which applies the card and starts the next wave.
 
+// Input lock after the draft appears: the ability is a double click/tap (dash, push) and the
+// clicks of that burst keep coming right as the draft pops (a dash can sweep a power-up drop, a
+// push can clear the wave), so without the lock the next click lands on a card and picks it by
+// accident. Cards and the reshuffle button ignore clicks for this window.
+const INPUT_LOCK_MS = 400;
+
 let overlay = null;
 let cardsRow = null;
 let reshuffleButton = null;
 let reshuffleLabel = null;
+let openedAt = 0; // performance.now() when the draft last became visible (input lock start)
 
 export function initDraftModal() {
     overlay = el('div', 'overlay');
@@ -24,6 +31,7 @@ export function initDraftModal() {
     reshuffleButton = el('button', 'btn', '🔄 RESHUFFLE');
     reshuffleLabel = el('span');
     reshuffleButton.addEventListener('click', () => {
+        if (performance.now() - openedAt < INPUT_LOCK_MS) return; // ability-click lock
         if (reshuffle()) renderOffers(); // sound plays inside reshuffle()
     });
     reshuffleRow.appendChild(reshuffleButton);
@@ -36,7 +44,10 @@ export function initDraftModal() {
     onStateChange((state) => {
         const visible = state === STATE.POWERUP_DRAFT;
         overlay.classList.toggle('visible', visible);
-        if (visible) renderOffers();
+        if (visible) {
+            openedAt = performance.now(); // start the input lock for this draft
+            renderOffers();
+        }
     });
 }
 
@@ -48,7 +59,10 @@ function renderOffers() {
         node.appendChild(el('div', 'icon', card.icon));
         node.appendChild(el('div', 'name', card.name));
         node.appendChild(el('div', 'desc', card.description));
-        node.addEventListener('click', () => completeDraft(card));
+        node.addEventListener('click', () => {
+            if (performance.now() - openedAt < INPUT_LOCK_MS) return; // ability-click lock
+            completeDraft(card);
+        });
         cardsRow.appendChild(node);
     }
 

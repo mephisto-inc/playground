@@ -225,8 +225,9 @@ export function updateProjectiles(delta, enemies, playerInfo) {
             bullet.mesh.position.x += stepX / subSteps;
             bullet.mesh.position.y += stepY / subSteps;
 
-            // Houses and walls block every shot.
-            if (!isObstacleFree(bullet.mesh.position.x, bullet.mesh.position.y, bullet.hitRadius)) {
+            // Houses block every shot; the arena's border walls do not — shots fly over them, so
+            // the player can hit the silhouettes walking in from the forest.
+            if (!isObstacleFree(bullet.mesh.position.x, bullet.mesh.position.y, bullet.hitRadius, true)) {
                 dead = true;
                 break;
             }

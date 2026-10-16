@@ -2,7 +2,8 @@ import * as THREE from 'three';
 
 // Trail component (Dasher class): the ground trail left by the dash. It is a translucent strip
 // lying on the floor that damages anyone standing on it (see TRAIL in tuning.js and the tick
-// logic in Enemy.js / Boss.js). It no longer slows.
+// logic in Enemy.js / Boss.js) and collects pickups lying on it (see Pickup.js). It no longer
+// slows.
 //
 // The trail is purely geometric: one quad per dash (a stretched plane), fading out over its
 // lifetime. Queries test the enemy's ground position against each live segment.

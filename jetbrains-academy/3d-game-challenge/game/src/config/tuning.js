@@ -18,8 +18,9 @@ export const ARENA = {
 // Spawn points: 8 spots OUTSIDE the arena — 4 at the side midpoints and 4 at the corners, just
 // beyond the boundary walls (the walls sit right at the edge plus ARENA.wallThickness). Enemies
 // and the boss walk in from the forest: while outside they read as dark silhouettes and cannot
-// be targeted or fire. Each spawn gets a small random jitter (ENEMY.spawnJitter) so groups do
-// not stack on one exact pixel.
+// fire, but player shots fly over the border walls, so they can still be shot on the way in.
+// Each spawn gets a small random jitter (ENEMY.spawnJitter) so groups do not stack on one exact
+// pixel.
 export const SPAWN_POINTS = [
     {x: 49.74, y: 0},        // East midpoint
     {x: -49.74, y: 0},       // West midpoint
@@ -89,16 +90,19 @@ export const TREES = {
     heightJitterMin: 0.85,
     heightJitterMax: 1.15,
     // Forest ring: random points between ringStart and ringDepth units beyond the wall edge.
-    // ringStart keeps the pines right up against the arena walls (the tree line hugs the wall).
+    // ringStart keeps the pines right up against the arena walls; ringDepth keeps the band
+    // shallow, so even the farthest trees stay close to the border instead of sprawling out.
     ringStart: 0.2,
-    ringDepth: 26,
+    ringDepth: 12,
     ringAttempts: 6000,     // candidate tries for ring placement
-    ringCount: 1400,        // pines actually placed (min-spacing filtered) — a dense forest
-    minSpacing: 0.7,        // minimum ground distance between any two trees
+    ringCount: 800,         // pines actually placed (min-spacing filtered) — a tree line, not a deep wood
+    minSpacing: 0.7,        // minimum ground distance between any two ring trees
     // Inside scatter: twisted trees over the arena floor, avoiding houses, spawn lanes and the
-    // center clearing.
+    // center clearing. They use their own (larger) spacing so they spread out instead of
+    // clumping in the open patches.
     scatterAttempts: 1000,
     scatterCount: 160,
+    scatterSpacing: 3,      // minimum ground distance between scattered inside trees
     houseClearance: 5.5,    // keep this far away from every house center
     spawnLaneClearance: 3.5, // keep this far away from the 8 spawn -> center walking lines
     centerClearance: 6,     // keep the player's starting area open
@@ -177,6 +181,12 @@ export const ENEMY = {
     // so the pressure keeps rising until the run ends. Scales enemy shot speed, ranged fire rate,
     // boss orb speed, boss chase/charge pacing and the spawn interval (more enemies as it ramps).
     growthAttackPerMinute: 0.10,
+    // Doom escalation: the first tier hits at doomScore (50k), then each next tier needs HALF the
+    // previous step, rounded UP to the next 1,000 points (50k, +25k, +13k, +7k, +4k, +2k, +1k,
+    // ...) — an exponential squeeze that must eventually end any run. Each tier doubles ALL enemy
+    // damage, shot speed and attack pacing, and triples the HP of newly spawned enemies and
+    // bosses. One-way (never turns back off); reset with the world at the start of a run.
+    doomScore: 50000,            // score of the first doom tier (steps halve from there)
     // Spawn-point jitter: every spawn lands within this many units of its point.
     spawnJitter: 1.5,
     // Outside the arena an enemy/boss renders as a near-black silhouette; it blends back to its
@@ -208,17 +218,39 @@ export const BOSS = {
     // Phase A: pause 1.5 s, then fire the orb circle.
     chargeTime: 1.5,
     orbCount: 24,            // orbs fired in one circle volley
-    phaseAChase: 3.0,        // seconds of chasing between orb volleys
+    phaseAChase: 3.0,        // chaseA breather before the next random attack
     // Phase B: red charging dash that deals dashDamage physical damage.
     dashTelegraph: 0.7,      // seconds the red charge-up is shown before the dash
     dashDuration: 0.55,      // seconds the dash itself lasts
     dashSpeed: 20,           // world units per second during the dash
     dashDamage: 4,           // damage of the dash hit
-    phaseBChase: 1.5,        // seconds of chasing between dashes
+    phaseBChase: 1.5,        // chaseB breather before the next random attack
     heartDropsMin: 1,        // boss kills drop this many hearts...
     heartDropsMax: 2,        // ...up to this many (inclusive random range)
     knockbackDistance: 2.5,  // how far the push shockwave shoves the boss (wave-5 boss is immune)
-    powerupDropChance: 0.2,  // chance a boss kill also drops a bonus power-up card (0.2 = 20%)
+    powerupDropChance: 1,    // chance a boss kill also drops a bonus power-up card (1 = always)
+    // Random attack pool: after every chase breather the boss picks one of these at random (never
+    // the same twice in a row), so its pattern cannot be memorized. 'volley' = 360-degree orb
+    // circle, 'dash' = red-telegraphed charge, 'shockwave' = instant forward wave that slows the
+    // player (no damage), 'spiral' = rotating orb stream, 'summon' = calls common enemies to its
+    // side.
+    attacks: ['volley', 'shockwave', 'spiral', 'summon', 'dash'],
+    waveArcDeg: 140,         // total width of the forward wave, centered on the player direction
+    waveMaxRadius: 22,       // world units the wave front travels before fading out (2x the dash lane)
+    waveSpeed: 14,           // world units per second the front expands
+    waveSlowMul: 0.55,       // player speed multiplier while caught by the wave (45% slow)
+    waveSlowDuration: 1.5,   // seconds that slow lasts
+    spiralDuration: 1.8,     // seconds the spiral storm fires
+    spiralInterval: 0.12,    // seconds between spiral bursts
+    spiralOrbs: 2,           // orbs per burst (2 = opposite arms)
+    spiralStepDeg: 24,       // rotation between bursts, degrees
+    spiralSpeedMul: 0.7,     // spiral orb speed relative to the circle volley's
+    summonCount: 3,          // enemies called per summon
+    summonTypes: ['fighter', 'speeder'], // type ids from config/enemies.js
+    summonRadius: 2.5,       // extra ring radius around the boss for the summons
+    // Wave-5 HP rage (bossHpRage in waves.js): the chase breather between attacks shrinks with
+    // the boss's HP; at this fraction of max HP (0.1 = 10%) it disappears entirely.
+    hpRageFloor: 0.1,
 };
 
 // --- Projectiles -------------------------------------------------------------
@@ -240,21 +272,24 @@ export const PROJECTILE = {
 // --- Pickups -----------------------------------------------------------------
 export const PICKUP = {
     magnetRadius: 2.2,   // base attraction radius; Point Magnet doubles it
-    collectRadius: 0.8,  // distance at which a heart is consumed
+    collectRadius: 0.8,  // distance at which a pickup is consumed
     pulseAmplitude: 0.18, // fraction of the base scale the pulse swings by (0.18 = +-18%)
     pulseHz: 1.6,
     heal: 1,             // hearts restored per pickup
     lifetime: 30,        // seconds before an uncollected heart is removed
-    // Bonus power-up drop (boss kills): despawns faster than hearts, is NOT magnet-attracted —
-    // it is collected by walking or dashing over it.
+    // Bonus power-up drop (boss kills): despawns faster than hearts and is magnet-attracted just
+    // like they are, so it can be picked up on the move.
     powerupLifetime: 10, // seconds before an uncollected power-up drop is removed
 };
 
 // --- Trail -------------------------------------------------------------------
 // The Dasher's ground trail. It no longer slows; standing in it takes damage on a fixed tick.
+// Damage per tick = damageBase + damagePerHeart per current heart — the same formula as the
+// Pusher's shockwave (pushShockwaveBaseDamage + hearts), so both damage classes stay on par.
 export const TRAIL = {
-    damagePerSecond: 2,   // damage dealt per full second inside the trail
-    tickInterval: 0.5,    // seconds between damage ticks (so each tick deals 2 * 0.5 = 1 damage)
+    damageBase: 3,        // damage per tick before the per-heart bonus
+    damagePerHeart: 1,    // extra damage per current heart
+    tickInterval: 0.5,    // seconds between damage ticks (so a 3-heart player ticks 3 + 3 = 6)
     tint: 0x4dd2ff,       // enemies inside the trail blend toward this color (the trail's cyan)
     tintIntensity: 0.35,  // emissive strength of the common-enemy tint
     bossTintIntensity: 0.18, // the boss tints fainter than common enemies
@@ -264,6 +299,7 @@ export const TRAIL = {
 export const DRAFT = {
     cardsShown: 3,       // cards drawn per draft
     reshuffleAllowed: 1, // reshuffles per run
+    maxCards: 12,        // total cards a run can collect; bonus drafts stop opening at the cap
 };
 
 // --- Audio -------------------------------------------------------------------
@@ -314,6 +350,7 @@ export const ABILITY = {
     minionOrbitSpeed: 1.3,     // radians per second
     minionHeight: 1.2,         // Z height of the orbit (they float)
     minionDamage: 1,           // damage per minion shot
-    minionInterval: 2.4,       // seconds between minion shots
+    minionInterval: 0.4,       // seconds between minion shots
+    minionRateJitter: 0.15,    // ± fraction each minion's own interval varies (independent rates)
     minionRangeMul: 1.5,       // minion targeting range relative to the player's
 };

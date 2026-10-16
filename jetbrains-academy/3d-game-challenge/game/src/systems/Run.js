@@ -1,5 +1,6 @@
 import { STATE, getState, setState } from '../core/StateMachine.js';
 import { snapCameraTo } from '../world/Camera.js';
+import { DRAFT } from '../config/tuning.js';
 import player, {
     applyCard,
     configureClass,
@@ -53,8 +54,13 @@ export function initRun() {
 
 // Opens the bonus draft granted by a collected power-up drop. Unlike a wave draft, the run
 // (and the wave) does not advance when the card is picked: play simply resumes where it was.
+// The power-up cap (DRAFT.maxCards) stops the draft from opening once the run holds that many
+// cards — the immortality guard: farming the wave-5 boss respawns can no longer stack cards
+// forever. The drop is consumed with no card (the only pickups affected; wave drafts always
+// open, since they are what advances the run).
 export function openBonusDraft() {
     if (getState() !== STATE.WAVE_PLAYING) return; // never fight an already-open draft
+    if (getCollectedCards().length >= DRAFT.maxCards) return; // card cap reached
     bonusDraft = true;
     openDraft();
     setState(STATE.POWERUP_DRAFT);

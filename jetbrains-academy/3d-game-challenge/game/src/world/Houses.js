@@ -176,10 +176,15 @@ export function updateHouseFade(delta, playerPosition) {
             : Math.min(target, house.opacity + step);
 
         // transparent is enabled only while fading, exactly like the trees: a fully opaque house
-        // renders in the opaque pass (correct depth sorting).
+        // renders in the opaque pass (correct depth sorting). Flipping the flag MUST bump
+        // needsUpdate — three.js bakes the opaque/transparent mode into the compiled shader (the
+        // opaque variant forces alpha to 1), so without a recompile the opacity change is ignored.
         const transparent = house.opacity < 1;
         for (const material of house.materials) {
-            material.transparent = transparent;
+            if (material.transparent !== transparent) {
+                material.transparent = transparent;
+                material.needsUpdate = true;
+            }
             material.opacity = house.opacity;
         }
     }

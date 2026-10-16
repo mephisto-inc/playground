@@ -17,8 +17,8 @@ import {
 } from '../core/Collision.js';
 import { BOSS, COLLISION, ENEMY, SPAWN_POINTS, TRAIL } from '../config/tuning.js';
 import { BOSS_TYPE } from '../config/enemies.js';
-import player, { damagePlayer, getHitCenter, isInvulnerable } from './Player.js';
-import { addToEnemyList, isOutsideArena, removeFromEnemyList } from './Enemy.js';
+import player, { applyPlayerSlow, damagePlayer, getHitCenter, getStats, isInvulnerable } from './Player.js';
+import { addToEnemyList, getAliveCount, getDoomHpMul, getDoomMul, isOutsideArena, removeFromEnemyList, spawnEnemy } from './Enemy.js';
 import { isInsideTrail } from './Trail.js';
 import { spawnHeart, spawnPowerupDrop } from './Pickup.js';
 import { spawnBossOrb } from './Projectile.js';
@@ -27,11 +27,18 @@ import { addScore } from '../systems/Score.js';
 import { recordKill } from '../systems/Achievements.js';
 
 // Boss component: the Arena Lord (Pigeon). One instance at most. Spawns at a random one of the
-// 8 spawn points, chasing the player through a two-phase cycle:
+// 8 spawn points, chasing the player through short chase phases separated by a RANDOM attack
+// picked from BOSS.attacks (never the same twice in a row, so the pattern cannot be memorized):
 //
-//   chaseA -> chargeA (stands still BOSS.chargeTime seconds) -> volley (BOSS.orbCount orbs in a
-//   360-degree circle) -> chaseB -> telegraph (stands still, turns red BOSS.dashTelegraph) ->
-//   dash (fast, BOSS.dashDamage physical damage) ... and back to chaseA.
+//   chaseA/chaseB — walks at the player for the phase's breather;
+//   volley  — charge pause, then BOSS.orbCount orbs in a 360-degree circle;
+//   shockwave — instant forward wave that slows the player (the surprise move, no damage);
+//   spiral  — rotating two-arm stream of orbs for BOSS.spiralDuration seconds;
+//   summon  — calls common enemies to its side;
+//   dash    — red telegraph, then a fast charge dealing BOSS.dashDamage.
+//
+// The wave-5 boss (bossHpRage) shortens the chase breathers as its HP drops, down to none at
+// BOSS.hpRageFloor (10%) HP.
 //
 // The boss lives in Enemy.js's shared enemy list (addToEnemyList) so player shots, minions and
 // hit detection all see it, but it runs its own AI here — Enemy.updateEnemies skips it. Body
@@ -48,11 +55,30 @@ const CHARGE_RED = 0xcc1f1f;
 // Push step when shoving the player out of the boss's hitbox (same idea as knockback steps).
 const PUSH_STEP = 0.15;
 
+// Forward shockwave (the 'shockwave' attack): same violet as the boss orbs. WAVE_INNER is the
+// band's inner-radius fraction of the front — the visual mesh and the hit test share it.
+const WAVE_COLOR = 0xc46bff;
+const WAVE_INNER = 0.9;
+
 let sceneRef = null;
 let prepared = null; // { template, scale, groundOffset, radius, clips }
 let boss = null;     // the live boss group, or null
 let endlessSpeedMul = 1;
 let endlessAttackMul = 1; // wave-5 escalation: scales orb speed and phase pacing (1 outside)
+
+// The forward wave effect: one reusable arc mesh (created lazily on the first cast) plus its
+// live state. `hit` makes the slow apply once per cast, however long the player stays inside.
+const wave = {
+    mesh: null,
+    active: false,
+    originX: 0,
+    originY: 0,
+    dirAngle: 0, // cast direction, locked when the wave spawns
+    radius: 0,   // current front radius
+    maxRadius: 0,
+    speed: 0,    // expansion speed, world units per second
+    hit: false,
+};
 
 // The near-black silhouette color (single shared instance; materials lerp toward it).
 const SILHOUETTE_COLOR = new THREE.Color(ENEMY.silhouetteColor);
@@ -117,11 +143,13 @@ export async function initBoss(scene) {
 // Spawns the boss with `hp` HP (the wave's boss HP; Waves applies the endless growth multiplier
 // before calling, and this rounds the result UP so health stays whole). `speedMul` and
 // `orbSpeedMul` come from the wave definition; `knockbackImmune` marks the wave-5 boss, which
-// ignores the push shockwave's shove (the push still damages it). Picks a random free one of the
+// ignores the push shockwave's shove (the push still damages it); `hpRage` (wave 5 only) makes
+// the chase breathers between attacks shrink with the boss's HP. Picks a random free one of the
 // 8 spawn points; returns the boss, or null when every spawn point is occupied (Waves retries on
 // a later frame).
-export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1, knockbackImmune = false) {
+export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1, knockbackImmune = false, hpRage = false) {
     if (!prepared || !sceneRef || boss) return null;
+    hideBossWave(); // no stale wave from a previous boss
 
     const point = pickSpawnPoint();
     if (!point) return null;
@@ -167,11 +195,12 @@ export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1, knockba
 
     const data = group.userData;
     data.isBoss = true; // Enemy.updateEnemies and getAliveCount() honor this flag
-    data.maxHp = Math.ceil(hp); // integer health even after wave-5 growth multipliers
+    data.maxHp = Math.ceil(hp * getDoomHpMul()); // doom HP tripling compounds; integer health
     data.hp = data.maxHp;
     data.speedMul = speedMul;       // per-wave chase speed (read in the chaseA/chaseB branch)
     data.orbSpeedMul = orbSpeedMul; // per-wave orb speed (passed to spawnBossOrb in the volley)
     data.knockbackImmune = knockbackImmune; // wave-5 boss: never shoved (Combat skips the shove)
+    data.hpRage = hpRage; // wave-5 boss: chase breathers shrink as its HP drops
     data.collider = registerCollider(group, group.position, prepared.radius);
     data.dying = false;
     data.dyingTimer = 0;
@@ -186,6 +215,10 @@ export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1, knockba
     // Phase cycle state: starts chasing; the charge pause between chases comes first.
     data.state = 'chaseA';
     data.stateTimer = BOSS.phaseAChase;
+    data.lastAttack = null;    // last attack chosen (the random pick never repeats it)
+    data.nextChase = 'chaseB'; // chase the current attack hands control back to
+    data.spiralAngle = 0;      // spiral storm: current firing angle
+    data.spiralTimer = 0;      // spiral storm: seconds until the next burst
     data.dashDirection = { x: 0, y: 0 };
     data.dashHit = false;
     // Silhouette blend while outside the arena (see Enemy.updateSilhouette's twin below).
@@ -281,6 +314,7 @@ function killBoss() {
     data.touchingPlayer = false;
     data.velocity.x = 0;
     data.velocity.y = 0;
+    hideBossWave(); // an in-flight wave dies with its caster
     unregisterCollider(boss); // probes, bullets and spawn checks all stop seeing the corpse
     data.collider = null;     // Projectile.js reads this reference directly
 
@@ -331,6 +365,9 @@ export function updateBoss(delta) {
     const data = boss.userData;
     const collider = data.collider;
 
+    // The forward wave keeps expanding independently of the boss's own state machine.
+    updateBossWave(delta);
+
     data.mixer.update(delta);
 
     // Hit-flash restoration.
@@ -355,14 +392,19 @@ export function updateBoss(delta) {
         if (data.oneShotRemaining <= 0) resumeLoopAction();
     }
 
-    // Dasher trail: silent damage ticks while standing on one, plus the faint cyan tint.
+    // Dasher trail: silent damage ticks (same formula as common enemies, Trail Master included,
+    // Critical Hit rolling like a shot) while standing on one, plus the faint cyan tint.
     const inTrail = isInsideTrail(boss.position.x, boss.position.y);
     if (inTrail) {
         data.trailTickTimer -= delta;
         if (data.trailTickTimer <= 0) {
             data.trailTickTimer = TRAIL.tickInterval;
+            const stats = getStats();
+            let damage = (TRAIL.damageBase + stats.hearts * TRAIL.damagePerHeart)
+                * stats.trailDamageMul;
+            if (stats.critChance > 0 && Math.random() < stats.critChance) damage *= 2;
             damageBoss(
-                TRAIL.damagePerSecond * TRAIL.tickInterval,
+                damage,
                 {silent: true, source: 'trail'},
             );
             if (data.dying) return; // the tick killed it; the corpse block above takes over
@@ -389,32 +431,28 @@ export function updateBoss(delta) {
         moving = true;
 
         if (data.stateTimer <= 0) {
-            if (data.state === 'chaseA') {
-                // Phase A: pause, then the orb volley (the charge pause is driven by stateTimer).
-                data.state = 'chargeA';
-                data.stateTimer = BOSS.chargeTime;
-                playLoopAction(data.actions.idle);
-            } else {
-                // Phase B: telegraph the dash.
-                data.state = 'telegraph';
-                data.stateTimer = BOSS.dashTelegraph;
-                playOneShot(boss, data.actions.attack);
-                tintRed();
-            }
+            // The breather is over: hand the boss to a random attack. Attacks alternate the two
+            // chase phases, so the long and short breathers keep alternating too.
+            startRandomAttack(data.state === 'chaseA' ? 'chaseB' : 'chaseA');
         }
     } else if (data.state === 'chargeA') {
-        // Standing still, charging the volley: face the player so the circle looks deliberate.
+        // Standing still, charging the orb circle: face the player so the circle looks deliberate.
         faceBoss(dirToPlayerX, dirToPlayerY);
         if (data.stateTimer <= 0) {
-            // The volley starts a one-shot (Bite_Front); its timer blends back to the walk loop
-            // by itself, so no resumeLoopAction() here — that would cut the bite short. While
-            // outside the arena the volley is skipped (a silhouette is harmless) but the phase
-            // cycle continues.
+            // While outside the arena the volley is skipped (a silhouette is harmless) but the
+            // phase cycle continues.
             if (!isOutsideArena(boss.position.x, boss.position.y)) fireOrbVolley();
-            data.state = 'chaseB';
-            // Wave-5 attack escalation: shorter chase phases between volleys (1x outside it).
-            data.stateTimer = BOSS.phaseBChase / endlessAttackMul;
+            finishAttack();
         }
+    } else if (data.state === 'spiral') {
+        // Spiral storm: stationary, spitting a rotating stream of orbs for its duration.
+        faceBoss(dirToPlayerX, dirToPlayerY);
+        data.spiralTimer -= delta;
+        if (data.spiralTimer <= 0) {
+            data.spiralTimer = BOSS.spiralInterval;
+            if (!isOutsideArena(boss.position.x, boss.position.y)) fireSpiralBurst();
+        }
+        if (data.stateTimer <= 0) finishAttack();
     } else if (data.state === 'telegraph') {
         // Red and stationary, tracking the player until the dash locks in.
         faceBoss(dirToPlayerX, dirToPlayerY);
@@ -447,28 +485,28 @@ export function updateBoss(delta) {
             )) {
             if (!isInvulnerable()) {
                 data.dashHit = true;
-                damagePlayer(BOSS.dashDamage, 'physical');
-                data.state = 'chaseA'; // the impact ends the dash early
-                data.stateTimer = BOSS.phaseAChase / endlessAttackMul;
+                // The doom multiplier compounds the dash hit, like every other enemy hit.
+                damagePlayer(BOSS.dashDamage * getDoomMul(), 'physical');
+                finishAttack(); // the impact ends the dash early
             }
         }
 
         const blocked = travelled <= 1e-6;
         if (data.stateTimer <= 0 || blocked) {
             if (data.state === 'dash') { // not already ended by the hit above
-                data.state = 'chaseA';
-                data.stateTimer = BOSS.phaseAChase / endlessAttackMul;
+                finishAttack();
             }
         }
     }
 
-    // Body contact: pushes the player away and hurts for BOSS.contactDamage (the push alone felt
-    // toothless — the boss is a walking hazard). The push helper returns whether it actually
-    // touched; i-frames are honored inside it (no push and no damage while ghosting), and it is
-    // skipped entirely while dashing (the dash has its own hit response).
+    // Body contact: pushes the player away and hurts for BOSS.contactDamage scaled by the doom
+    // multiplier (the push alone felt toothless — the boss is a walking hazard). The push helper
+    // returns whether it actually touched; i-frames are honored inside it (no push and no damage
+    // while ghosting), and it is skipped entirely while dashing (the dash has its own hit
+    // response).
     if (data.state !== 'dash' && collider) {
         if (pushPlayerOut(collider)) {
-            damagePlayer(BOSS.contactDamage, 'physical');
+            damagePlayer(BOSS.contactDamage * getDoomMul(), 'physical');
         }
     }
 
@@ -481,6 +519,73 @@ export function updateBoss(delta) {
         && data.currentAction !== data.actions.idle) {
         playLoopAction(data.actions.idle);
     }
+}
+
+// --- Attack selection ---------------------------------------------------------
+
+// Picks the next attack at random from BOSS.attacks (never repeating the previous one, so the
+// pattern stays unreadable) and starts it. `nextChase` is the chase phase the attack hands
+// control back to once it finishes.
+function startRandomAttack(nextChase) {
+    const data = boss.userData;
+    data.nextChase = nextChase;
+
+    const pool = BOSS.attacks.filter((name) => name !== data.lastAttack);
+    const choice = pool[Math.floor(Math.random() * pool.length)];
+    data.lastAttack = choice;
+
+    if (choice === 'volley') {
+        // Charge pause, then the 360-degree orb circle.
+        data.state = 'chargeA';
+        data.stateTimer = BOSS.chargeTime;
+        playLoopAction(data.actions.idle);
+    } else if (choice === 'dash') {
+        // Red charge-up, then the straight charge.
+        data.state = 'telegraph';
+        data.stateTimer = BOSS.dashTelegraph;
+        playOneShot(boss, data.actions.attack);
+        tintRed();
+    } else if (choice === 'spiral') {
+        // Rotating orb stream for a fixed duration.
+        data.state = 'spiral';
+        data.stateTimer = BOSS.spiralDuration;
+        data.spiralTimer = 0; // the first burst fires immediately
+        data.spiralAngle = Math.random() * Math.PI * 2; // random start: no two storms alike
+        playOneShot(boss, data.actions.volley || data.actions.attack);
+    } else if (choice === 'shockwave') {
+        // Instant forward wave: no telegraph, the surprise move. It slows, never damages.
+        if (!isOutsideArena(boss.position.x, boss.position.y)) castForwardWave();
+        playOneShot(boss, data.actions.attack);
+        finishAttack();
+    } else if (choice === 'summon') {
+        // Calls reinforcements around itself (skipped near the arena's enemy cap).
+        summonReinforcements();
+        playOneShot(boss, data.actions.attack);
+        finishAttack();
+    }
+}
+
+// Ends the current attack: returns to the stored chase phase with its (rage-scaled) breather.
+function finishAttack() {
+    const data = boss.userData;
+    data.state = data.nextChase;
+    data.stateTimer = chaseDelay(
+        data.nextChase === 'chaseA' ? BOSS.phaseAChase : BOSS.phaseBChase,
+    );
+}
+
+// Breather length before the next attack. The wave-5 attack escalation (endlessAttackMul) and
+// the doom multiplier (which doubles attack pacing per tier) always shorten it; the wave-5 HP
+// rage (bossHpRage) shrinks it linearly with the boss's HP and erases it entirely at
+// BOSS.hpRageFloor (10%) HP — from there the boss attacks back to back.
+function chaseDelay(base) {
+    const data = boss.userData;
+    let rageMul = 1;
+    if (data.hpRage) {
+        const hpFraction = Math.max(0, data.hp / data.maxHp);
+        rageMul = Math.max(0, (hpFraction - BOSS.hpRageFloor) / (1 - BOSS.hpRageFloor));
+    }
+    return (base / endlessAttackMul / getDoomMul()) * rageMul;
 }
 
 // Moves the boss along (dirX, dirY) at `speed`, sub-stepped with the usual slide (so the boss
@@ -571,8 +676,9 @@ function pushPlayerOut(bossCollider) {
 function fireOrbVolley() {
     if (!boss) return;
     playOneShot(boss, boss.userData.actions.volley || boss.userData.actions.attack);
-    // Wave-5 attack escalation rides on top of the per-wave orb speed.
-    const orbSpeedMul = boss.userData.orbSpeedMul * endlessAttackMul;
+    // Wave-5 attack escalation rides on top of the per-wave orb speed; the doom multiplier
+    // compounds the volley speed up further.
+    const orbSpeedMul = boss.userData.orbSpeedMul * endlessAttackMul * getDoomMul();
     for (let i = 0; i < BOSS.orbCount; i++) {
         const angle = (i / BOSS.orbCount) * Math.PI * 2;
         spawnBossOrb(
@@ -583,6 +689,126 @@ function fireOrbVolley() {
             orbSpeedMul,
             boss,
         );
+    }
+}
+
+// Casts the forward wave (the 'shockwave' attack): an arc band that expands away from the boss
+// in the player's direction at cast time. Direction is locked on cast, so sidestepping behind
+// the boss is the counterplay. The expansion speed rides the wave-5 escalation and the doom
+// multiplier, like every other boss attack's speed.
+function castForwardWave() {
+    const dx = player.position.x - boss.position.x;
+    const dy = player.position.y - boss.position.y;
+    wave.dirAngle = Math.atan2(dy, dx);
+    wave.originX = boss.position.x;
+    wave.originY = boss.position.y;
+    wave.radius = 1; // starts at the boss's feet
+    wave.maxRadius = BOSS.waveMaxRadius;
+    wave.speed = BOSS.waveSpeed * endlessAttackMul * getDoomMul();
+    wave.hit = false;
+    wave.active = true;
+
+    ensureWaveMesh();
+    const arc = (BOSS.waveArcDeg * Math.PI) / 180;
+    wave.mesh.rotation.z = wave.dirAngle - arc / 2; // center the arc on the cast direction
+    wave.mesh.position.x = wave.originX;
+    wave.mesh.position.y = wave.originY;
+    wave.mesh.visible = true;
+}
+
+// Advances the wave: expands the front, tests the player once per cast, fades out at the end.
+function updateBossWave(delta) {
+    if (!wave.active) return;
+
+    wave.radius += wave.speed * delta;
+    const p = Math.min(wave.radius / wave.maxRadius, 1);
+    wave.mesh.scale.setScalar(wave.radius);
+    wave.mesh.material.opacity = 0.75 * (1 - p * p); // fades as it travels outward
+
+    if (!wave.hit) {
+        // Hit test: the player must be inside the arc's width and his body must overlap the
+        // expanding band. The slow applies even during i-frames — it is force, not a hit.
+        // TODO: the wave passes through houses (like the push AoE); add line-of-sight if it
+        //   ever feels unfair to be slowed through a wall.
+        const dx = player.position.x - wave.originX;
+        const dy = player.position.y - wave.originY;
+        const distance = Math.hypot(dx, dy);
+        let diff = Math.atan2(dy, dx) - wave.dirAngle;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff)); // normalize to [-PI, PI]
+        const halfArc = (BOSS.waveArcDeg * Math.PI) / 360;
+        const playerCollider = getCollider(player);
+        const playerRadius = playerCollider ? playerCollider.radius : 0.5;
+        if (Math.abs(diff) <= halfArc
+            && distance - playerRadius <= wave.radius
+            && distance + playerRadius >= wave.radius * WAVE_INNER) {
+            wave.hit = true;
+            applyPlayerSlow(BOSS.waveSlowMul, BOSS.waveSlowDuration);
+        }
+    }
+
+    if (wave.radius >= wave.maxRadius) hideBossWave();
+}
+
+// Builds the wave's arc mesh once (flat in the XY ground plane, like the other ground fx) and
+// adds it to the scene. Theta start is 0; rotation.z aims the arc at cast time.
+function ensureWaveMesh() {
+    if (wave.mesh) return;
+    const arc = (BOSS.waveArcDeg * Math.PI) / 180;
+    wave.mesh = new THREE.Mesh(
+        new THREE.RingGeometry(WAVE_INNER, 1, 48, 1, 0, arc),
+        new THREE.MeshBasicMaterial({
+            color: WAVE_COLOR,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        }),
+    );
+    wave.mesh.position.z = 0.1; // same stacking height as the other flat fx
+    wave.mesh.visible = false;
+    sceneRef.add(wave.mesh);
+}
+
+// Deactivates the wave (front reached its range, boss died, or a fresh spawn).
+function hideBossWave() {
+    wave.active = false;
+    if (wave.mesh) wave.mesh.visible = false;
+}
+
+// One spiral burst: BOSS.spiralOrbs orbs evenly spread around the current spiral angle, then the
+// angle rotates by BOSS.spiralStepDeg so the stream traces a spiral. With the default two arms
+// this reads as a rotating cross of orbs.
+function fireSpiralBurst() {
+    const data = boss.userData;
+    const speedMul = data.orbSpeedMul * endlessAttackMul * getDoomMul() * BOSS.spiralSpeedMul;
+    for (let i = 0; i < BOSS.spiralOrbs; i++) {
+        const angle = data.spiralAngle + (i / BOSS.spiralOrbs) * Math.PI * 2;
+        spawnBossOrb(
+            boss.position.x,
+            boss.position.y,
+            Math.cos(angle),
+            Math.sin(angle),
+            speedMul,
+            boss,
+        );
+    }
+    data.spiralAngle += (BOSS.spiralStepDeg * Math.PI) / 180;
+}
+
+// Calls BOSS.summonCount common enemies to ring the boss. Enemy.spawnEnemy already applies the
+// wave-5 HP growth to new spawns, and occupied spots simply fail; skipped near the arena's alive
+// cap so a summon can never flood the field.
+function summonReinforcements() {
+    if (getAliveCount() + BOSS.summonCount > ENEMY.maxAlive) return;
+    for (let i = 0; i < BOSS.summonCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 1.5 + Math.random() * BOSS.summonRadius;
+        const typeId = BOSS.summonTypes[Math.floor(Math.random() * BOSS.summonTypes.length)];
+        spawnEnemy(typeId, {
+            x: boss.position.x + Math.cos(angle) * radius,
+            y: boss.position.y + Math.sin(angle) * radius,
+        });
     }
 }
 
@@ -741,6 +967,7 @@ function removeBoss() {
 // Wipes the boss for a new run (Run.resetWorld calls this before resetEnemies()).
 export function resetBoss() {
     removeBoss();
+    hideBossWave();
     endlessSpeedMul = 1;
     endlessAttackMul = 1;
 }

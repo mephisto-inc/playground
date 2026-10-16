@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { PICKUP } from '../config/tuning.js';
+import { isInsideTrail } from './Trail.js';
 
 // Pickup component: drop items that enemies and bosses leave behind. The 3D asset set has no
 // pickup model, so everything is built from flat shapes that stay readable from the top-down
 // camera with zero extra assets:
 //   * heart   — red heart (heals one heart; magnet-attracted; 30 s life)
-//   * powerup — purple diamond card (opens a bonus power-up draft; NOT magnet-attracted, must
-//               be walked or dashed over; 10 s life)
+//   * powerup — purple diamond card (opens a bonus power-up draft; magnet-attracted like hearts;
+//               10 s life)
+// A live Dasher trail collects every pickup lying on it (the trail is the Dasher's own zone).
 
 // One heart shape, reused by every pickup's geometry (shapes are cheap to build once).
 function makeHeartShape() {
@@ -67,7 +69,7 @@ function spawnPickup(kind, geometry, material, x, y) {
     pickups.push({ mesh, kind, age: 0, t: Math.random() * Math.PI * 2 });
 }
 
-// Advances every pickup: heartbeat pulse, magnet attraction (hearts only) and collection.
+// Advances every pickup: heartbeat pulse, magnet attraction, trail collection and consumption.
 //
 //   * `playerX/playerY` — the hero's ground position.
 //   * `magnetRadius`    — the pickup attraction radius (doubled by the Point Magnet card).
@@ -93,11 +95,18 @@ export function updatePickups(delta, playerX, playerY, magnetRadius) {
             continue;
         }
 
-        // Power-up cards are never magnet-attracted (they must be walked/dashed over), so the
-        // pull only applies to hearts.
-        if (pickup.kind === 'heart' && distance <= magnetRadius && distance > 1e-6) {
-            // Magnet pull: move toward the player fast enough to feel snappy, but never
-            // overshooting past them in one frame.
+        // A live Dasher trail collects every pickup lying on it instantly — drops that land on
+        // the trail (kills on it, the boss dying on it) are scooped up for free.
+        if (isInsideTrail(pickup.mesh.position.x, pickup.mesh.position.y)) {
+            collected[pickup.kind === 'powerup' ? 'powerups' : 'hearts']++;
+            removePickupAt(i);
+            continue;
+        }
+
+        // Magnet pull: hearts and power-up cards alike drift toward the player.
+        if (distance <= magnetRadius && distance > 1e-6) {
+            // Move toward the player fast enough to feel snappy, but never overshooting past
+            // them in one frame.
             const pull = Math.min(distance, 8 * delta);
             pickup.mesh.position.x += (dx / distance) * pull;
             pickup.mesh.position.y += (dy / distance) * pull;
