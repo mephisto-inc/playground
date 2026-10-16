@@ -35,7 +35,7 @@ export const CAMERA = {
     // Azimuth of the viewpoint around the vertical axis. -45 deg keeps the diagonal look that
     // makes the orthographic projection read as "isometric".
     azimuthDeg: -45,
-    tiltDeg: 55,          // angle above the floor (GDD 3A)
+    tiltDeg: 45,          // angle above the floor (GDD 3A)
     height: 38,           // Z height of the camera (GDD 3A)
     viewWidth: 40,        // camera box width in world units (user: 2x wider than the previous 20)
     followOffsetMax: 4,   // max units the view leads toward the pointer (GDD 3A)
@@ -75,7 +75,7 @@ export const PLAYER = {
     basePierce: 0,        // extra targets a shot can hit beyond the first
     baseRange: 14,        // auto-shooter target range; unspecified by the GDD (tunable)
     baseIFrames: 1.0,     // invulnerability after a hit, in seconds (GDD 3C)
-    iframeFlashOpacity: 0.5, // player renders at 50% opacity during i-frames (GDD 3C)
+    iframeFlashOpacity: 0.3, // player renders at 50% opacity during i-frames (GDD 3C)
     deathAnimDuration: 1.2,  // length of the code-made defeat animation (GDD state 6)
     // The hop's frog-lean (nose-up snap, nose-down hold) — kept from the previous tuning pass.
     leanPerSpeed: 0.06,
@@ -98,12 +98,12 @@ export const COLLISION = {
     // Extra reach added to every contact test, in world units. Small on purpose: the radius is
     // measured from the model, so this only smooths over frame-to-frame jitter — it is NOT the
     // old "chunky hitbox" padding (the old arena's models were 10x larger).
-    padding: 0.1,
-    playerRadiusMul: 1,     // scales Tode's measured hit radius
+    padding: 0.05,
+    playerRadiusMul: 0.8,     // scales Tode's measured hit radius
     enemyRadiusMul: 1,      // scales every common enemy's measured hit radius
     bossRadiusMul: 1,       // scales the Arena Lord's measured hit radius
-    houseRadiusMul: 1,      // scales both ground half-extents of every house's footprint box
-    projectileRadiusMul: 1, // scales every bullet's hit radius only (visual size unchanged)
+    houseRadiusMul: 0.8,      // scales both ground half-extents of every house's footprint box
+    projectileRadiusMul: 0.9, // scales every bullet's hit radius only (visual size unchanged)
 };
 
 // --- Enemy combat (GDD 3C, 4B, 6B) -------------------------------------------
@@ -150,17 +150,17 @@ export const BOSS = {
     // wave 3 runs this base value, wave 5 uses +10% of it (0.77); see bossSpeedMul in waves.js.
     speedMul: 0.7,
     targetHeight: 3.5,       // model height in world units (~2.5x a common enemy)
-    contactDamage: 1,        // round 5: touching the boss always hurts (i-frames still gate it)
+    contactDamage: 2,        // round 5: touching the boss always hurts (i-frames still gate it)
     // Phase A: pause 1.5 s, then fire the orb circle (round 5: 24 orbs — the GDD's 8, tripled).
     chargeTime: 1.5,
     orbCount: 24,
-    orbDamage: 1,
+    orbDamage: 2,
     phaseAChase: 3.0,        // seconds of chasing between orb volleys (not specified by the GDD)
     // Phase B: red charging dash that deals 2 physical damage.
     dashTelegraph: 0.7,      // seconds the red charge-up is shown before the dash (not specified)
     dashDuration: 0.55,      // seconds the dash itself lasts (not specified)
-    dashSpeed: 14,           // world units per second during the dash (not specified)
-    dashDamage: 2,           // damage of the dash hit (GDD 4B)
+    dashSpeed: 20,           // world units per second during the dash (not specified)
+    dashDamage: 4,           // damage of the dash hit (GDD 4B)
     phaseBChase: 1.5,        // seconds of chasing between dashes (not specified by the GDD)
     heartDropsMin: 1,        // 100% chance to drop 1-2 health items (GDD 4B)
     heartDropsMax: 2,
@@ -218,28 +218,28 @@ export const AUDIO = {
 // --- Class abilities (GDD 4A) ------------------------------------------------
 export const ABILITY = {
     // Parry
-    parryCooldown: 1.0,        // seconds
+    parryCooldown: 0.5,        // seconds
     parryShield: 0.6,          // seconds the shield stays up
-    parryReflectRadius: 4,   // shield circle that flips hostile projectiles (not in the GDD)
-    parryShockwaveRadius: 5,   // not specified by the GDD; sized to catch nearby enemies
+    parryReflectRadius: 7,   // shield circle that flips hostile projectiles (not in the GDD)
+    parryShockwaveRadius: 7,   // not specified by the GDD; sized to catch nearby enemies
     parryShockwaveBaseDamage: 3, // shockwave damage is 3 + current HP
     parryStun: ENEMY.stunDuration,
-    parryReflectDamage: 3,     // damage of a reflected projectile (user round 5b: "increase the
+    parryReflectDamage: 5,     // damage of a reflected projectile (user round 5b: "increase the
                                // parried projectile damage" — normal shots deal PROJECTILE.damage)
     // Round-5 parry visual timings (cosmetic only — shield/reflect behavior never reads these):
-    parryGlowRadius: 0.8,      // soft blue glow ring's outer radius while the shield is up
+    parryGlowRadius: 3,      // soft blue glow ring's outer radius while the shield is up
     parryImpactDuration: 0.03, // white-blue impact flash right when a parry succeeds
     parryRingDuration: 0.1,    // shiny-blue ring expanding to the shockwave radius after the flash
     parryFailDuration: 0.15,   // collapse of the glow when the shield expires with no parry
     // Dasher
-    dashCooldown: 3.0,         // seconds
-    dashDistance: 6,           // world units covered instantly
-    dashExtraIFrames: 0.5,     // extra invulnerability after dashing, in seconds
+    dashCooldown: 0.5,         // seconds
+    dashDistance: 10,           // world units covered instantly
+    dashExtraIFrames: 1,     // extra invulnerability after dashing, in seconds
     dashCloneCount: 3,         // shadow clones left along the path (cosmetic)
     dashCloneLife: 0.35,       // seconds each clone takes to fade
     trailBaseDuration: 2.0,    // trail life = base + per-heart bonus seconds
     trailPerHeart: 0.5,
-    trailWidth: 1.6,           // world units across the slow zone
+    trailWidth: 3,           // world units across the slow zone
     trailSlowCommon: 0.5,      // common enemy speed multiplier inside the trail (50% slow)
     trailSlowBoss: 0.75,       // boss speed multiplier inside the trail (25% slow)
     // Anchor

@@ -65,7 +65,7 @@ export const ENEMY_TYPES = {
         yawOffset: Math.PI / 2,
         behavior: 'speeder',
         moveClip: 'Flying_Idle',
-        attackClip: 'Punch', // substitute for the GDD's "Push" (not shipped) — TODO: try Headbutt
+        attackClip: 'Headbutt', // substitute for the GDD's "Push" (not shipped) — TODO: try Headbutt
         hitClip: 'HitReact',
         deathClip: 'Death',
     },
@@ -81,7 +81,7 @@ export const ENEMY_TYPES = {
         yawOffset: Math.PI / 2,
         behavior: 'tank',
         moveClip: 'Flying_Idle',
-        attackClip: 'Punch', // substitute for the GDD's "Push" (not shipped) — TODO: try Headbutt
+        attackClip: 'Headbutt', // substitute for the GDD's "Push" (not shipped) — TODO: try Headbutt
         hitClip: 'HitReact',
         deathClip: 'Death',
     },

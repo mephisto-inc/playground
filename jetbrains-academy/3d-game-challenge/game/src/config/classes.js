@@ -56,9 +56,9 @@ export const CLASSES = [
         name: 'Anchor',
         icon: '🤖',
         hearts: PLAYER.baseHearts - 2, // passive: +2 max hearts (user-confirmed; GDD said +1)
-        description: 'Passive: 3 orbiting Minions that always face the camera. '
-            + 'Minions have 50% more vision range and copy every power-up you collect. '
-            + 'Minion damage: 1 every 2.4 s.',
+        description: `Passive: ${ABILITY.minionCount} orbiting Minions that always face the camera. `
+            + 'Minions have way more vision range and copy every power-up you collect. '
+            + `Minion damage: 1 every ${ABILITY.minionInterval} s.`,
         ability: {
             // Anchor has no active ability; these values drive the orbiting companions.
             minionCount: ABILITY.minionCount,

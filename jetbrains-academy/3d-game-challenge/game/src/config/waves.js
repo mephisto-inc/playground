@@ -31,14 +31,14 @@ export const WAVES = [
         wave: 2,
         duration: 30,
         pool: ['fighter', 'ranged', 'speeder'],
-        spawnInterval: 0.5,
+        spawnInterval: 0.3,
         clearBonusMul: 500,
     },
     {
         wave: 3,
         // Ends when the boss dies, not on a timer (duration = Infinity marks that).
         duration: Infinity,
-        pool: ['fighter', 'ranged', 'speeder'],
+        pool: [],
         spawnInterval: 0.5,
         boss: 'start',
         bossHp: 80, // GDD's 50 x5 (user: 10x, then halved in round 5 — the fight felt long)
