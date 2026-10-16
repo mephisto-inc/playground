@@ -13,4 +13,5 @@ Enemy Flying by Quaternius (https://poly.pizza/m/kzpT6fNmM5) \
 Squidle by Quaternius (https://poly.pizza/m/54QyRcsogk) \
 Pigeon by Quaternius (https://poly.pizza/m/9NGlBTpDEr) \
 Bgm loop (https://opengameart.org/content/music-loop-variations) \
-Sfx (https://opengameart.org/content/8-bit-sound-effect-pack)
+Sfx (https://opengameart.org/content/8-bit-sound-effect-pack) \
+Build a Game with an AI Coding Agent (https://academy.jetbrains.com/course/30327) 
