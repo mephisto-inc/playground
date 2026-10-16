@@ -15,8 +15,8 @@ import { COLLISION, TREES } from '../config/tuning.js';
 //   * Rotations are quarter turns (multiples of 90 deg) chosen to face the arena centre, which
 //     keeps every footprint axis-aligned so the AABB collider is exact.
 
-// One entry per house: id, model, position. The corner houses sit 31.68 units from the centre
-// on X and 18.72 on Y; the fifth house is offset cover near the centre.
+// One entry per house: model asset id and ground position. The corner houses sit 31.68 units from
+// the centre on X and 18.72 on Y; the fifth house is offset cover near the centre.
 const HOUSES = [
     { asset: '053kskrV4U_', x: -31.68, y: 18.72 }, // House 1 — Mansion (Northwest corner)
     { asset: 'oJJIRwv6Bo', x: 31.68, y: 18.72 },   // House 2 — Townhouse (Northeast corner)

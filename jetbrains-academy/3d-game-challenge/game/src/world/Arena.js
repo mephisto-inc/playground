@@ -11,12 +11,13 @@ import { ARENA } from '../config/tuning.js';
 // The 8 enemy spawn points live in tuning.js (SPAWN_POINTS) and are only referenced, not built
 // here — they are pure coordinates, nothing to draw.
 
-// The whole world (floor + backdrop + houses) hangs off this group so it can be rotated as one
-// unit in the main menu. Colliders keep world-space coordinates, which stay valid as long as the
-// group's rotation is zero — Run.resetWorld() puts it back before any wave starts.
+// The whole world (floor + backdrop + houses + trees) hangs off this group so it can be rotated as
+// one unit in the main menu. Colliders keep world-space coordinates, which stay valid as long as
+// the group's rotation is zero — main.js calls resetArenaRotation() when the menu is left, before
+// any wave starts.
 export const map = new THREE.Group();
 
-// Degrees per second the arena drifts in the main menu.
+// Radians per second the arena drifts in the main menu (about 6.9 degrees per second).
 const MENU_ROTATION_SPEED = 0.12;
 
 // Builds the cobblestone floor from PlaneMesh.png, tiled so one repeat always covers

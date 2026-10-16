@@ -1,17 +1,19 @@
 import * as THREE from 'three';
-import { isObstacleFree } from '../core/Collision.js';
+import { MAX_MOVE_SUB_STEP, isObstacleFree } from '../core/Collision.js';
 import { COLLISION, PROJECTILE } from '../config/tuning.js';
 
-// Projectile component: one pool for every shot in the game — player shots (and Anchor minion
+// Projectile component: one list for every shot in the game — player shots (and Anchor minion
 // shots, which behave identically) and enemy shots (ranged projectiles and boss orbs).
 //
-// The module owns movement, obstacle collision and hit DETECTION, but not damage: Combat.update()
-// calls updateProjectiles(delta) and then resolves the returned hit list against enemies and the
-// player. Keeping damage out of here avoids an import cycle (Combat imports this module) and
-// keeps one place responsible for i-frames, knockback and kill credit.
+// The module owns movement, obstacle collision and hit DETECTION, but not damage: updateCombat()
+// in Combat.js calls updateProjectiles(delta, enemies, playerInfo) and then resolves the returned
+// hit list against enemies and the player. Keeping damage out of here avoids an import cycle
+// (Combat imports this module) and keeps one place responsible for i-frames, knockback and kill
+// credit.
 
 // Shared geometry for every bullet: a small low-poly sphere. One geometry/material instance per
-// color means bullets never allocate during a run.
+// color is shared by all bullets; each bullet still allocates its own Mesh and bookkeeping
+// (there is no object pooling, bullets are created and discarded as they are fired).
 const bulletGeometry = new THREE.SphereGeometry(1, 8, 6);
 
 // Bullet colors: friendly shots are bright, enemy shots are hostile red, boss orbs are violet.
@@ -107,7 +109,8 @@ export function spawnMinionShot(x, y, dirX, dirY, { damage, speed, radiusMul = 1
 }
 
 // Fires one ranged-enemy projectile. `sender` is the enemy object, so the push shield can send
-// the shot back at it. `speedMul` carries the wave-5 attack escalation (1 outside it).
+// the shot back at it. `speedMul` carries the wave-5 attack escalation and the doom multiplier
+// (1 outside them).
 export function spawnEnemyShot(x, y, dirX, dirY, sender = null, speedMul = 1) {
     return spawnBullet({
         owner: 'enemy',
@@ -183,7 +186,7 @@ export function reflectProjectilesNear(x, y, radius, reflectDamage) {
         bullet.speedX = dirX * PROJECTILE.playerSpeed;
         bullet.speedY = dirY * PROJECTILE.playerSpeed;
         bullet.life = PROJECTILE.playerLifetime;
-        bullet.source = 'reflect'; // kill attribution: reflect kills count for "Power Shove" style stats
+        bullet.source = 'reflect'; // kill attribution for achievements (the 'reflect' kill source)
         bullet.mesh.material = materials.player;
         reflected++;
     }
@@ -205,20 +208,21 @@ export function addPierceToPlayerShots(extraPierce) {
 //   { enemyHits: [{ bullet, enemy }], playerHits: [bullet, ...] }
 // The live enemy OBJECT is reported (not an index) because kill bookkeeping splices the array
 // mid-flight. `enemies` is the live enemy array (read-only here). `playerInfo` is
-// { x, y, radius } and may be null when the player cannot be hit (i-frames are checked by
-// Combat, not here).
+// { x, y, radius } and may be null when the player cannot be hit (i-frames, the shield and the
+// Evasion dodge are enforced by Player.damagePlayer, not here).
 export function updateProjectiles(delta, enemies, playerInfo) {
     const events = { enemyHits: [], playerHits: [] };
 
     for (let i = bullets.length - 1; i >= 0; i--) {
         const bullet = bullets[i];
 
-        // Bullets move in sub-steps of at most MAX_MOVE_SUB_STEP (0.1) world units so a fast
-        // player shot cannot tunnel through a thin wall or a small enemy between frames.
+        // Bullets move in sub-steps of at most MAX_MOVE_SUB_STEP world units (the same step the
+        // characters use) so a fast player shot cannot tunnel through a thin wall or a small
+        // enemy between frames.
         const stepX = bullet.speedX * delta;
         const stepY = bullet.speedY * delta;
         const distance = Math.hypot(stepX, stepY);
-        const subSteps = Math.max(1, Math.ceil(distance / 0.1));
+        const subSteps = Math.max(1, Math.ceil(distance / MAX_MOVE_SUB_STEP));
         let dead = false;
 
         for (let s = 0; s < subSteps && !dead; s++) {
@@ -234,7 +238,7 @@ export function updateProjectiles(delta, enemies, playerInfo) {
 
             if (bullet.owner === 'player' || bullet.owner === 'minion') {
                 // Friendly fire check: the first enemy whose body the bullet touches. The enemy
-                // index is reported, and Combat calls damageEnemy() — that way score, drops and
+                // object is reported, and Combat calls damageEnemy() — that way score, drops and
                 // death bookkeeping all stay in the enemy/score modules.
                 for (let e = 0; e < enemies.length; e++) {
                     const enemy = enemies[e];

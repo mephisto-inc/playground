@@ -13,7 +13,8 @@
 //   bossKnockbackImmune — wave 5 only: the boss ignores push knockback (never shoved)
 //   bossHpRage       — wave 5 only: attack breathers shrink as the boss's HP drops (none at 10%)
 //   bossSpawnRate    — spawn-rate multiplier while the boss lives (enemy pressure during the
-//                      boss fight)
+//                      boss fight). Wave 3 keeps an empty pool on purpose, so it has no visible
+//                      effect there until enemy types are added to that pool for balancing.
 //   bossRespawnScore — wave 5: score earned after the boss dies before the next one spawns
 //   spawnIntervalMin — wave 5 only: spawn interval it ramps down to (endless pressure)
 //   rampSeconds      — wave 5 only: seconds taken to reach the ramped interval

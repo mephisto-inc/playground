@@ -51,7 +51,8 @@ export function spawnHeart(x, y) {
     spawnPickup('heart', heartGeometry, heartMaterial, x, y);
 }
 
-// Spawns one power-up card at (x, y) on the ground. Called by Boss on its rare bonus drop.
+// Spawns one power-up card at (x, y) on the ground. Called by Boss on its bonus drop (guaranteed
+// while BOSS.powerupDropChance is 1).
 export function spawnPowerupDrop(x, y) {
     spawnPickup('powerup', powerupGeometry, powerupMaterial, x, y);
 }
@@ -59,7 +60,8 @@ export function spawnPowerupDrop(x, y) {
 function spawnPickup(kind, geometry, material, x, y) {
     if (!sceneRef) return;
     const mesh = new THREE.Mesh(geometry, material);
-    // ~0.84 units across, sized against the 1.0-unit player.
+    // Scale 0.6: the heart ends up roughly 0.7-0.8 units across and the diamond about 0.33,
+    // sized against the 1.0-unit player.
     mesh.scale.setScalar(0.6);
     mesh.position.set(x, y, 0.15);
     // Random spin so drops do not look stamped; the diamond gets an extra 45 degrees to face
@@ -72,7 +74,7 @@ function spawnPickup(kind, geometry, material, x, y) {
 // Advances every pickup: heartbeat pulse, magnet attraction, trail collection and consumption.
 //
 //   * `playerX/playerY` — the hero's ground position.
-//   * `magnetRadius`    — the pickup attraction radius (doubled by the Point Magnet card).
+//   * `magnetRadius`    — the pickup attraction radius (multiplied by the Point Magnet card).
 //
 // Returns { hearts, powerups }: how many of each were collected this frame. Combat applies the
 // healing/sound/draft logic, keeping this module free of Player and Run imports.

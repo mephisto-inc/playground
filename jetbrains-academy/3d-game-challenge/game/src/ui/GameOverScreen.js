@@ -1,6 +1,7 @@
 import { attachTooltip, el, formatClock, hideTooltip, mount } from './dom.js';
 import { STATE, onStateChange, setState } from '../core/StateMachine.js';
 import { PLAYER } from '../config/tuning.js';
+import { TOTAL_WAVES } from '../config/waves.js';
 import { getGameOverSummary } from '../systems/Run.js';
 import { getPowerup } from '../config/powerups.js';
 import { getAchievement } from '../systems/Achievements.js';
@@ -90,7 +91,7 @@ function render() {
     // Survival times: total run time, plus the wave-5 time once the run reached wave 5.
     const times = summary.times || {total: 0, wave5: 0};
     timeNode.textContent = times.wave5 > 0
-        ? `⏱ Total ${formatClock(times.total)} · Wave 5 ${formatClock(times.wave5)}`
+        ? `⏱ Total ${formatClock(times.total)} · Wave ${TOTAL_WAVES} ${formatClock(times.wave5)}`
         : `⏱ Total ${formatClock(times.total)}`;
 
     // Cards recap: one badge per collected card, in pickup order. Each carries the same tooltip

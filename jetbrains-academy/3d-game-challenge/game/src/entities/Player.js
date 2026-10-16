@@ -17,6 +17,7 @@ import {
     recordShieldBlock,
     unlockAchievement,
 } from '../systems/Achievements.js';
+import { markCollected } from '../systems/Collection.js';
 
 // Player component: owns Tode the Frog — the model, the pointer-steered hop, the heart/HP
 // stats every power-up mutates, i-frames and hit flash, and the class ability (Pusher shield,
@@ -69,7 +70,8 @@ async function load() {
     return model;
 }
 
-// Measures a normalized model's ground-plane radius (in its own frame) for the collider.
+// Measures a normalized model's ground-plane radius (in its own frame) for the collider. The
+// result is never below 0.5: that starting value acts as a minimum radius.
 function measureRadius(object) {
     object.updateMatrixWorld(true);
     let radius = 0.5;
@@ -121,7 +123,7 @@ function updateHitCenter() {
 //   pierce           — extra bodies a shot passes through
 //   range            — auto-shooter targeting range
 //   iFrames          — invulnerability after a hit, in seconds
-//   magnetRadius     — health-pickup attraction radius
+//   magnetRadius     — pickup attraction radius (hearts and power-up drops)
 //   dropChance       — enemy health-drop probability
 //   critChance       — chance a damage roll (shots, shockwave, trail ticks) deals double damage
 //   thornsDamage     — damage dealt back to an enemy that touches the hero
@@ -156,7 +158,7 @@ let pushBurstPending = false; // shockwave owed to Combat (see consumePushBurst)
 let slowFactor = 1;
 let slowTimer = 0;
 
-// Dash shadow clones: { mesh/clone, life } — cosmetic afterimages fading along the dash path.
+// Dash shadow clones: { clone, life, total } — cosmetic afterimages fading along the dash path.
 const dashClones = [];
 
 // The hop in flight: start/target ground points, the direction, progress 0..1 and the yaw.
@@ -252,6 +254,7 @@ export function getActiveClassId() {
 // (config/powerups.js), so this is the single place that interprets every descriptor field.
 export function applyCard(card) {
     collectedCards.push(card.id);
+    markCollected(card.id); // compendium: lifetime record of every card ever picked
     const effect = card.effect;
 
     if (effect.fireRateMul) stats.fireCooldown /= effect.fireRateMul;
@@ -422,8 +425,8 @@ export function tryActivateAbility() {
 }
 
 // Executes the Dasher's instant dash: a collision-checked teleport toward the pointer (or the
-// last facing when the pointer is idle), shadow clones along the path, a slow-field trail, and
-// the extra invulnerability window.
+// last facing when the pointer is idle), shadow clones along the path, a damaging ground trail
+// (it no longer slows), and the extra invulnerability window.
 function performDash(ability) {
     const direction = dashDirection();
     const startX = player.position.x;
@@ -508,10 +511,10 @@ function dashDirection() {
     };
 }
 
-// Leaves fading afterimages along the dash path. Each clone is a copy of the model with its own
-// transparent materials, so fading one never affects the real Tode.
-// TODO (polish): reuse the real model's current pose/lean for the clones instead of the bind
-//   pose; acceptable now because the dash is nearly instant.
+// Leaves fading afterimages along the dash path. Each clone is a copy of the model (the model is a
+// static mesh, so the copy keeps the current yaw and lean through rotation.copy) with its own
+// transparent materials, so fading one never affects the real Tode. Clones rest on the ground
+// (their z is the model's resting height), not at the hop's current height.
 function spawnDashClones(x1, y1, x2, y2, ability) {
     if (!model || !sceneRef) return;
     for (let i = 0; i < ability.cloneCount; i++) {
@@ -858,7 +861,10 @@ export function updateDeathAnimation(delta) {
 
     if (model) {
         model.rotation.z = -t * Math.PI * 2; // one full spin as he goes down
-        model.position.z -= t * 0.05 * PLAYER.targetHeight; // sink a little
+        // Sink to a fixed depth (half the model's height under its resting height) by the end of
+        // the animation. Set from t, not accumulated, so it does not depend on the frame rate;
+        // going below the floor is intended (the model is fading out at the same time).
+        model.position.z = modelGroundZ - t * 0.5 * PLAYER.targetHeight;
     }
     for (const material of modelMaterials) material.opacity = Math.max(0, 1 - t);
     return t < 1;

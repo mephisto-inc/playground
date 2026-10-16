@@ -1,6 +1,10 @@
 // Power-up card definitions. Pure data: id, emoji, name, description and an effect descriptor.
 // Player.applyCard() interprets the descriptor fields — keeping the cards declarative means a
 // balance change is a one-line edit here, and the draft UI can render any card generically.
+//
+// Each card's numbers live in a value object defined right above its entry; the description
+// text and the effect descriptor both read that object, so the text can never drift from the
+// real balance.
 
 // Effect descriptor fields (any combination; an absent field means "do not touch"):
 //   fireRateMul           — multiply shots per second (cooldown is divided by this)
@@ -12,7 +16,7 @@
 //   maxHeartsAdd          — change the max-heart cap (clamped to [1, global 7]; may be negative)
 //   heal                  — restore this many hearts immediately (clamped to max)
 //   iFramesSet            — set the invulnerability duration to this many seconds
-//   magnetMul             — multiply the health-pickup attraction radius
+//   magnetMul             — multiply the pickup attraction radius (hearts and power-up drops)
 //   dropChanceSet         — replace the enemy health-drop chance with this value
 //   critChanceAdd         — add to the chance a damage roll (shots, shockwave, trail ticks) doubles
 //   thornsDamage          — damage dealt back to an enemy that touches the player
@@ -27,71 +31,112 @@
 //   trailDamageMul        — multiply the Dasher trail's tick damage
 // Card-level fields (outside `effect`):
 //   classId               — optional; the card only enters that class's draft pool
-import {ENEMY} from "./tuning.js";
+import {ENEMY, PLAYER} from "./tuning.js";
+
+// Rounds a fraction (0.15, 0.5, 1.5...) to a whole percentage for the description text
+// (Math.round also cleans up float artifacts like 0.15 * 100 = 15.000000000000002).
+const pct = (fraction) => Math.round(fraction * 100);
+
+// Quick Trigger: +25% fire rate.
+const QUICK_TRIGGER = {fireRateMul: 1.25};
+// Multi-Shot: +1 projectile per volley.
+const MULTI_SHOT = {projectilesAdd: 1};
+// Piercing: +2 pierce per projectile.
+const PIERCING = {pierceAdd: 2};
+// Jump Sneakers: +50% movement speed.
+const JUMP_SNEAKERS = {speedAdd: 0.5};
+// Heavy Ammo: +2 damage per shot.
+const HEAVY_AMMO = {damageAdd: 2};
+// Tactical Vision: +30% auto-shooter range.
+const TACTICAL_VISION = {rangeMul: 1.3};
+// Titan Heart: +2 HP now, +1 max heart.
+const TITAN_HEART = {maxHeartsAdd: 1, heal: 2};
+// Scaled Skin: invulnerability after a hit becomes 3 s.
+const SCALED_SKIN = {iFramesSet: 3};
+// Point Magnet: x5 pickup attraction radius.
+const POINT_MAGNET = {magnetMul: 5};
+// Critical Hit: 15% chance for a damage roll to double.
+const CRITICAL_HIT = {critChanceAdd: 0.15};
+// Thorn Skin: 2 damage back to a common enemy that touches the player.
+const THORN_SKIN = {thornsDamage: 2};
+// Berserk: +0.5 shot damage per missing heart.
+const BERSERK = {berserkPerMissingHeart: 0.5};
+// Trail Master: +1 s trail life, 25% wider, triple tick damage.
+const TRAIL_MASTER = {trailDurationAdd: 1, trailWidthMul: 1.25, trailDamageMul: 3};
+// Frost Shot: 40% slow for 1 s on hit.
+const FROST_SHOT = {slowOnHitMul: 0.6, slowOnHitDuration: 1};
+// Big Bullets: 2.5x bullet size.
+const BIG_BULLETS = {bulletRadiusMul: 2.5};
+// Evasion: 15% chance to ignore a hit.
+const EVASION = {dodgeChanceAdd: 0.15};
+// Reckless: +5 damage per shot, -1 max heart.
+const RECKLESS = {damageAdd: 5, maxHeartsAdd: -1};
+// Overflow: +2 projectiles, 25% slower fire rate.
+const OVERFLOW = {projectilesAdd: 2, fireRateMul: 0.75};
 
 export const POWERUPS = [
     {
         id: 'quickTrigger',
         icon: '⚡',
         name: 'Quick Trigger',
-        description: '+25% fire rate.',
-        effect: {fireRateMul: 1.25},
+        description: `+${pct(QUICK_TRIGGER.fireRateMul - 1)}% fire rate.`,
+        effect: QUICK_TRIGGER,
     },
     {
         id: 'multiShot',
         icon: '🎯',
         name: 'Multi-Shot',
-        description: '+1 projectile per volley.',
-        effect: {projectilesAdd: 1},
+        description: `+${MULTI_SHOT.projectilesAdd} projectile per volley.`,
+        effect: MULTI_SHOT,
     },
     {
         id: 'piercing',
         icon: '💥',
         name: 'Piercing',
-        description: '+2 target hit per projectile.',
-        effect: {pierceAdd: 2},
+        description: `Each projectile pierces +${PIERCING.pierceAdd} targets.`,
+        effect: PIERCING,
     },
     {
         id: 'jumpSneakers',
         icon: '👟',
         name: 'Jump Sneakers',
-        description: '+50% movement speed.',
-        effect: {speedAdd: 0.5},
+        description: `+${pct(JUMP_SNEAKERS.speedAdd)}% movement speed.`,
+        effect: JUMP_SNEAKERS,
     },
     {
         id: 'heavyAmmo',
         icon: '🗡️',
         name: 'Heavy Ammo',
-        description: '+2 damage per shot.',
-        effect: {damageAdd: 2},
+        description: `+${HEAVY_AMMO.damageAdd} damage per shot.`,
+        effect: HEAVY_AMMO,
     },
     {
         id: 'tacticalVision',
         icon: '👁️',
         name: 'Tactical Vision',
-        description: '+30% auto-shooter range.',
-        effect: {rangeMul: 1.3},
+        description: `+${pct(TACTICAL_VISION.rangeMul - 1)}% auto-shooter range.`,
+        effect: TACTICAL_VISION,
     },
     {
         id: 'titanHeart',
         icon: '💖',
         name: 'Titan Heart',
-        description: '+2 HP and +1 max HP (max 7). Still heals at 7 hearts.',
-        effect: {maxHeartsAdd: 1, heal: 2},
+        description: `+${TITAN_HEART.heal} HP and +${TITAN_HEART.maxHeartsAdd} max HP (max ${PLAYER.maxHearts}). Still heals at ${PLAYER.maxHearts} hearts.`,
+        effect: TITAN_HEART,
     },
     {
         id: 'scaledSkin',
         icon: '🛡️',
         name: 'Scaled Skin',
-        description: `Invulnerability after a hit becomes 3 s.`,
-        effect: {iFramesSet: 3},
+        description: `Invulnerability after a hit becomes ${SCALED_SKIN.iFramesSet} s.`,
+        effect: SCALED_SKIN,
     },
     {
         id: 'pointMagnet',
         icon: '🧲',
         name: 'Point Magnet',
-        description: 'Increase health-pickup radius.',
-        effect: {magnetMul: 5},
+        description: `x${POINT_MAGNET.magnetMul} pickup attraction radius (hearts and power-up drops).`,
+        effect: POINT_MAGNET,
     },
     {
         id: 'healthy',
@@ -105,22 +150,22 @@ export const POWERUPS = [
         id: 'criticalHit',
         icon: '🎯',
         name: 'Critical Hit',
-        description: '15% chance for a hit to deal double damage (shots, shockwave, trail).',
-        effect: {critChanceAdd: 0.15},
+        description: `${pct(CRITICAL_HIT.critChanceAdd)}% chance for a hit to deal double damage (shots, shockwave, trail).`,
+        effect: CRITICAL_HIT,
     },
     {
         id: 'thornSkin',
         icon: '🌵',
         name: 'Thorn Skin',
-        description: 'Enemies that touch you take 2 damage.',
-        effect: {thornsDamage: 2},
+        description: `Common enemies that hurt you by touch take ${THORN_SKIN.thornsDamage} damage.`,
+        effect: THORN_SKIN,
     },
     {
         id: 'berserk',
         icon: '😤',
         name: 'Berserk',
-        description: '+0.5 damage per shot for every missing heart.',
-        effect: {berserkPerMissingHeart: 0.5},
+        description: `+${BERSERK.berserkPerMissingHeart} damage per shot for every missing heart.`,
+        effect: BERSERK,
     },
     {
         id: 'concussiveShots',
@@ -133,45 +178,45 @@ export const POWERUPS = [
         id: 'trailMaster',
         icon: '🌀',
         name: 'Trail Master',
-        description: 'Trail lasts +1 s, is 25% wider and deals triple damage.',
+        description: `Trail lasts +${TRAIL_MASTER.trailDurationAdd} s, is ${pct(TRAIL_MASTER.trailWidthMul - 1)}% wider and deals ${TRAIL_MASTER.trailDamageMul}x damage.`,
         // No classId: any class can draft it (only the Dasher ever leaves trails, so for the
         // others it is a filler pick).
-        effect: {trailDurationAdd: 1, trailWidthMul: 1.25, trailDamageMul: 3},
+        effect: TRAIL_MASTER,
     },
     {
         id: 'frostShot',
         icon: '❄️',
         name: 'Frost Shot',
-        description: 'Hits slow enemies by 40% for 1 s.',
-        effect: {slowOnHitMul: 0.6, slowOnHitDuration: 1},
+        description: `Hits slow common enemies by ${pct(1 - FROST_SHOT.slowOnHitMul)}% for ${FROST_SHOT.slowOnHitDuration} s.`,
+        effect: FROST_SHOT,
     },
     {
         id: 'bigBullets',
         icon: '⚪',
         name: 'Big Bullets',
-        description: '+150% bullet size (visuals and hitbox).',
-        effect: {bulletRadiusMul: 2.5},
+        description: `+${pct(BIG_BULLETS.bulletRadiusMul - 1)}% bullet size (visuals and hitbox).`,
+        effect: BIG_BULLETS,
     },
     {
         id: 'evasion',
         icon: '🍀',
         name: 'Evasion',
-        description: '15% chance to ignore an incoming hit.',
-        effect: {dodgeChanceAdd: 0.15},
+        description: `${pct(EVASION.dodgeChanceAdd)}% chance to ignore an incoming hit.`,
+        effect: EVASION,
     },
     {
         id: 'reckless',
         icon: '💢',
         name: 'Reckless',
-        description: '+5 damage per shot, but -1 max heart.',
-        effect: {damageAdd: 5, maxHeartsAdd: -1},
+        description: `+${RECKLESS.damageAdd} damage per shot, but ${RECKLESS.maxHeartsAdd} max heart.`,
+        effect: RECKLESS,
     },
     {
         id: 'overflow',
         icon: '🌊',
         name: 'Overflow',
-        description: '+2 projectiles per volley, but 25% slower fire rate.',
-        effect: {projectilesAdd: 2, fireRateMul: 0.75},
+        description: `+${OVERFLOW.projectilesAdd} projectiles per volley, but ${pct(1 - OVERFLOW.fireRateMul)}% slower fire rate.`,
+        effect: OVERFLOW,
     },
 ];
 

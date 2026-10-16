@@ -8,7 +8,7 @@ import { CAMERA } from '../config/tuning.js';
 // The camera leads the player slightly toward the pointer (up to CAMERA.followOffsetMax units)
 // and smooths every move, so the view glides instead of snapping.
 //
-// main.js calls updateCamera(delta, pointerGroundPoint) every frame and
+// main.js calls updateCamera(delta, pointerGroundPoint, playerPosition) every frame and
 // updateCameraProjection() on resize.
 
 // The camera box is a fixed width in world units; its height follows the window aspect ratio

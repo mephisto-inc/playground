@@ -9,11 +9,9 @@
 //   'tank'    — slow, knockback-immune, blocks shots aimed through it (Tank)
 // Model pairing: Fighter = Armabee (42djT5zJnx), Ranged = Enemy Flying (kzpT6fNmM5),
 // Speeder = Squidle (54QyRcsogk), Tank = Armabee Evolved (GcttdvsqsQ).
-// NOTE: the speeder and tank files ship no 'Push' clip (they have Headbutt/Punch instead), so
-// their attack uses the substitute noted below.
 // `yawOffset` turns each model's local forward onto its movement direction. PI/2 matches the
-// rig conventions; TODO: verify each model visually and adjust — a wrong offset shows up as an
-// enemy flying sideways.
+// rig conventions and was verified visually for every model (a wrong offset shows up as an
+// enemy flying sideways).
 export const ENEMY_TYPES = {
     fighter: {
         id: 'fighter',
@@ -55,7 +53,7 @@ export const ENEMY_TYPES = {
         yawOffset: Math.PI / 2,
         behavior: 'speeder',
         moveClip: 'Flying_Idle',
-        attackClip: 'Headbutt', // substitute for the missing 'Push' clip; TODO: try Headbutt
+        attackClip: 'Headbutt',
         hitClip: 'HitReact',
         deathClip: 'Death',
     },
@@ -69,7 +67,7 @@ export const ENEMY_TYPES = {
         yawOffset: Math.PI / 2,
         behavior: 'tank',
         moveClip: 'Flying_Idle',
-        attackClip: 'Headbutt', // substitute for the missing 'Push' clip; TODO: try Headbutt
+        attackClip: 'Headbutt',
         hitClip: 'HitReact',
         deathClip: 'Death',
     },
@@ -80,11 +78,11 @@ export const BOSS_TYPE = {
     model: '/assets/9NGlBTpDEr.glb',
     targetHeight: 3.5, // ~2.5x a common enemy; the hitbox is measured from the model
     score: 1000,       // points for the kill
-    // Same rig family as the mobs; TODO: verify visually like the enemy yaw offsets.
+    // Same rig family as the mobs; the offset was verified visually like the enemies' ones.
     yawOffset: Math.PI / 2,
     moveClip: 'Walk',
-    // The file ships Idle and Dance as separate clips; Idle reads calmer while charging the
-    // volley. TODO: try Dance if the pigeon should feel goofier.
+    // The file ships Idle and Dance as separate clips; the pigeon deliberately uses Dance as its
+    // idle loop (while charging the volley).
     idleClip: 'Dance',
     // Jump wind-ups the dash telegraph and the quick attacks (shockwave/summon); Bite_Front pecks
     // out the orb volley and the spiral storm (see Boss.startRandomAttack).

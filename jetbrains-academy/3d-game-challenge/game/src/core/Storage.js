@@ -8,6 +8,7 @@ export const STORAGE_KEYS = {
     achievements: 'tode3d.achievements', // array of unlocked achievement ids
     volume: 'tode3d.volume',             // master volume 0..1
     counters: 'tode3d.counters',         // lifetime achievement counters (kills, dashes, ...)
+    collection: 'tode3d.collection',     // array of power-up card ids ever collected (compendium)
 };
 
 // Reads a number, falling back when missing or unreadable. Returns `fallback` for NaN too, so a

@@ -581,9 +581,10 @@ canvas.game {
     cursor: help;
 }
 
-/* --- Achievements panel ------------------------------------------------------------------------ */
+/* --- Achievements and compendium panels -------------------------------------------------------- */
 
-.achievements-panel {
+.achievements-panel,
+.compendium-panel {
     width: min(520px, 92vw);
     max-height: 84vh;
     padding: 26px;
@@ -594,8 +595,9 @@ canvas.game {
 }
 
 /* Only this middle section scrolls: the title and the footer buttons stay fixed, so a long
-   achievement list never pushes them out of reach. */
-.achievements-list {
+   achievement/compendium list never pushes them out of reach. */
+.achievements-list,
+.compendium-list {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
@@ -605,7 +607,8 @@ canvas.game {
     padding-right: 6px;
 }
 
-.achievements-title {
+.achievements-title,
+.compendium-title {
     font-size: 22px;
     font-weight: 800;
     letter-spacing: 2px;
@@ -613,7 +616,8 @@ canvas.game {
     text-align: center;
 }
 
-.achievements-footer {
+.achievements-footer,
+.compendium-footer {
     display: flex;
     justify-content: center;
     gap: 10px;
@@ -625,6 +629,8 @@ canvas.game {
     border-color: var(--danger);
 }
 
+/* One row in the achievements list (also reused by the compendium's class/card rows, which want
+   the exact same look). */
 .achievement {
     display: flex;
     align-items: center;

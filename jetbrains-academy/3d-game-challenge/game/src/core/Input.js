@@ -19,11 +19,12 @@ import { MOVE } from '../config/tuning.js';
 //   * Camera — getPointerGroundPoint() feeds Camera's lead-toward-pointer; null when the pointer
 //     is inactive (no finger down) so the camera recentres.
 //
-// Events that land on UI elements (buttons, modals) never steer or trigger abilities: every
-// handler checks the event target against the renderer's canvas first.
+// Events that land on UI elements (buttons, modals) never steer or trigger abilities: pointermove
+// and pointerdown check the event target against the renderer's canvas first, and pointerup /
+// pointercancel only act on a gesture whose pointerdown began on the canvas.
 
-// A stationary release with more than this many pixels of travel since its pointerdown was a
-// drag (steering), never a tap.
+// A release that travelled more than this many pixels since its pointerdown was a drag
+// (steering), never a tap.
 const TAP_MAX_MOVE_PX = 10;
 
 // Double-tap detection window and max distance between the two taps, in ms and client px.

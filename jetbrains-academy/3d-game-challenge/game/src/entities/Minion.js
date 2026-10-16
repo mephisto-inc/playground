@@ -8,8 +8,10 @@ import { COLLISION, PLAYER, PROJECTILE } from '../config/tuning.js';
 
 // Minion component (Anchor class): translucent sprites that orbit the player, always facing the
 // camera (THREE.Sprite billboards automatically), with extra vision range (ability.rangeMul).
-// They copy every power-up: their damage, fire rate, shot count, pierce and range are derived
-// from the live player stats each frame, so a card picked mid-run changes them instantly.
+// They copy part of the player's build: the damage bonus of Heavy Ammo-style cards, fire rate,
+// shot count, pierce, range and bullet size are derived from the live player stats each frame,
+// so a card picked mid-run changes them instantly. Crit, Berserk, Frost Shot and Concussive
+// Shots are NOT copied (those traits are only resolved for the player's own shots in Combat.js).
 //
 // Architecture note: this module imports Enemy (to find targets), and Enemy imports Player (for
 // its position) — a runtime-only cycle that ESM handles because nothing is touched at module
@@ -27,6 +29,11 @@ let texturePromise = null;
 // random rate offset (rateMul), so the three fire on fully independent cadences.
 const minions = [];
 let elapsed = 0;
+
+// Bumped by every clearMinions() call. createMinions() awaits the sprite texture, so a reset, a
+// game over or a newer createMinions() can happen while it waits; comparing this counter before
+// and after the await lets the stale call give up instead of spawning minions into the wrong run.
+let creationToken = 0;
 
 // Loads and rasterizes tode.svg into a canvas texture. Idempotent: repeated calls share the
 // same promise, so switching to Anchor twice never re-decodes the image.
@@ -55,7 +62,8 @@ function loadSpriteTexture() {
 // the class is chosen; safe to call again after clearMinions(). Returns a promise so callers
 // can await the texture.
 export async function createMinions(scene, ability) {
-    clearMinions();
+    clearMinions(); // also bumps the token, which invalidates any older call still waiting below
+    const token = creationToken;
     try {
         await loadSpriteTexture();
     } catch (error) {
@@ -63,6 +71,10 @@ export async function createMinions(scene, ability) {
         console.error('Failed to load minion sprite (tode.svg)', error);
         return;
     }
+    // TODO: guard against a reset/game over/newer call that happened while the texture was loading
+    //   (the run it was meant for is gone, so no minions must appear). Keep an eye on it: if
+    //   Anchor runs ever start without minions, check that something is not clearing them early.
+    if (token !== creationToken) return;
     const count = ability.minionCount;
     for (let i = 0; i < count; i++) {
         const material = new THREE.SpriteMaterial({
@@ -128,8 +140,9 @@ export function updateMinions(delta, playerPos, stats, ability) {
 
 // Finds the closest enemy (circle centres on the ground plane) within `range` of a position,
 // skipping corpses and enemies with no clear shot: the line from the minion's orbit point must
-// stay clear of every house box for the shot's hit radius (the configurable one, matching what
-// really stops the bullet), so minions never fire into a house wall. The border walls are
+// stay clear of every house box for a base-size shot's hit radius (the configurable one; the Big
+// Bullets multiplier is not included, so an enlarged bullet may still graze a house corner on
+// its way), so minions rarely fire into a house wall. The border walls are
 // ignored — minion shots fly over them like the player's, so enemies walking in from the forest
 // are valid targets too. A farther visible enemy wins over a nearer hidden one.
 function findNearestEnemy(enemies, position, range) {
@@ -196,4 +209,5 @@ export function clearMinions() {
     }
     minions.length = 0;
     elapsed = 0;
+    creationToken++; // invalidates any createMinions() still waiting for the sprite texture
 }

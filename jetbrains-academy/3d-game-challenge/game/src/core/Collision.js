@@ -77,9 +77,9 @@ function penetrationOf(x, y, radius, other) {
     );
 }
 
-// True when two character circles touch. Both centres are explicit (unlike the direction of a
-// wouldOverlap-style call), so a test can pass the player's visual centre (Player.getHitCenter)
-// instead of the feet position his own collider stores. The padding matches penetrationOf.
+// True when two character circles touch. Both centres are explicit (they are not read from the
+// colliders), so a test can pass the player's visual centre (Player.getHitCenter) instead of the
+// feet position his own collider stores. The padding matches penetrationOf.
 export function circlesTouch(x1, y1, r1, x2, y2, r2) {
     return r1 + r2 + COLLISION.padding - Math.hypot(x2 - x1, y2 - y1) > EPSILON;
 }

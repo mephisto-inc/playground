@@ -4,8 +4,9 @@ import { getActiveClassId } from '../entities/Player.js';
 import { playSfx } from './Audio.js';
 
 // Power-up draft system: every draft shows 3 DISTINCT cards; the same card may appear again in
-// later drafts. One reshuffle per run re-rolls the trio. Cards with a `classId` only enter that
-// class's pool (e.g. Trail Master is Dasher-only), so the other classes never see them.
+// later drafts. One reshuffle per run re-rolls the trio. A card that carries a `classId` only
+// enters that class's pool, so the other classes never see it (no card uses this today: Trail
+// Master, for instance, can be drafted by any class).
 //
 // This module only owns the two things the draft needs: the current offers and the reshuffle
 // budget. The UI (DraftModal) renders getOffers() and calls reshuffle(); picking a card goes
@@ -20,7 +21,7 @@ export function openDraft() {
     playSfx('card');
 }
 
-// The three current offers (a copy, so UI code cannot mutate the live pair).
+// The three current offers (a copy, so UI code cannot mutate the live trio).
 export function getOffers() {
     return offers.slice();
 }

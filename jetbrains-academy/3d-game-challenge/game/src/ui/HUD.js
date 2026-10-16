@@ -7,8 +7,9 @@ import { getPowerup } from '../config/powerups.js';
 
 // HUD: the always-in-play layer — top-center (heart meter, wave banner, score, pause button,
 // boss bar) and bottom-center (ability cooldown ring, build badges). It updates through
-// updateHUD(), which main.js calls once per frame; every write is guarded by a cache so the DOM
-// only changes when a value actually changes.
+// updateHUD(), which main.js calls once per frame; the text, bar, ring and badge writes are
+// guarded by a cache so the DOM only changes when a value actually changes (the boss bar's
+// show/hide class toggles are idempotent and not cached).
 
 let heartsNode = null;
 let waveNode = null;
@@ -103,7 +104,7 @@ export function updateHUD() {
     let waveText = waveInfo.wave > 0
         ? `WAVE ${waveInfo.wave}/${waveInfo.total}`
         : '';
-    if (waveInfo.wave === 5) {
+    if (waveInfo.wave === waveInfo.total) {
         waveText = `⏱ ${formatClock(waveInfo.waveElapsed)}`;
     }
     const bossTag = waveInfo.bossAlive ? ' <span class="boss-tag">- BOSS ⚠️</span>' : '';

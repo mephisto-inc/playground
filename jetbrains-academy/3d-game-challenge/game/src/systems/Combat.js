@@ -44,7 +44,8 @@ import { STATE, getState } from '../core/StateMachine.js';
 // Damage bookkeeping lives where the HP lives: this module only ROUTES results. Kills, score,
 // drops and death clips are Enemy.js/Boss.js's business; i-frames and the push shield are
 // Player.js's; projectile flight is Projectile.js's. Card traits (crit, frost, knockback,
-// thorns, evasion) are resolved here because this is where shots and contacts meet their target.
+// thorns) are resolved here because this is where shots and contacts meet their target; the
+// Evasion dodge is the exception, rolled inside Player.damagePlayer.
 
 // The auto-shooter's timing: one volley every stats.fireCooldown seconds while a VISIBLE target
 // is in range (findNearestTarget also requires a clear line of sight). `fireTimer` counts down
@@ -52,7 +53,7 @@ import { STATE, getState } from '../core/StateMachine.js';
 // on the wall — and the next clear engagement starts with an instant shot.
 let fireTimer = 0;
 
-// Set by Run.beginRun(): called exactly once when the player's HP reaches zero.
+// Set by Run.initRun(): called exactly once when the player's HP reaches zero.
 let deathCallback = null;
 
 // Set by Run.initRun(): opens one bonus power-up draft per collected power-up drop. Kept as a
@@ -154,8 +155,8 @@ function updateAutoShooter(delta) {
 
 // Nearest enemy (boss included) within `range` of the player, skipping corpses and enemies the
 // player cannot actually shoot: a target behind a house (no clear line of sight, tested against
-// the same static boxes projectiles collide with, at the shot's real hit radius) is filtered
-// out, so the volley never pours into a wall. A farther visible enemy wins over a nearer hidden
+// the same static boxes projectiles collide with, at a base-size shot's hit radius; the Big
+// Bullets multiplier is not included) is filtered out, so the volley rarely pours into a wall. A farther visible enemy wins over a nearer hidden
 // one. The border walls are ignored — shots fly over them, so enemies still walking in from the
 // forest are valid targets.
 function findNearestTarget(range) {
@@ -249,7 +250,8 @@ function reflectWithShield() {
 // Applies the pending push shockwave once: AoE damage to everything in radius, a stun AND a
 // strong shove for common enemies (tanks are immune to knockback, so they are only stunned),
 // and plain knockback for the boss (the wave-5 boss is knockback-immune, so the push only
-// damages it).
+// damages it). The shove lands BEFORE the damage, so a burst kill still blasts the body away
+// (and counts for Power Shove) instead of dropping it in place.
 function applyPushBurst() {
     const burst = consumePushBurst();
     if (!burst) return;
@@ -280,10 +282,11 @@ function applyPushBurst() {
             });
             if (shoved) recordPush(); // the boss got shoved too
         } else {
-            damageEnemy(enemy, damage, {source: 'shockwave'});
-            stunEnemy(enemy, ability.stun);
+            // Shove first: a non-tank that dies to the burst is still blasted away and counted.
+            // Tanks are knockback-immune, and a target exactly on the player has no shove
+            // direction (length 0), so those skip the shove (and the count) entirely.
             if (enemy.userData.typeConfig.behavior !== 'tank' && burst.knockback > 0
-                && !enemy.userData.dying) {
+                && distance > 1e-6) {
                 knockbackEnemy(
                     enemy,
                     enemy.position.x - px,
@@ -292,6 +295,8 @@ function applyPushBurst() {
                 );
                 recordPush(); // achievements: Power Shove counts shoved enemies
             }
+            damageEnemy(enemy, damage, {source: 'shockwave'});
+            stunEnemy(enemy, ability.stun);
         }
     }
 }
@@ -332,12 +337,14 @@ function resolvePlayerHits(playerHits) {
 }
 
 // Enemies overlapping the player deal 1 physical damage scaled by the doom multiplier and are
-// knocked back. Skipped entirely while the player is invulnerable, so i-frames are true ghosting
-// (no damage, no push). Thorn Skin answers a landed hit with damage back at the toucher (a
-// shielded or dodged hit does not, since nothing actually landed). The boss is excluded: its
-// body push lives in Boss.js.
+// knocked back. The Pusher shield is checked before i-frames: while it is up the contact always
+// reaches damagePlayer (so the block, the shockwave and the Bulwark count still happen during
+// i-frames). Without the shield, i-frames are true ghosting: skipped entirely (no damage, no
+// push). Thorn Skin answers a landed hit with damage back at the toucher (a shielded or dodged
+// hit does not, since nothing actually landed). The boss is excluded: its body contact lives in
+// Boss.js.
 function resolveContactDamage() {
-    if (isDead() || isInvulnerable()) return;
+    if (isDead() || (isInvulnerable() && !isShieldActive())) return;
     const stats = getStats();
     const contactDamage = getDoomMul();
 

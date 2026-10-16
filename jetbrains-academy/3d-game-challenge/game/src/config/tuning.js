@@ -69,7 +69,7 @@ export const LIGHTS = {
 // Screen-edge darkening, applied by main.js to the CSS variables the stylesheet's radial
 // gradient reads (see styles/index.css #ui-root::before).
 export const VIGNETTE = {
-    strength: 0.6,          // 0 disables the vignette; 1 is a heavy frame
+    strength: 1,          // 0 disables the vignette; 1 is a heavy frame
     color: '3, 10, 18',     // bluish-black RGB triplet used inside rgba(...)
 };
 
@@ -116,7 +116,7 @@ export const TREES = {
 
 // --- Player ------------------------------------------------------------------
 export const PLAYER = {
-    baseHearts: 5,        // starting hearts for Parry/Dasher (Anchor starts 2 lower)
+    baseHearts: 5,        // starting hearts for Pusher/Dasher (Anchor starts 2 lower)
     maxHearts: 7,         // global cap every class can grow to with Titan Heart cards
     // Tode's height in world units. The collider radius is measured from the model, so it
     // follows this value.
@@ -167,11 +167,12 @@ export const ENEMY = {
     maxAlive: 200,
     baseSpeed: 3.2,          // world units per second at "speed 1.0x"
     baseDropChance: 0.2,     // chance a kill drops a heart (0.2 = 20%)
-    HealthyDropChance: 0.5,  // drop chance with the Bloodthirst card
-    stunDuration: 1.5,       // seconds common enemies stay stunned after a Parry shockwave
+    HealthyDropChance: 0.5,  // drop chance with the Healthy card
+    stunDuration: 1.5,       // seconds common enemies stay stunned after a Pusher shockwave
     knockbackDistance: 2.5,  // how far a common enemy is pushed when it touches the player
     hitFlashDuration: 0.08,  // white flash after taking damage, in seconds
     deathLinger: 0.9,        // how long a corpse stays to play its Death clip before removal
+    deathFade: 0.7,          // tail fade: the corpse dissolves over its last seconds before removal
     // Endless wave-5 growth: +10% HP and speed per minute. HP is UNCAPPED so the endless wave
     // eventually overwhelms any build (the run must end); speed stays capped at 1.5x, since
     // uncapped movement would turn unreactable long before it turns lethal.
@@ -228,6 +229,7 @@ export const BOSS = {
     heartDropsMin: 1,        // boss kills drop this many hearts...
     heartDropsMax: 2,        // ...up to this many (inclusive random range)
     knockbackDistance: 2.5,  // how far the push shockwave shoves the boss (wave-5 boss is immune)
+    deathFade: 1.2,          // tail fade: the boss corpse dissolves over its last seconds
     powerupDropChance: 1,    // chance a boss kill also drops a bonus power-up card (1 = always)
     // Random attack pool: after every chase breather the boss picks one of these at random (never
     // the same twice in a row), so its pattern cannot be memorized. 'volley' = 360-degree orb
@@ -257,7 +259,7 @@ export const BOSS = {
 export const PROJECTILE = {
     playerSpeed: 30,       // player/minion shot speed, world units per second
     playerRadius: 0.35,    // visual radius of a player shot
-    playerLifetime: 1.2,   // seconds before a missed shot despawns (range ~31 units)
+    playerLifetime: 1.2,   // seconds before a missed shot despawns (range 36 units at playerSpeed)
     enemySpeed: 4,         // ranged-enemy projectile speed (slow enough to dodge)
     enemyRadius: 0.3,      // visual radius of an enemy shot
     enemyLifetime: 4,      // seconds alive before despawn; houses block them earlier
@@ -271,7 +273,7 @@ export const PROJECTILE = {
 
 // --- Pickups -----------------------------------------------------------------
 export const PICKUP = {
-    magnetRadius: 2.2,   // base attraction radius; Point Magnet doubles it
+    magnetRadius: 2.2,   // base attraction radius; Point Magnet multiplies it by 5
     collectRadius: 0.8,  // distance at which a pickup is consumed
     pulseAmplitude: 0.18, // fraction of the base scale the pulse swings by (0.18 = +-18%)
     pulseHz: 1.6,
@@ -305,7 +307,7 @@ export const DRAFT = {
 // --- Audio -------------------------------------------------------------------
 export const AUDIO = {
     masterVolumeDefault: 0.5, // initial master volume; persisted in localStorage
-    lowPassHz: 1200,           // frequency of the "muffled" filter used outside the arena
+    lowPassHz: 1200,           // frequency of the "muffled" music filter (pause, draft, game over)
     // Two crossfade lengths: a snappy one for ordinary step changes and a longer one for
     // bgm_boss_step3 swaps.
     crossfadeSnappy: 0.15,

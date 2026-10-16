@@ -2,10 +2,13 @@ import { el, mount } from './dom.js';
 import { STATE, onStateChange } from '../core/StateMachine.js';
 import { getOffers, getReshufflesLeft, reshuffle } from '../systems/PowerupDraft.js';
 import { completeDraft } from '../systems/Run.js';
+import { DRAFT } from '../config/tuning.js';
 
-// Power-up draft modal: three distinct cards, a once-per-run reshuffle button and the pick that
-// resumes play. The system side (offers, reshuffle budget) lives in PowerupDraft.js; picking
-// routes through Run.completeDraft() which applies the card and starts the next wave.
+// Power-up draft modal: three distinct cards, a limited reshuffle button (DRAFT.reshuffleAllowed)
+// and the pick that resumes play. The system side (offers, reshuffle budget) lives in
+// PowerupDraft.js; picking routes through Run.completeDraft() which applies the card and then
+// either starts the next wave (wave-clear draft) or resumes the same wave (bonus draft from a
+// power-up drop).
 
 // Input lock after the draft appears: the ability is a double click/tap (dash, push) and the
 // clicks of that burst keep coming right as the draft pops (a dash can sweep a power-up drop, a
@@ -68,5 +71,7 @@ function renderOffers() {
 
     const left = getReshufflesLeft();
     reshuffleButton.disabled = left <= 0;
-    reshuffleLabel.textContent = left > 0 ? '(once per game)' : 'already used';
+    // The label follows DRAFT.reshuffleAllowed, so changing the budget never leaves a stale text.
+    const perGame = DRAFT.reshuffleAllowed === 1 ? 'once' : `${DRAFT.reshuffleAllowed}x`;
+    reshuffleLabel.textContent = left > 0 ? `(${perGame} per game)` : 'already used';
 }

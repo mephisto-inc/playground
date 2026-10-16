@@ -17,9 +17,10 @@ export const CLASSES = [
         // from the actual balance.
         description: `Double click/tap: ${ABILITY.pushShield} s shield that blocks physical damage `
             + `and reflects every projectile within ${ABILITY.pushReflectRadius} units for `
-            + `${ABILITY.pushReflectDamage} damage. On a block, a shockwave deals `
-            + `${ABILITY.pushShockwaveBaseDamage} + HP, stuns ${ABILITY.pushStun} s and shoves every `
-            + `common enemy ${ABILITY.pushKnockback} units. ${ABILITY.pushCooldown} s cooldown.`,
+            + `${ABILITY.pushReflectDamage} damage. On a block, a shockwave (${ABILITY.pushShockwaveRadius} `
+            + `units around you) deals ${ABILITY.pushShockwaveBaseDamage} + HP and stuns `
+            + `${ABILITY.pushStun} s; it also shoves every enemy except Tanks ${ABILITY.pushKnockback} `
+            + `units. ${ABILITY.pushCooldown} s cooldown.`,
         ability: {
             // Shield window and numbers live in tuning.js so balance stays in one place; the
             // gameplay systems read this block through Player.getAbilityValues().

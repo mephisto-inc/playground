@@ -3,12 +3,14 @@ import { STATE, onStateChange, setState } from '../core/StateMachine.js';
 import { getBestScore } from '../systems/Score.js';
 import { getMasterVolume, setMasterVolume } from '../systems/Audio.js';
 import { openAchievements } from './AchievementsPanel.js';
+import { openCompendium } from './CompendiumPanel.js';
 import { createCreditsButton } from './credits.js';
 
 // Main menu: the central glass panel with the action buttons over the slowly spinning arena.
-// Play leads to the character-selection modal; Achievements opens the records panel; the persisted
-// best score is shown (and refreshed every time the menu appears). It also hosts a master-volume
-// slider (mirroring the pause menu's) and a credits link.
+// Play leads to the character-selection modal; Achievements opens the records panel; Compendium
+// opens the collection overview (power-ups and classes); the persisted best score is shown (and
+// refreshed every time the menu appears). It also hosts a master-volume slider (mirroring the
+// pause menu's) and a credits link.
 
 let overlay = null;
 let bestNode = null;
@@ -19,7 +21,7 @@ export function initMainMenu() {
     const panel = el('div', 'panel menu-panel');
 
     panel.appendChild(el('div', 'game-title', '🐸 TODE'));
-    panel.appendChild(el('div', 'game-subtitle', 'Survive the pond. Beat your record.'));
+    panel.appendChild(el('div', 'game-subtitle', 'Survive the bugs. Beat your record.'));
     bestNode = el('div', 'best-score');
     panel.appendChild(bestNode);
 
@@ -30,6 +32,11 @@ export function initMainMenu() {
     const achievementsButton = el('button', 'btn', '🏆 ACHIEVEMENTS');
     achievementsButton.addEventListener('click', () => openAchievements());
     panel.appendChild(achievementsButton);
+
+    // Compendium: the collection of power-ups and classes; main-menu only.
+    const compendiumButton = el('button', 'btn', '📖 COMPENDIUM');
+    compendiumButton.addEventListener('click', () => openCompendium());
+    panel.appendChild(compendiumButton);
 
     // Master volume: same row as the pause menu, applied immediately and persisted by the Audio
     // system.

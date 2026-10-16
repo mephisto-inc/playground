@@ -1,5 +1,5 @@
-import { STORAGE_KEYS, loadJSON, saveJSON } from '../core/Storage.js';
-import { ACHIEVEMENTS } from '../config/achievements.js';
+import {loadJSON, saveJSON, STORAGE_KEYS} from '../core/Storage.js';
+import {ACHIEVEMENT_TARGETS, ACHIEVEMENTS} from '../config/achievements.js';
 
 // Achievements system: the unlock registry (seeded from config/achievements.js), the persisted
 // set of earned ids in localStorage, and the run-scoped tracking needed to detect them.
@@ -11,7 +11,7 @@ import { ACHIEVEMENTS } from '../config/achievements.js';
 
 // The live registry, in display order. registerAchievement() appends, unregisterAchievement()
 // removes.
-let registry = ACHIEVEMENTS.map((entry) => ({ ...entry }));
+let registry = ACHIEVEMENTS.map((entry) => ({...entry}));
 
 // The persisted set of unlocked ids (an array in localStorage).
 let unlocked = new Set(loadJSON(STORAGE_KEYS.achievements, []));
@@ -38,11 +38,16 @@ let runTrailKills = 0;
 // of a slow lifetime grind.
 let runPushes = 0;
 
+// The class of the run currently being played, set by recordClassPlayed() at run start. Used by
+// markScore() to unlock the per-class 50K achievements. Deliberately NOT cleared by
+// resetRunTracking(): the class is configured before that reset runs (see Run.beginRun), so
+// clearing it there would drop the id immediately.
+let currentClassId = null;
+
 // Lifetime counters (persisted in localStorage under STORAGE_KEYS.counters). They feed the
-// cumulative achievements: Sharpshooter (300 kills), Arena Champion (5 bosses), Bulwark
-// (25 shield blocks), Blink (100 dashes), Swarm (100 minion kills) and World Tour (a run with
-// each of the three classes). 'pushes' is still tracked here as a running stat, but Power Shove
-// now counts within a single run (see recordPush).
+// cumulative achievements: Sharpshooter, Arena Champion, Bulwark, Blink, Swarm and World Tour
+// (targets in config/achievements.js). 'pushes' is still tracked here as a running stat, but
+// Power Shove now counts within a single run (see recordPush).
 let counters = loadJSON(STORAGE_KEYS.counters, {});
 
 function saveCounters() {
@@ -62,7 +67,7 @@ function bumpCounter(field, amount = 1) {
 export function registerAchievement(definition) {
     if (!definition || !definition.id) return false;
     if (registry.some((entry) => entry.id === definition.id)) return false;
-    registry.push({ icon: '🏆', description: '', ...definition });
+    registry.push({icon: '🏆', description: '', ...definition});
     return true;
 }
 
@@ -85,7 +90,7 @@ export function getAchievement(id) {
 
 // Full registry merged with unlock state, for the achievements panel UI.
 export function getAchievementStatus() {
-    return registry.map((entry) => ({ ...entry, unlocked: unlocked.has(entry.id) }));
+    return registry.map((entry) => ({...entry, unlocked: unlocked.has(entry.id)}));
 }
 
 // Subscribes `callback` to fresh unlocks; it receives the achievement definition.
@@ -136,38 +141,38 @@ export function resetAchievements() {
 // 'thorns'). Bosses additionally count toward Arena Champion.
 export function recordKill(source, isBoss = false) {
     bumpCounter('kills');
-    if (counters.kills >= 300) unlockAchievement('sharpshooter');
+    if (counters.kills >= ACHIEVEMENT_TARGETS.sharpshooterKills) unlockAchievement('sharpshooter');
     if (isBoss) {
         bumpCounter('bossKills');
-        if (counters.bossKills >= 5) unlockAchievement('arenaChampion');
+        if (counters.bossKills >= ACHIEVEMENT_TARGETS.arenaChampionBosses) unlockAchievement('arenaChampion');
     }
     if (source === 'trail') {
         runTrailKills++;
-        if (runTrailKills >= 15) unlockAchievement('ghostTrail');
+        if (runTrailKills >= ACHIEVEMENT_TARGETS.ghostTrailKills) unlockAchievement('ghostTrail');
     }
     if (source === 'minion') {
         bumpCounter('minionKills');
-        if (counters.minionKills >= 100) unlockAchievement('swarm');
+        if (counters.minionKills >= ACHIEVEMENT_TARGETS.swarmMinionKills) unlockAchievement('swarm');
     }
 }
 
-// One enemy shoved by the Pusher shockwave (Power Shove at 50 within a single run).
+// One enemy shoved by the Pusher shockwave (Power Shove target within a single run).
 export function recordPush() {
     bumpCounter('pushes');
     runPushes++;
-    if (runPushes >= 50) unlockAchievement('powerShove');
+    if (runPushes >= ACHIEVEMENT_TARGETS.powerShovePushes) unlockAchievement('powerShove');
 }
 
-// One Dasher dash (Blink at 100 total).
+// One Dasher dash (Blink target, lifetime total).
 export function recordDash() {
     bumpCounter('dashes');
-    if (counters.dashes >= 100) unlockAchievement('blink');
+    if (counters.dashes >= ACHIEVEMENT_TARGETS.blinkDashes) unlockAchievement('blink');
 }
 
-// One physical hit cancelled by the Pusher shield (Bulwark at 25 total).
+// One physical hit cancelled by the Pusher shield (Bulwark target, lifetime total).
 export function recordShieldBlock() {
     bumpCounter('shieldBlocks');
-    if (counters.shieldBlocks >= 25) unlockAchievement('bulwark');
+    if (counters.shieldBlocks >= ACHIEVEMENT_TARGETS.bulwarkBlocks) unlockAchievement('bulwark');
 }
 
 // The player was hurt and survived at exactly one heart (Close Call).
@@ -175,26 +180,43 @@ export function recordCloseCall() {
     unlockAchievement('closeCall');
 }
 
-// A run started with `classId` (World Tour once all three classes have been played).
+// A run started with `classId` (World Tour once every class has been played). The id is also
+// remembered for the per-class 50K achievements (markScore reads it).
 export function recordClassPlayed(classId) {
+    currentClassId = classId;
     if (!counters.classesPlayed) counters.classesPlayed = [];
     if (!counters.classesPlayed.includes(classId)) {
         counters.classesPlayed.push(classId);
         saveCounters();
     }
-    if (counters.classesPlayed.length >= 3) unlockAchievement('worldTour');
+    if (counters.classesPlayed.length >= ACHIEVEMENT_TARGETS.worldTourClasses) unlockAchievement('worldTour');
 }
 
-// How many cards the player holds this run (Decked Out at 12 in a single run).
+// The class ids ever played (a copy, so callers cannot mutate the counters). The compendium
+// panel reads this for its CLASSES section — the same lifetime record World Tour uses.
+export function getPlayedClasses() {
+    return counters.classesPlayed ? counters.classesPlayed.slice() : [];
+}
+
+// How many cards the player holds this run (Decked Out target, which follows the draft cap).
 export function recordCardCollected(runCardCount) {
-    if (runCardCount >= 12) unlockAchievement('deckedOut');
+    if (runCardCount >= ACHIEVEMENT_TARGETS.deckedOutCards) unlockAchievement('deckedOut');
 }
 
-// The run's live score reached the breaking point (The 50K). Called by Score.addScore on every
-// gain, so the achievement pops the moment the counter crosses 50,000 mid-run.
-const THE_50K_SCORE = 50_000;
+// Per-class 50K achievements: the id unlocked when the run's class crosses the score target.
+const THE_50K_BY_CLASS = {
+    pusher: 'the50kPusher',
+    dasher: 'the50kDasher',
+    anchor: 'the50kAnchor',
+};
+
+// The run's live score reached the breaking point (the per-class 50K for the class being
+// played). Called by Score.addScore on every gain, so the achievement pops the moment the
+// counter crosses the target mid-run.
 export function markScore(total) {
-    if (total >= THE_50K_SCORE) unlockAchievement('the50k');
+    if (total < ACHIEVEMENT_TARGETS.the50kScore) return;
+    const classAchievement = THE_50K_BY_CLASS[currentClassId];
+    if (classAchievement) unlockAchievement(classAchievement);
 }
 
 // --- Run lifecycle hooks (called by Run / Waves / Combat) ---------------------
@@ -241,7 +263,7 @@ export function markPlayerDamaged() {
 // Wave 5 survival clock, advanced by Waves every frame while wave 5 runs.
 export function onEndlessTime(seconds) {
     endlessSeconds = seconds;
-    if (endlessSeconds >= 300) unlockAchievement('marathonFrog');
+    if (endlessSeconds >= ACHIEVEMENT_TARGETS.marathonSeconds) unlockAchievement('marathonFrog');
 }
 
 // Game over: evaluates New Record from Score.commitScore()'s result. The previous best must be

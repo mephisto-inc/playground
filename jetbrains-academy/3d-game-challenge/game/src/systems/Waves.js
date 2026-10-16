@@ -24,13 +24,13 @@ import {
 import { setWaveStage } from './Audio.js';
 
 // Waves system: drives the five waves — spawn pacing, the enemy cap, boss scheduling, clear
-// conditions and the wave-5 endless escalation. main.js steps it (through Run's loop) with
+// conditions and the wave-5 endless escalation. main.js steps it directly with
 // updateWaves(delta) only while WAVE_PLAYING, so the draft and pause freeze it for free.
 //
 // Division of labour: this module decides WHEN to spawn; Enemy/Boss own HOW spawning works. When
-// a wave clears it pays the bonus, reports achievements, tells the Audio system the new stage,
-// and calls the clear handler — Run opens the power-up draft. After the draft, Run calls
-// advanceAfterDraft() to start the next wave.
+// a wave clears it pays the bonus, reports achievements and calls the clear handler — Run opens
+// the power-up draft. After the draft, Run calls advanceAfterDraft() to start the next wave, and
+// that is when the Audio system is told the new music stage (see startWave).
 
 // Set by Run (registerClearHandler): "this wave is over, open the draft".
 let clearHandler = null;
@@ -48,9 +48,9 @@ let bossWasAlive = false;     // polls the alive -> dead transition for the deat
 let scoreCheckpoint = null;   // wave 5: score at the last boss death (null before the first boss)
 
 // Doom mode: the first tier hits at ENEMY.doomScore, then every next tier needs half the
-// previous step, rounded up to 1,000 points. Each tier doubles enemy damage/speed/attack pacing
-// and triples the HP of new spawns; it stays for the rest of the run (the world reset clears it
-// via Enemy.resetEnemies).
+// previous step, rounded up to 1,000 points. Each tier doubles enemy damage, shot speed and
+// attack pacing (enemy movement speed is not affected) and triples the HP of new spawns; it
+// stays for the rest of the run (the world reset clears it via Enemy.resetEnemies).
 let doomTier = 0;
 
 // Registers the wave-clear handler. Run.js calls this once; the handler receives the wave number.

@@ -1,10 +1,11 @@
 import { el, mount } from './dom.js';
 import { getAchievementStatus, resetAchievements } from '../systems/Achievements.js';
+import { resetCollection } from '../systems/Collection.js';
 
 // Achievements panel: lists every registered achievement with its current state, persisted in
-// localStorage. Reachable at any time from the main menu, the pause menu and the game-over
-// screen; it is a passive overlay that never changes the game state, so opening it mid-pause
-// keeps the world frozen. Only the list scrolls — the title and the buttons stay in place — so
+// localStorage. Reachable from the main menu, the pause menu and the game-over screen (not from
+// character selection or the draft); it is a passive overlay that never changes the game state,
+// so opening it mid-pause keeps the world frozen. Only the list scrolls — the title and the buttons stay in place — so
 // a long achievement list stays fully browsable.
 
 const RESET_CONFIRM_MS = 3000; // how long the RESET button waits for its confirming click
@@ -51,7 +52,8 @@ export function initAchievementsPanel() {
 }
 
 // Reset is a two-step action (no native dialog): the first click arms the button into "SURE?",
-// a second click within the window wipes every unlock; letting the window pass disarms it.
+// a second click within the window wipes every unlock, the lifetime counters AND the compendium
+// collection; letting the window pass disarms it.
 function onResetClicked() {
     if (!resetButton.classList.contains('confirming')) {
         resetButton.classList.add('confirming');
@@ -62,6 +64,7 @@ function onResetClicked() {
     clearTimeout(resetTimer);
     disarmReset();
     resetAchievements();
+    resetCollection();
     buildList();
 }
 

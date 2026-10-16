@@ -3,6 +3,7 @@ import {
     cloneMaterials,
     cloneModel,
     enableShadows,
+    fadeMaterials,
     loadGLTF,
     normalizeModel,
 } from '../core/Assets.js';
@@ -34,8 +35,9 @@ import { recordKill } from '../systems/Achievements.js';
 // lateral waypoint) so nothing stays wedged behind a house forever.
 //
 // Outside the arena an enemy walks as a near-black silhouette (boundary walls are ignored by its
-// movement, and it neither fires nor can be shot through the walls); crossing the floor edge
-// blends it back to its normal look over ENEMY.silhouetteBlend seconds.
+// movement, and it does not fire; the player's shots fly over the walls, so it can still be shot
+// on the way in); crossing the floor edge blends it back to its normal look over
+// ENEMY.silhouetteBlend seconds.
 //
 // Damage/score/drop bookkeeping lives here too (damageEnemy), because the enemy owns its HP and
 // the kill moment — Combat only reports what the projectiles hit.
@@ -51,7 +53,7 @@ const STUCK_EPSILON = 0.01;          // frame displacement below which nothing m
 // Knockback nudge step (same idea as the player's dash: small steps, stop at the wall).
 const KNOCKBACK_STEP = 0.15;
 
-// How long a cone of the attack clip re-triggers while an enemy is touching the player.
+// Seconds between re-triggers of the attack clip while an enemy is touching the player.
 const CONTACT_ANIM_INTERVAL = 0.6;
 
 // Seconds to fade between a one-shot clip and the looping move clip.
@@ -60,7 +62,8 @@ const ANIM_FADE = 0.15;
 // --- Module state ------------------------------------------------------------
 
 // Live enemies (Groups). Read by Projectile (hit detection), Minion (targeting) and Combat
-// (contact + damage). Never mutate directly — use removeEnemy().
+// (contact + damage). Never mutate directly — use spawnEnemy/damageEnemy (or addToEnemyList /
+// removeFromEnemyList for the Boss); the private removeEnemy() does the actual removal.
 const enemies = [];
 
 let sceneRef = null;
@@ -91,7 +94,8 @@ export function setDoomScaling(damageMul, hpMul) {
     doomHpMul = hpMul;
 }
 
-// Current doom damage/speed multiplier (read by Combat and Boss.js).
+// Current doom damage multiplier (also scales shot speed and attack pacing; read by Combat and
+// Boss.js). Enemy movement speed is not affected.
 export function getDoomMul() {
     return doomMul;
 }
@@ -257,6 +261,8 @@ export function spawnEnemy(typeId, position) {
     data.escapeWaypoint = null;
     data.dying = false;
     data.dyingTimer = 0;
+    data.fading = false; // corpse tail fade armed? (see the dying branch in updateEnemies)
+    data.materials = materials; // the per-instance clones, driven by the corpse fade
     data.stunTimer = 0;
     data.flashTimer = 0;
     data.flashOriginals = flashOriginals;
@@ -358,14 +364,15 @@ export function knockbackEnemy(enemy, dirX, dirY, distance) {
 }
 
 // Stuns an enemy for `duration` seconds (Pusher shockwave): it stops moving and firing but stays
-// on the field and keeps animating its idle pose.
+// on the field; its current animation clip (the looping move clip) keeps playing in place.
 export function stunEnemy(enemy, duration) {
     if (!enemy || enemy.userData.dying) return;
     enemy.userData.stunTimer = Math.max(enemy.userData.stunTimer, duration);
 }
 
 // The kill moment: stop interacting with anything, start the Death clip, credit the score and
-// roll the health drop. The corpse lingers for the clip (or ENEMY.deathLinger) before removal.
+// roll the health drop. The corpse lingers for the clip (or ENEMY.deathLinger), dissolving over
+// its last ENEMY.deathFade seconds (see updateEnemies), before removal.
 function killEnemy(enemy) {
     const data = enemy.userData;
     data.dying = true;
@@ -398,7 +405,7 @@ function killEnemy(enemy) {
     // kill count all key off where the killing blow came from.
     recordKill(data.lastHitSource, false);
 
-    // Drop roll against the player's live drop chance (the Bloodthirst card replaces it with
+    // Drop roll against the player's live drop chance (the Healthy card replaces it with
     // ENEMY.HealthyDropChance).
     if (Math.random() < getStats().dropChance) {
         spawnHeart(enemy.position.x, enemy.position.y);
@@ -490,7 +497,7 @@ function playOneShot(enemy, action) {
 
 // --- Per-frame update --------------------------------------------------------------
 
-// Advances every enemy by one frame. Called from Combat.update() only while WAVE_PLAYING.
+// Advances every enemy by one frame. Called from updateCombat() only while WAVE_PLAYING.
 export function updateEnemies(delta) {
     if (!ready) return;
 
@@ -522,9 +529,20 @@ export function updateEnemies(delta) {
         // killed outside stays dark until it is removed.
         updateSilhouette(enemy, delta);
 
-        // Dying: the corpse just counts down to removal (its Death clip is playing).
+        // Dying: the corpse counts down to removal while its Death clip plays. The last
+        // ENEMY.deathFade seconds dissolve the body instead of a hard pop: shadows do not fade
+        // with opacity, so the corpse stops casting one the moment the fade starts.
         if (data.dying) {
             data.dyingTimer -= delta;
+            if (!data.fading && data.dyingTimer <= ENEMY.deathFade) {
+                data.fading = true;
+                enemy.traverse((node) => {
+                    if (node.isMesh) node.castShadow = false;
+                });
+            }
+            if (data.fading) {
+                fadeMaterials(data.materials, Math.max(0, data.dyingTimer / ENEMY.deathFade));
+            }
             if (data.dyingTimer <= 0) removeEnemy(enemy);
             continue;
         }
@@ -571,7 +589,7 @@ export function updateEnemies(delta) {
         }
         updateTrailTint(enemy, inTrail);
 
-        // Stunned: no movement, no firing, no contact damage — only the idle animation.
+        // Stunned: no movement, no firing, no contact damage — its current clip just keeps playing.
         if (data.stunTimer > 0) {
             data.stunTimer -= delta;
             data.touchingPlayer = false;
@@ -859,8 +877,8 @@ function updateEscapeState(collider, enemy) {
 
 // --- Queries / removal / reset -----------------------------------------------------
 
-// The live enemy array. Read-only for callers; use damageEnemy/removeEnemy so colliders and
-// scene nodes stay in sync. Returned by reference so per-frame loops do not allocate.
+// The live enemy array. Read-only for callers; use damageEnemy (or the list helpers below) so
+// colliders and scene nodes stay in sync. Returned by reference so per-frame loops do not allocate.
 export function getEnemies() {
     return enemies;
 }
@@ -896,8 +914,9 @@ function removeEnemy(enemy) {
     enemies.splice(index, 1);
     unregisterCollider(enemy);
 
-    // No dispose(): every clone shares geometry and materials with the loaded template, so
-    // disposing here would break the template and every surviving sibling.
+    // No dispose(): geometry is shared with the loaded template (and every surviving sibling),
+    // so disposing it here would break them. The per-instance material clones are small and get
+    // collected with the detached corpse.
     if (enemy.parent) enemy.parent.remove(enemy);
     return true;
 }

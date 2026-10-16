@@ -57,8 +57,9 @@ export function cloneModel(template) {
 //   * `model.position.z += shape.groundOffset` lifts the model so its lowest vertex rests on
 //     the ground plane (z = 0).
 //
-// Returns { radius, groundOffset, size } where size is the final world-space bounding size —
-// house placement uses it to fit footprints inside the arena.
+// Returns { radius, groundOffset, size, scale } where size is the final world-space bounding size
+// (house placement uses it to fit footprints inside the arena) and scale is the uniform scale
+// that was applied to reach the target height.
 export function normalizeModel(model, { targetHeight, yaw = 0 } = {}) {
     model.rotation.x = Math.PI / 2; // lay the Y-up model onto the Z-up ground
     model.rotation.y = yaw;
@@ -100,4 +101,21 @@ export function cloneMaterials(model) {
         }
     });
     return materials;
+}
+
+// Drives a set of per-instance materials toward a fade level: `opacity` 1 keeps them fully
+// opaque, below 1 switches them to transparent rendering and writes the opacity. `transparent`
+// is toggled lazily (only while fading) and `needsUpdate` forces the shader recompile — three.js
+// bakes the opaque/transparent mode into the compiled program (the opaque variant forces alpha
+// to 1), so without the recompile the opacity writes would be ignored. Same pattern as the
+// house/tree occlusion fades; used by the enemy/boss corpse fades.
+export function fadeMaterials(materials, opacity) {
+    const transparent = opacity < 1;
+    for (const material of materials) {
+        if (material.transparent !== transparent) {
+            material.transparent = transparent;
+            material.needsUpdate = true;
+        }
+        material.opacity = opacity;
+    }
 }

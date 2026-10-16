@@ -3,6 +3,7 @@ import {
     cloneMaterials,
     cloneModel,
     enableShadows,
+    fadeMaterials,
     loadGLTF,
     normalizeModel,
 } from '../core/Assets.js';
@@ -17,7 +18,14 @@ import {
 } from '../core/Collision.js';
 import { BOSS, COLLISION, ENEMY, SPAWN_POINTS, TRAIL } from '../config/tuning.js';
 import { BOSS_TYPE } from '../config/enemies.js';
-import player, { applyPlayerSlow, damagePlayer, getHitCenter, getStats, isInvulnerable } from './Player.js';
+import player, {
+    applyPlayerSlow,
+    damagePlayer,
+    getHitCenter,
+    getStats,
+    isInvulnerable,
+    isShieldActive,
+} from './Player.js';
 import { addToEnemyList, getAliveCount, getDoomHpMul, getDoomMul, isOutsideArena, removeFromEnemyList, spawnEnemy } from './Enemy.js';
 import { isInsideTrail } from './Trail.js';
 import { spawnHeart, spawnPowerupDrop } from './Pickup.js';
@@ -54,6 +62,17 @@ const CHARGE_RED = 0xcc1f1f;
 
 // Push step when shoving the player out of the boss's hitbox (same idea as knockback steps).
 const PUSH_STEP = 0.15;
+
+// Escape detour while chasing (a duplicated, boss-sized take on Enemy.js's detour system, kept
+// separate on purpose so common-enemy steering is untouched): after STUCK_ESCAPE_SECONDS without
+// moving, the boss heads for a sideways waypoint until it arrives or sees the player again.
+// TODO: ESCAPE_WAYPOINT_DISTANCE is a first guess for the boss's larger body (enemies use 5);
+//   tune it by playtesting against the central hut and the corner houses.
+const STUCK_ESCAPE_SECONDS = 0.5;    // zero-progress seconds before the detour kicks in
+const ESCAPE_WAYPOINT_DISTANCE = 6;  // lateral offset of the detour waypoint, world units
+const ESCAPE_WAYPOINT_REACHED = 1.2; // arrival radius at the waypoint
+const ESCAPE_PROBE_SPACING = 1.5;    // line-of-sight sample spacing along the probe
+const STUCK_EPSILON = 0.01;          // frame displacement below which nothing moved
 
 // Forward shockwave (the 'shockwave' attack): same violet as the boss orbs. WAVE_INNER is the
 // band's inner-radius fraction of the front — the visual mesh and the hit test share it.
@@ -204,6 +223,8 @@ export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1, knockba
     data.collider = registerCollider(group, group.position, prepared.radius);
     data.dying = false;
     data.dyingTimer = 0;
+    data.fading = false; // corpse tail fade armed? (see the dying branch in updateBoss)
+    data.materials = materials; // the per-instance clones, driven by the corpse fade
     data.flashTimer = 0;
     data.flashOriginals = flashOriginals;
     data.mixer = mixer;
@@ -212,9 +233,11 @@ export function spawnBoss(hp, speedMul = BOSS.speedMul, orbSpeedMul = 1, knockba
     data.oneShotRemaining = 0;
     data.touchingPlayer = false; // contact damage is applied in updateBoss, not by Combat
     data.velocity = { x: 0, y: 0 };
-    // Phase cycle state: starts chasing; the charge pause between chases comes first.
+    // Phase cycle state: starts in the chaseA breather; a random attack follows once it ends.
     data.state = 'chaseA';
     data.stateTimer = BOSS.phaseAChase;
+    data.stuckTimer = 0;       // seconds the chase made no progress (escape detour clock)
+    data.escapeWaypoint = null; // sideways waypoint being followed, or null
     data.lastAttack = null;    // last attack chosen (the random pick never repeats it)
     data.nextChase = 'chaseB'; // chase the current attack hands control back to
     data.spiralAngle = 0;      // spiral storm: current firing angle
@@ -283,8 +306,8 @@ export function damageBoss(amount, options = {}) {
 }
 
 // Pushes the boss away, collision-checked step by step (the push shockwave uses this — the
-// boss only ever gets knocked back, never stunned or killed by it). The wave-5 boss is
-// knockback-immune: it is never shoved at all. Boundary walls are ignored on purpose: a shove
+// boss only ever gets knocked back, never stunned; the shockwave's damage is applied separately
+// by damageBoss and can kill it). The wave-5 boss is knockback-immune: it is never shoved at all. Boundary walls are ignored on purpose: a shove
 // can carry the boss out of the arena (it walks back in as a silhouette).
 function knockbackBoss(dirX, dirY, distance) {
     if (!boss || boss.userData.dying || boss.userData.knockbackImmune) return;
@@ -307,7 +330,7 @@ function knockbackBoss(dirX, dirY, distance) {
 }
 
 // The kill moment: Death clip, score, the guaranteed heart drops, then a lingering corpse
-// removed in updateBoss().
+// (dissolving over its last BOSS.deathFade seconds) removed in updateBoss().
 function killBoss() {
     const data = boss.userData;
     data.dying = true;
@@ -359,7 +382,7 @@ function killBoss() {
 // --- Per-frame AI --------------------------------------------------------------
 
 // Advances the boss by one frame (movement, phase cycle, contact push, animations). Called from
-// Combat.update() only while WAVE_PLAYING. No-op without a live boss.
+// updateCombat() only while WAVE_PLAYING. No-op without a live boss.
 export function updateBoss(delta) {
     if (!boss) return;
     const data = boss.userData;
@@ -379,9 +402,20 @@ export function updateBoss(delta) {
     // Silhouette blend (outside the arena = near-black). Runs for the corpse too.
     updateBossSilhouette(delta);
 
-    // Death: play out the corpse, then remove it.
+    // Death: play out the corpse, then remove it. The last BOSS.deathFade seconds dissolve the
+    // body instead of a hard pop: shadows do not fade with opacity, so the corpse stops casting
+    // one the moment the fade starts.
     if (data.dying) {
         data.dyingTimer -= delta;
+        if (!data.fading && data.dyingTimer <= BOSS.deathFade) {
+            data.fading = true;
+            boss.traverse((node) => {
+                if (node.isMesh) node.castShadow = false;
+            });
+        }
+        if (data.fading) {
+            fadeMaterials(data.materials, Math.max(0, data.dyingTimer / BOSS.deathFade));
+        }
         if (data.dyingTimer <= 0) removeBoss();
         return;
     }
@@ -426,8 +460,37 @@ export function updateBoss(delta) {
     if (data.state === 'chaseA' || data.state === 'chaseB') {
         // Chase: walk toward the player. The per-wave speed multiplier rides in data.speedMul.
         const speed = ENEMY.baseSpeed * data.speedMul * endlessSpeedMul;
-        moveBoss(collider, dirToPlayerX, dirToPlayerY, speed, delta);
-        faceBoss(dirToPlayerX, dirToPlayerY);
+
+        // Escape detour: while a waypoint is active it replaces the direction to the player. It
+        // is dropped on arrival or as soon as the player is in the clear again.
+        let chaseX = dirToPlayerX;
+        let chaseY = dirToPlayerY;
+        if (collider && data.escapeWaypoint) {
+            const arrived = boss.position.distanceTo(data.escapeWaypoint) <= ESCAPE_WAYPOINT_REACHED;
+            if (arrived || hasLineOfSight(collider, boss.position, player.position)) {
+                data.escapeWaypoint = null;
+                data.stuckTimer = 0;
+            } else {
+                const wx = data.escapeWaypoint.x - boss.position.x;
+                const wy = data.escapeWaypoint.y - boss.position.y;
+                const wLength = Math.hypot(wx, wy);
+                if (wLength > 1e-6) {
+                    chaseX = wx / wLength;
+                    chaseY = wy / wLength;
+                }
+            }
+        }
+
+        // Stuck clock: real displacement resets it; a wedged frame grows it and the escape state
+        // eventually picks a sideways waypoint.
+        const travelled = moveBoss(collider, chaseX, chaseY, speed, delta);
+        if (travelled > STUCK_EPSILON) {
+            data.stuckTimer = 0;
+        } else if (collider) {
+            data.stuckTimer += delta;
+            updateEscapeState(collider);
+        }
+        faceBoss(chaseX, chaseY);
         moving = true;
 
         if (data.stateTimer <= 0) {
@@ -474,8 +537,10 @@ export function updateBoss(delta) {
         faceBoss(data.dashDirection.x, data.dashDirection.y);
 
         // Dash contact: BOSS.dashDamage physical damage, once per dash. During the player's
-        // i-frames the dash ghosts through instead. Tested against the player's VISUAL centre, so
-        // a dash that visibly clips the leaning frog registers.
+        // i-frames the dash ghosts through instead — unless the Pusher shield is up, which is
+        // checked before i-frames (damagePlayer blocks the hit and owes the shockwave). Tested
+        // against the player's VISUAL centre, so a dash that visibly clips the leaning frog
+        // registers.
         const playerCollider = getCollider(player);
         const playerCenter = getHitCenter();
         if (!data.dashHit && playerCollider && collider &&
@@ -483,7 +548,7 @@ export function updateBoss(delta) {
                 boss.position.x, boss.position.y, collider.radius,
                 playerCenter.x, playerCenter.y, playerCollider.radius,
             )) {
-            if (!isInvulnerable()) {
+            if (!isInvulnerable() || isShieldActive()) {
                 data.dashHit = true;
                 // The doom multiplier compounds the dash hit, like every other enemy hit.
                 damagePlayer(BOSS.dashDamage * getDoomMul(), 'physical');
@@ -502,8 +567,9 @@ export function updateBoss(delta) {
     // Body contact: pushes the player away and hurts for BOSS.contactDamage scaled by the doom
     // multiplier (the push alone felt toothless — the boss is a walking hazard). The push helper
     // returns whether it actually touched; i-frames are honored inside it (no push and no damage
-    // while ghosting), and it is skipped entirely while dashing (the dash has its own hit
-    // response).
+    // while ghosting, except that a raised Pusher shield still registers the touch so
+    // damagePlayer can block it, without any shove), and it is skipped entirely while dashing
+    // (the dash has its own hit response).
     if (data.state !== 'dash' && collider) {
         if (pushPlayerOut(collider)) {
             damagePlayer(BOSS.contactDamage * getDoomMul(), 'physical');
@@ -529,6 +595,8 @@ export function updateBoss(delta) {
 function startRandomAttack(nextChase) {
     const data = boss.userData;
     data.nextChase = nextChase;
+    data.stuckTimer = 0;        // the detour only applies to chasing; start the next chase fresh
+    data.escapeWaypoint = null;
 
     const pool = BOSS.attacks.filter((name) => name !== data.lastAttack);
     const choice = pool[Math.floor(Math.random() * pool.length)];
@@ -588,10 +656,75 @@ function chaseDelay(base) {
     return (base / endlessAttackMul / getDoomMul()) * rageMul;
 }
 
+// --- Escape detour helpers (boss-sized copy of Enemy.js's detour system) -----------------
+
+// True when a straight line from `from` to `to` stays clear for the boss's own circle: the line
+// is sampled every ESCAPE_PROBE_SPACING units and every sample must pass isMoveFree (boundary
+// walls ignored, like the boss's movement). Characters are not obstacles, they pass through
+// each other.
+function hasLineOfSight(collider, from, to) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / ESCAPE_PROBE_SPACING));
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        if (!isMoveFree(collider, from.x + dx * t, from.y + dy * t, true)) return false;
+    }
+    return true;
+}
+
+// Picks a sideways waypoint for a wedged boss: the two points ESCAPE_WAYPOINT_DISTANCE left and
+// right of it along the line to the player, keeping only the ones that are fully free. `avoid`
+// is the waypoint it was already following (or null): with both sides free the boss flips to
+// the side opposite to it, otherwise the side is random. Returns null when neither side is free.
+function pickEscapeWaypoint(collider, avoid) {
+    const toPlayerX = player.position.x - boss.position.x;
+    const toPlayerY = player.position.y - boss.position.y;
+    const length = Math.hypot(toPlayerX, toPlayerY);
+    if (length < 1e-6) return null; // standing on the player: nothing to detour around
+
+    const sideX = (-toPlayerY / length) * ESCAPE_WAYPOINT_DISTANCE;
+    const sideY = (toPlayerX / length) * ESCAPE_WAYPOINT_DISTANCE;
+    const left = new THREE.Vector3(boss.position.x + sideX, boss.position.y + sideY, 0);
+    const right = new THREE.Vector3(boss.position.x - sideX, boss.position.y - sideY, 0);
+
+    const free = [];
+    if (isMoveFree(collider, left.x, left.y, true)) free.push(left);
+    if (isMoveFree(collider, right.x, right.y, true)) free.push(right);
+    if (free.length === 0) return null;
+    if (free.length === 1) return free[0];
+
+    if (avoid) {
+        // Flip away from the side the previous waypoint was on (compared by half-plane).
+        const onLeft = (avoid.x - boss.position.x) * sideX + (avoid.y - boss.position.y) * sideY > 0;
+        return onLeft ? right : left;
+    }
+    return Math.random() < 0.5 ? left : right;
+}
+
+// Decides what a zero-progress chase frame means. After STUCK_ESCAPE_SECONDS the boss abandons
+// the direct line for a sideways waypoint; while detouring it flips sides after twice that
+// window if the corridor is blocked too. The clock is set (not left alone) so the next decision
+// lands a full window later, and a failed pick retries later instead of re-rolling every frame.
+function updateEscapeState(collider) {
+    const data = boss.userData;
+
+    if (data.escapeWaypoint) {
+        if (data.stuckTimer < STUCK_ESCAPE_SECONDS * 2) return;
+        // Both sides unusable: keep the old waypoint, it beats the wall.
+        data.escapeWaypoint = pickEscapeWaypoint(collider, data.escapeWaypoint)
+            ?? data.escapeWaypoint;
+        data.stuckTimer = STUCK_ESCAPE_SECONDS;
+        return;
+    }
+
+    if (data.stuckTimer < STUCK_ESCAPE_SECONDS) return;
+    data.escapeWaypoint = pickEscapeWaypoint(collider, null);
+    data.stuckTimer = data.escapeWaypoint ? STUCK_ESCAPE_SECONDS : 0;
+}
+
 // Moves the boss along (dirX, dirY) at `speed`, sub-stepped with the usual slide (so the boss
 // cannot tunnel through a house corner). Returns the distance actually travelled this frame.
-// TODO: no escape detour for the boss — its size makes it rarely wedge (it shoves along walls);
-//   add the Enemy.js waypoint system only if playtesting shows it stuck behind the central hut.
 function moveBoss(collider, dirX, dirY, speed, delta) {
     if (!collider) return 0;
     const startX = boss.position.x;
@@ -638,11 +771,12 @@ function faceBoss(dirX, dirY) {
 // cancelled by anything solid behind the player ("unless their back is against an obstacle") —
 // isMoveFree stops at walls, and the push is skipped entirely during i-frames. Returns true when
 // the bodies were actually overlapping (the caller applies the contact damage on that signal);
-// false when there was no contact or the player is invulnerable. The overlap is measured to the
-// player's VISUAL centre (the lean shifts his body), while the push itself still moves the feet
-// position.
+// false when there was no contact or the player is ghosting (invulnerable). The one exception is
+// a raised Pusher shield, which is checked before i-frames: the touch is still reported (so
+// damagePlayer can block it) but nobody is shoved. The overlap is measured to the player's
+// VISUAL centre (the lean shifts his body), while the push itself still moves the feet position.
 function pushPlayerOut(bossCollider) {
-    if (isInvulnerable()) return false; // ghosting
+    if (isInvulnerable() && !isShieldActive()) return false; // ghosting
     const playerCollider = getCollider(player);
     if (!playerCollider) return false;
 
@@ -653,6 +787,7 @@ function pushPlayerOut(bossCollider) {
     const reach = playerCollider.radius + bossCollider.radius;
 
     if (distance >= reach) return false; // not touching
+    if (isInvulnerable()) return true;   // shield-only contact: reported, but no shove
 
     const ux = distance > 1e-6 ? dx / distance : 1;
     const uy = distance > 1e-6 ? dy / distance : 0;
@@ -672,7 +807,7 @@ function pushPlayerOut(bossCollider) {
 // Fires the orb circle (BOSS.orbCount orbs evenly spaced around 360 degrees). The volley clip
 // plays as the one-shot; the attack clip is only the fallback when the volley clip is missing.
 // The one-shot timer resumes the walk loop by itself once the clip ends. The boss object is
-// passed as each orb's sender so parries can reflect orbs back into it.
+// passed as each orb's sender so the Pusher shield can reflect orbs back into it.
 function fireOrbVolley() {
     if (!boss) return;
     playOneShot(boss, boss.userData.actions.volley || boss.userData.actions.attack);
@@ -728,8 +863,7 @@ function updateBossWave(delta) {
     if (!wave.hit) {
         // Hit test: the player must be inside the arc's width and his body must overlap the
         // expanding band. The slow applies even during i-frames — it is force, not a hit.
-        // TODO: the wave passes through houses (like the push AoE); add line-of-sight if it
-        //   ever feels unfair to be slowed through a wall.
+        // The wave passes through houses (like the push AoE); that is intended.
         const dx = player.position.x - wave.originX;
         const dy = player.position.y - wave.originY;
         const distance = Math.hypot(dx, dy);
@@ -778,7 +912,7 @@ function hideBossWave() {
 
 // One spiral burst: BOSS.spiralOrbs orbs evenly spread around the current spiral angle, then the
 // angle rotates by BOSS.spiralStepDeg so the stream traces a spiral. With the default two arms
-// this reads as a rotating cross of orbs.
+// (opposite each other) this reads as a rotating bar of orbs.
 function fireSpiralBurst() {
     const data = boss.userData;
     const speedMul = data.orbSpeedMul * endlessAttackMul * getDoomMul() * BOSS.spiralSpeedMul;

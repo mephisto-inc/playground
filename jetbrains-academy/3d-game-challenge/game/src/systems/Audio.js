@@ -10,8 +10,8 @@ import { STATE, getState, onStateChange } from '../core/StateMachine.js';
 //   sfx          -> [stereo panner] -> sfxBus gain --> masterGain -> destination
 //
 // The low-pass sits on the music branch only: PAUSE_MENU, POWERUP_DRAFT and GAME_OVER muffle the
-// music while sound effects stay crisp. The master gain (persisted, driven by the pause panel)
-// controls everything.
+// music while sound effects stay crisp. The master gain (persisted, driven by the volume sliders
+// of the main menu and the pause panel) controls everything.
 //
 // Music is a set of looping tracks swapped by "step". The playing position survives every swap:
 // the new track starts at `position modulo its own musical length`, which covers both rules —
@@ -124,8 +124,8 @@ export function initAudio() {
     }
 }
 
-// Creates the AudioContext and the fixed graph: music branch through the 400 Hz low-pass, SFX
-// branch unfiltered, master gain at the end. The context starts suspended (browsers block audio
+// Creates the AudioContext and the fixed graph: music branch through the low-pass (closed to
+// AUDIO.lowPassHz only in the muffled states), SFX branch unfiltered, master gain at the end. The context starts suspended (browsers block audio
 // before a gesture) but decoding works while suspended. Safe to call once; later calls no-op.
 function createContext() {
     if (ctx) return;
@@ -287,15 +287,16 @@ function setMusic(id) {
 
 // --- Low-pass, volume --------------------------------------------------------
 
-// Engages/releases the 400 Hz low-pass on the music branch. A short time constant on the ramp
-// keeps the transition click-free.
+// Engages/releases the low-pass on the music branch (AUDIO.lowPassHz when engaged, fully open
+// otherwise). A short time constant on the ramp keeps the transition click-free.
 function setLowPass(engaged) {
     if (!musicFilter) return;
     const target = engaged ? AUDIO.lowPassHz : 22050;
     musicFilter.frequency.setTargetAtTime(target, ctx.currentTime, 0.03);
 }
 
-// Master volume (0..1), used by the pause panel. Persisted so it survives reloads.
+// Master volume (0..1), used by the main menu and pause panel sliders. Persisted so it survives
+// reloads.
 export function setMasterVolume(value) {
     volume = Math.min(1, Math.max(0, value));
     saveNumber(STORAGE_KEYS.volume, volume);
