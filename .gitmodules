@@ -4,9 +4,9 @@
 [submodule "pages/mephisto-inc"]
 	path = pages/mephisto-inc
 	url = https://github.com/mephisto-inc/mephisto-inc.git
-[submodule "pages/jogos"]
-	path = pages/jogos
-	url = https://github.com/mephisto-inc/jogos.git
 [submodule "pages/mephisto-inc.github.io"]
 	path = pages/mephisto-inc.github.io
 	url = https://github.com/mephisto-inc/mephisto-inc.github.io.git
+[submodule "pages/jogos"]
+	path = pages/jogos
+	url = https://github.com/mephisto-inc/jogos.git
