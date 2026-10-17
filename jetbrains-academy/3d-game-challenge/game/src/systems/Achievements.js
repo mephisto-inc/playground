@@ -175,11 +175,6 @@ export function recordShieldBlock() {
     if (counters.shieldBlocks >= ACHIEVEMENT_TARGETS.bulwarkBlocks) unlockAchievement('bulwark');
 }
 
-// The player was hurt and survived at exactly one heart (Close Call).
-export function recordCloseCall() {
-    unlockAchievement('closeCall');
-}
-
 // A run started with `classId` (World Tour once every class has been played). The id is also
 // remembered for the per-class 50K achievements (markScore reads it).
 export function recordClassPlayed(classId) {
@@ -235,11 +230,15 @@ export function resetRunTracking() {
     runPushes = 0;
 }
 
-// A wave began: Endless Frog unlocks on reaching wave 5; the damage tracker restarts for the
-// Untouchable check.
-export function onWaveStarted(wave) {
+// A wave began: Endless Frog unlocks on reaching wave 5, and Close Call when the player reaches
+// wave 5 with exactly 1 heart (hearts comes from the live player stats); the damage tracker
+// restarts for the Untouchable check.
+export function onWaveStarted(wave, hearts) {
     damagedThisWave = false;
-    if (wave >= 5) unlockAchievement('endlessFrog');
+    if (wave >= 5) {
+        unlockAchievement('endlessFrog');
+        if (hearts === 1) unlockAchievement('closeCall');
+    }
 }
 
 // A wave was cleared (waves 1-4; wave 5 never ends). Checks the wave-specific unlocks and the

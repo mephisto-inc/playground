@@ -21,7 +21,7 @@
 //   clearBonusMul    — wave clear bonus per wave number (500 x wave), waves 1-4 only
 export const WAVES = [
     {
-        duration: 20,
+        duration: 30,
         pool: ['fighter', 'ranged'],
         spawnInterval: 0.5,
         clearBonusMul: 500,

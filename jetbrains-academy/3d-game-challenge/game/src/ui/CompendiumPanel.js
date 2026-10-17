@@ -4,13 +4,13 @@ import { POWERUPS } from '../config/powerups.js';
 import { getPlayedClasses } from '../systems/Achievements.js';
 import { isCollected } from '../systems/Collection.js';
 
-// Compendium panel: the collection overview, reachable from the main menu ONLY. Two sections —
-// CLASSES first, then POWER-UPS — each listing every entry. An entry the player has already
-// obtained (a class ever played, a card ever picked) renders like an unlocked achievement; the
-// rest render dark like a locked achievement (dimmed + grayscaled, 🔒 in place of the icon).
-// It is a passive overlay that never changes the game state. Only the list scrolls, so the
-// title and the close button stay in place. The main menu's RESET wipes this record too
-// (resetCollection), so a wiped save starts from a truly clean slate.
+// Compendium panel: the collection overview, reachable from the main menu, the pause menu and
+// the game-over screen. Two sections — CLASSES first, then POWER-UPS — each listing every entry. An entry the
+// player has already obtained (a class ever played, a card ever picked) renders like an unlocked
+// achievement; the rest render dark like a locked achievement (dimmed + grayscaled, 🔒 in place
+// of the icon). It is a passive overlay that never changes the game state. Only the list
+// scrolls, so the title and the close button stay in place. The main menu's RESET wipes this
+// record too (resetCollection), so a wiped save starts from a truly clean slate.
 
 let overlay = null;
 let listNode = null;
@@ -34,8 +34,8 @@ export function initCompendiumPanel() {
         if (event.target === overlay) closeCompendium();
     });
 
-    // Esc closes the panel first if it is open (capture phase so the main menu's own Esc
-    // handling never also fires — the panel sits on top of whatever is current).
+    // Esc closes the panel first if it is open (capture phase, so the Esc key never also
+    // reaches whatever screen the panel is covering).
     window.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && overlay.classList.contains('visible')) {
             event.stopPropagation();

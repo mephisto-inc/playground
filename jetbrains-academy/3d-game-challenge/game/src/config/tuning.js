@@ -166,9 +166,9 @@ export const ENEMY = {
     // never reaches it.
     maxAlive: 200,
     baseSpeed: 3.2,          // world units per second at "speed 1.0x"
-    baseDropChance: 0.2,     // chance a kill drops a heart (0.2 = 20%)
-    HealthyDropChance: 0.5,  // drop chance with the Healthy card
-    stunDuration: 1.5,       // seconds common enemies stay stunned after a Pusher shockwave
+    baseDropChance: 0.01,     // chance a kill drops a heart
+    HealthyDropChance: 0.1, // drop chance with the Healthy card
+    stunDuration: 2,       // seconds common enemies stay stunned after a Pusher shockwave
     knockbackDistance: 2.5,  // how far a common enemy is pushed when it touches the player
     hitFlashDuration: 0.08,  // white flash after taking damage, in seconds
     deathLinger: 0.9,        // how long a corpse stays to play its Death clip before removal
@@ -187,7 +187,7 @@ export const ENEMY = {
     // ...) — an exponential squeeze that must eventually end any run. Each tier doubles ALL enemy
     // damage, shot speed and attack pacing, and triples the HP of newly spawned enemies and
     // bosses. One-way (never turns back off); reset with the world at the start of a run.
-    doomScore: 50000,            // score of the first doom tier (steps halve from there)
+    doomScore: 25000,            // score of the first doom tier (steps halve from there)
     // Spawn-point jitter: every spawn lands within this many units of its point.
     spawnJitter: 1.5,
     // Outside the arena an enemy/boss renders as a near-black silhouette; it blends back to its
@@ -230,39 +230,40 @@ export const BOSS = {
     heartDropsMax: 2,        // ...up to this many (inclusive random range)
     knockbackDistance: 2.5,  // how far the push shockwave shoves the boss (wave-5 boss is immune)
     deathFade: 1.2,          // tail fade: the boss corpse dissolves over its last seconds
-    powerupDropChance: 1,    // chance a boss kill also drops a bonus power-up card (1 = always)
+    powerupDropChance: 1,  // chance a boss kill also drops a bonus power-up card (0.5 = 50%)
     // Random attack pool: after every chase breather the boss picks one of these at random (never
     // the same twice in a row), so its pattern cannot be memorized. 'volley' = 360-degree orb
     // circle, 'dash' = red-telegraphed charge, 'shockwave' = instant forward wave that slows the
     // player (no damage), 'spiral' = rotating orb stream, 'summon' = calls common enemies to its
     // side.
     attacks: ['volley', 'shockwave', 'spiral', 'summon', 'dash'],
-    waveArcDeg: 140,         // total width of the forward wave, centered on the player direction
+    waveArcDeg: 90,         // total width of the forward wave, centered on the player direction
     waveMaxRadius: 22,       // world units the wave front travels before fading out (2x the dash lane)
-    waveSpeed: 14,           // world units per second the front expands
-    waveSlowMul: 0.55,       // player speed multiplier while caught by the wave (45% slow)
-    waveSlowDuration: 1.5,   // seconds that slow lasts
+    waveSpeed: 20,           // world units per second the front expands
+    waveSlowMul: 0.75,       // player speed multiplier while caught by the wave (45% slow)
+    waveSlowDuration: 1,   // seconds that slow lasts
     spiralDuration: 1.8,     // seconds the spiral storm fires
     spiralInterval: 0.12,    // seconds between spiral bursts
     spiralOrbs: 2,           // orbs per burst (2 = opposite arms)
     spiralStepDeg: 24,       // rotation between bursts, degrees
     spiralSpeedMul: 0.7,     // spiral orb speed relative to the circle volley's
     summonCount: 3,          // enemies called per summon
-    summonTypes: ['fighter', 'speeder'], // type ids from config/enemies.js
-    summonRadius: 2.5,       // extra ring radius around the boss for the summons
+    summonTypes: ['speeder', 'tank'], // type ids from config/enemies.js
+    summonRadius: 1.5,       // extra ring radius around the boss for the summons
     // Wave-5 HP rage (bossHpRage in waves.js): the chase breather between attacks shrinks with
     // the boss's HP; at this fraction of max HP (0.1 = 10%) it disappears entirely.
-    hpRageFloor: 0.1,
+    hpRageFloor: 0.15,
 };
 
 // --- Projectiles -------------------------------------------------------------
 export const PROJECTILE = {
-    playerSpeed: 30,       // player/minion shot speed, world units per second
-    playerRadius: 0.35,    // visual radius of a player shot
-    playerLifetime: 1.2,   // seconds before a missed shot despawns (range 36 units at playerSpeed)
-    enemySpeed: 4,         // ranged-enemy projectile speed (slow enough to dodge)
-    enemyRadius: 0.3,      // visual radius of an enemy shot
-    enemyLifetime: 4,      // seconds alive before despawn; houses block them earlier
+    playerSpeed: 15,          // player shot speed, world units per second
+    minionSpeedMul: 2,        // minion shot speed = playerSpeed x this (their own pace)
+    playerRadius: 0.35,       // visual radius of a player shot
+    playerLifetime: 1.733,    // seconds before a missed shot despawns (range 26 units at playerSpeed)
+    enemySpeed: 4,            // ranged-enemy projectile speed (slow enough to dodge)
+    enemyRadius: 0.3,         // visual radius of an enemy shot
+    enemyLifetime: 6,         // seconds alive before despawn; houses block them earlier
     bossOrbSpeed: 15,      // boss orb speed
     bossOrbRadius: 0.35,   // visual radius of a boss orb
     bossOrbLifetime: 5,
@@ -291,7 +292,7 @@ export const PICKUP = {
 export const TRAIL = {
     damageBase: 3,        // damage per tick before the per-heart bonus
     damagePerHeart: 1,    // extra damage per current heart
-    tickInterval: 0.5,    // seconds between damage ticks (so a 3-heart player ticks 3 + 3 = 6)
+    tickInterval: 1,    // seconds between damage ticks (so a 3-heart player ticks 3 + 3 = 6)
     tint: 0x4dd2ff,       // enemies inside the trail blend toward this color (the trail's cyan)
     tintIntensity: 0.35,  // emissive strength of the common-enemy tint
     bossTintIntensity: 0.18, // the boss tints fainter than common enemies
@@ -323,36 +324,36 @@ export const AUDIO = {
 // class can override any of these by using a literal instead of the ABILITY reference.
 export const ABILITY = {
     // Pusher (the renamed Parry class; shield + reflect + shockwave, now also shoving)
-    pushCooldown: 0.5,        // seconds
+    pushCooldown: 1,        // seconds
     pushShield: 0.6,          // seconds the shield stays up
     pushReflectRadius: 7,     // radius of the shield circle that flips hostile projectiles
     pushShockwaveRadius: 7,   // radius of the push's damage shockwave
-    pushShockwaveBaseDamage: 3, // shockwave damage is this + current hearts
+    pushShockwaveBaseDamage: 5, // shockwave damage is this + current hearts
     pushStun: ENEMY.stunDuration, // stun applied to surviving common enemies
     pushReflectDamage: 5,     // damage a reflected projectile deals (normal shots use
                               // PROJECTILE.damage)
-    pushKnockback: 6,         // how far the shockwave shoves every common enemy away
+    pushKnockback: 3,         // how far the shockwave shoves every common enemy away
     // Push visual timings (cosmetic only — shield/reflect behavior never reads these):
     pushGlowRadius: 3,      // soft pale-jade glow ring's outer radius while the shield is up
     pushImpactDuration: 0.03, // near-white impact flash right when a push succeeds
     pushRingDuration: 0.1,    // pale-jade ring expanding to the shockwave radius after the flash
     pushFailDuration: 0.15,   // collapse of the glow when the shield expires with no push
     // Dasher
-    dashCooldown: 0.5,         // seconds
-    dashDistance: 10,          // world units covered instantly
-    dashExtraIFrames: 1,       // extra invulnerability after dashing, in seconds
-    dashCloneCount: 3,         // shadow clones left along the path (cosmetic)
+    dashCooldown: 1,         // seconds
+    dashDistance: 15,          // world units covered instantly
+    dashExtraIFrames: 0.5,       // extra invulnerability after dashing, in seconds
+    dashCloneCount: 4,         // shadow clones left along the path (cosmetic)
     dashCloneLife: 0.35,       // seconds each clone takes to fade
-    trailBaseDuration: 2.0,    // trail life = base + per-heart bonus seconds
+    trailBaseDuration: 1.0,    // trail life = base + per-heart bonus seconds
     trailPerHeart: 0.5,
-    trailWidth: 3,             // world units across the damaging trail (see TRAIL above)
+    trailWidth: 2,             // world units across the damaging trail (see TRAIL above)
     // Anchor
-    minionCount: 3,            // orbiting minions
+    minionCount: 2,            // orbiting minions
     minionOrbitRadius: 1.7,    // world units from the player
     minionOrbitSpeed: 1.3,     // radians per second
     minionHeight: 1.2,         // Z height of the orbit (they float)
     minionDamage: 1,           // damage per minion shot
-    minionInterval: 0.4,       // seconds between minion shots
+    minionInterval: 0.4444,    // seconds between minion shots (0.4 / 0.9 = exactly -10% fire rate)
     minionRateJitter: 0.15,    // ± fraction each minion's own interval varies (independent rates)
     minionRangeMul: 1.5,       // minion targeting range relative to the player's
 };

@@ -30,6 +30,10 @@ let texturePromise = null;
 const minions = [];
 let elapsed = 0;
 
+// Minion shot speed: the shared projectile base scaled by the minions' own multiplier, so their
+// pace is tuned independently of the player's shots.
+const MINION_SHOT_SPEED = PROJECTILE.playerSpeed * PROJECTILE.minionSpeedMul;
+
 // Bumped by every clearMinions() call. createMinions() awaits the sprite texture, so a reset, a
 // game over or a newer createMinions() can happen while it waits; comparing this counter before
 // and after the await lets the stale call give up instead of spawning minions into the wrong run.
@@ -179,7 +183,7 @@ function fireVolley(origin, target, stats, ability) {
     const dx = target.position.x - origin.x;
     const dy = target.position.y - origin.y;
     const distance = Math.max(Math.hypot(dx, dy), 1e-4);
-    const flightTime = distance / PROJECTILE.playerSpeed;
+    const flightTime = distance / MINION_SHOT_SPEED;
     const velocity = target.userData.velocity || { x: 0, y: 0 };
     const aimX = target.position.x + velocity.x * flightTime * PROJECTILE.aimLeadFactor;
     const aimY = target.position.y + velocity.y * flightTime * PROJECTILE.aimLeadFactor;
@@ -194,7 +198,7 @@ function fireVolley(origin, target, stats, ability) {
             origin.y,
             Math.cos(angle),
             Math.sin(angle),
-            { damage, speed: PROJECTILE.playerSpeed, radiusMul: stats.bulletRadiusMul },
+            { damage, speed: MINION_SHOT_SPEED, radiusMul: stats.bulletRadiusMul },
         );
         // Minion shots copy the player's pierce count.
         if (bullet) bullet.pierce = stats.pierce;

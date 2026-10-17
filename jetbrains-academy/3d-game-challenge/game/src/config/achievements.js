@@ -39,7 +39,7 @@ export const ACHIEVEMENTS = [
     // General combat and play milestones (lifetime counters persist in localStorage).
     { id: 'sharpshooter', name: 'Sharpshooter', icon: '🎯', description: `Defeat ${ACHIEVEMENT_TARGETS.sharpshooterKills} enemies in total.` },
     { id: 'arenaChampion', name: 'Arena Champion', icon: '👑', description: `Defeat ${ACHIEVEMENT_TARGETS.arenaChampionBosses} Arena Lords in total.` },
-    { id: 'closeCall', name: 'Close Call', icon: '🍃', description: 'Survive a hit while at 1 heart.' },
+    { id: 'closeCall', name: 'Close Call', icon: '🍃', description: 'Survive until the doom with 1 heart.' },
     { id: 'worldTour', name: 'World Tour', icon: '🌍', description: `Play a run with each of the ${ACHIEVEMENT_TARGETS.worldTourClasses} classes.` },
     { id: 'deckedOut', name: 'Decked Out', icon: '🃏', description: `Collect ${ACHIEVEMENT_TARGETS.deckedOutCards} power-ups in a single run.` },
     // Class-specific milestones.

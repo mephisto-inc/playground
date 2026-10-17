@@ -51,8 +51,8 @@ export function spawnHeart(x, y) {
     spawnPickup('heart', heartGeometry, heartMaterial, x, y);
 }
 
-// Spawns one power-up card at (x, y) on the ground. Called by Boss on its bonus drop (guaranteed
-// while BOSS.powerupDropChance is 1).
+// Spawns one power-up card at (x, y) on the ground. Called by Boss on its bonus drop (rolled
+// against BOSS.powerupDropChance).
 export function spawnPowerupDrop(x, y) {
     spawnPickup('powerup', powerupGeometry, powerupMaterial, x, y);
 }

@@ -5,12 +5,15 @@ import { TOTAL_WAVES } from '../config/waves.js';
 import { getGameOverSummary } from '../systems/Run.js';
 import { getPowerup } from '../config/powerups.js';
 import { getAchievement } from '../systems/Achievements.js';
+import { openAchievements } from './AchievementsPanel.js';
+import { openCompendium } from './CompendiumPanel.js';
 
 // Game-over screen: appears after the defeat animation finishes, showing the final score, the
 // record status, a recap of the collected power-up cards and the achievements unlocked during
 // the run. Play Again returns to the character-select modal (choosing the class starts the next
-// run); Main Menu returns to the title. Only those two buttons — the meta entries (achievements,
-// compendium, credits) belong to the main menu alone.
+// run); Main Menu returns to the title. The two meta buttons below them open the achievements
+// and compendium panels (stacked like every button here); the guide and credits stay
+// main-menu only.
 
 let overlay = null;
 let scoreNode = null;
@@ -47,9 +50,18 @@ export function initGameOverScreen() {
     playAgainButton.addEventListener('click', () => setState(STATE.CHARACTER_SELECTION));
     panel.appendChild(playAgainButton);
 
-    const menuButton = el('button', 'btn', '⌂ MAIN MENU');
+    const menuButton = el('button', 'btn', '🏠 MAIN MENU');
     menuButton.addEventListener('click', () => setState(STATE.MAIN_MENU));
     panel.appendChild(menuButton);
+
+    // Meta entries: achievements + compendium, stacked one above the other like Play Again and
+    // Main Menu above them (the main menu shows the same pair in its 2x2 grid).
+    const achievementsButton = el('button', 'btn', '🏆 ACHIEVEMENTS');
+    achievementsButton.addEventListener('click', () => openAchievements());
+    panel.appendChild(achievementsButton);
+    const compendiumButton = el('button', 'btn', '📖 COMPENDIUM');
+    compendiumButton.addEventListener('click', () => openCompendium());
+    panel.appendChild(compendiumButton);
 
     overlay.appendChild(panel);
     mount(overlay);
@@ -104,19 +116,21 @@ function render() {
         }
     }
 
-    // Achievements unlocked during this run (by id, looked up in the live registry for icon
-    // and name; a hit from an achievement unregistered since the run is skipped). Hovering (or
-    // tapping) a row shows what the achievement required, like every other badge in the UI.
+    // Achievements unlocked during this run, as compact icon badges exactly like the card recap
+    // above (by id, looked up in the live registry for icon and name; a hit from an achievement
+    // unregistered since the run is skipped). Hovering or tapping a badge shows the achievement
+    // name and what it required, so even a long list stays a couple of short rows instead of a
+    // tall text block. Every unlocked entry is shown — the badge row is compact enough to stay
+    // inside the UI reference height (core/Viewport.js).
     achievementsNode.innerHTML = '';
-    if (summary.unlocked.length === 0) {
+    const unlockedDefinitions = summary.unlocked.map(getAchievement).filter(Boolean);
+    if (unlockedDefinitions.length === 0) {
         achievementsNode.appendChild(el('div', 'summary-label', '— none —'));
     } else {
-        for (const id of summary.unlocked) {
-            const definition = getAchievement(id);
-            if (!definition) continue;
-            const row = el('div', 'recap-achievement', `${definition.icon} ${definition.name}`);
-            attachTooltip(row, `${definition.icon} ${definition.name}`, definition.description);
-            achievementsNode.appendChild(row);
+        for (const definition of unlockedDefinitions) {
+            const badge = el('span', 'build-badge', definition.icon);
+            attachTooltip(badge, `${definition.icon} ${definition.name}`, definition.description);
+            achievementsNode.appendChild(badge);
         }
     }
 }

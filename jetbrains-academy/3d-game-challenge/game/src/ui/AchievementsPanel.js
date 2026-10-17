@@ -2,11 +2,11 @@ import { el, mount } from './dom.js';
 import { getAchievementStatus } from '../systems/Achievements.js';
 
 // Achievements panel: lists every registered achievement with its current state, persisted in
-// localStorage. Reachable from the main menu ONLY (the pause menu and the game-over screen no
-// longer link here); it is a passive overlay that never changes the game state, so opening it
-// keeps everything wherever it was frozen. Only the list scrolls — the title and the CLOSE
-// button stay in place — so a long achievement list stays fully browsable. The full-save RESET
-// that used to sit in this panel's footer moved to the main menu.
+// localStorage. Reachable from the main menu, the pause menu and the game-over screen; it is a
+// passive overlay that never changes the game state, so opening it keeps everything wherever it
+// was frozen. Only the list scrolls — the title and the CLOSE button stay in place — so a long
+// achievement list stays fully browsable. The full-save RESET that used to sit in this panel's
+// footer moved to the main menu.
 
 let overlay = null;
 let listNode = null;
@@ -30,8 +30,8 @@ export function initAchievementsPanel() {
         if (event.target === overlay) closeAchievements();
     });
 
-    // Esc closes the panel first if it is open (capture phase so the pause menu's Esc toggle
-    // does not also fire — the panel sits on top of whatever state is current).
+    // Esc closes the panel first if it is open (capture phase, so the Esc key never also
+    // reaches whatever screen the panel is covering).
     window.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && overlay.classList.contains('visible')) {
             event.stopPropagation();

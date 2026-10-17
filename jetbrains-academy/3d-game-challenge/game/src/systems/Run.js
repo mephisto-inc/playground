@@ -5,6 +5,7 @@ import player, {
     applyCard,
     configureClass,
     getCollectedCards,
+    isDead,
 } from '../entities/Player.js';
 import { clearProjectiles } from '../entities/Projectile.js';
 import { clearPickups } from '../entities/Pickup.js';
@@ -80,9 +81,16 @@ export function beginRun(classId) {
 }
 
 // Applies the chosen draft card and resumes play. A wave draft advances to the next wave; a
-// bonus draft from a power-up drop resumes the SAME wave where it was frozen.
+// bonus draft from a power-up drop resumes the SAME wave where it was frozen. Reckless can be
+// fatal at the 1-heart floor: the pick then ends the run instead of resuming play.
 export function completeDraft(card) {
     applyCard(card);
+    if (isDead()) {
+        // The card took the last heart: no next wave starts — the normal defeat flow (animation
+        // and game-over screen) takes over from here.
+        endRun();
+        return;
+    }
     if (bonusDraft) {
         bonusDraft = false;
     } else {

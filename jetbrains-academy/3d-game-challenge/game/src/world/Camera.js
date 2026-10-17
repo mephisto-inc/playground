@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CAMERA } from '../config/tuning.js';
+import { getAspect } from '../core/Viewport.js';
 
 // Camera component: a fixed-orientation orthographic camera looking down at the arena from the
 // tuned tilt and height, with a diagonal (isometric-style) heading. The projection is
@@ -11,11 +12,12 @@ import { CAMERA } from '../config/tuning.js';
 // main.js calls updateCamera(delta, pointerGroundPoint, playerPosition) every frame and
 // updateCameraProjection() on resize.
 
-// The camera box is a fixed width in world units; its height follows the window aspect ratio
-// (a 40-unit width is about 22.5 units tall on a 16:9 screen).
+// The camera box is a fixed width in world units; its height follows the view aspect ratio —
+// the window's ratio clamped into [4:3 .. 16:9] by core/Viewport.js (a 40-unit width is about
+// 22.5 units tall on a 16:9 screen).
 const FRUSTUM_WIDTH = CAMERA.viewWidth;
 
-const aspect = window.innerWidth / window.innerHeight;
+const aspect = getAspect();
 
 const camera = new THREE.OrthographicCamera(
     -FRUSTUM_WIDTH / 2,
@@ -47,10 +49,11 @@ const FOLLOW_OFFSET = camera.position.clone();
 // The smoothed follow point (x/y on the ground). Starts at the origin.
 const followPoint = new THREE.Vector3();
 
-// Rebuilds the frustum from the current window shape. An orthographic camera has no `aspect`
-// field, so the planes must be recomputed explicitly on resize.
+// Rebuilds the frustum from the current view shape (the clamped letterbox aspect). An
+// orthographic camera has no `aspect` field, so the planes must be recomputed explicitly on
+// resize.
 export function updateCameraProjection() {
-    const nextAspect = window.innerWidth / window.innerHeight;
+    const nextAspect = getAspect();
     camera.left = -FRUSTUM_WIDTH / 2;
     camera.right = FRUSTUM_WIDTH / 2;
     camera.top = FRUSTUM_WIDTH / nextAspect / 2;

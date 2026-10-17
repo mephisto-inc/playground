@@ -13,6 +13,7 @@ import {
     setBossEndlessScaling,
     spawnBoss,
 } from '../entities/Boss.js';
+import { getStats } from '../entities/Player.js';
 import { isSpotFree } from '../core/Collision.js';
 import { addScore, getScore } from './Score.js';
 import {
@@ -125,7 +126,7 @@ function startWave(number) {
         setBossEndlessScaling(1, 1);
     }
 
-    onWaveStarted(number); // achievements: Endless Frog at wave 5, damage tracker reset
+    onWaveStarted(number, getStats().hearts); // achievements: Endless Frog / Close Call at wave 5
     setWaveStage(number, false); // music step for the new wave (no boss yet)
 }
 

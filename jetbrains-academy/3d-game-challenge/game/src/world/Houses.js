@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { cloneModel, enableShadows, loadGLTF, normalizeModel } from '../core/Assets.js';
-import { registerBoxCollider } from '../core/Collision.js';
-import { COLLISION, TREES } from '../config/tuning.js';
+import {cloneModel, enableShadows, loadGLTF, normalizeModel} from '../core/Assets.js';
+import {registerBoxCollider} from '../core/Collision.js';
+import {COLLISION, TREES} from '../config/tuning.js';
 
 // Houses component: places the five fixed houses. Houses block both movement and shots (they
 // register box colliders), and four of them double as cover for the 8 spawn points behind them.
@@ -12,17 +12,17 @@ import { COLLISION, TREES } from '../config/tuning.js';
 //   * Positions and model files come from the house table below.
 //   * Scale is derived from geometry (normalizeModel) with a cap on footprint size, so every
 //     model lands at a similar visual size and no house pokes through the boundary walls.
-//   * Rotations are quarter turns (multiples of 90 deg) chosen to face the arena centre, which
+//   * Rotations are quarter turns (multiples of 90 deg) chosen to face the arena center, which
 //     keeps every footprint axis-aligned so the AABB collider is exact.
 
 // One entry per house: model asset id and ground position. The corner houses sit 31.68 units from
 // the centre on X and 18.72 on Y; the fifth house is offset cover near the centre.
 const HOUSES = [
-    { asset: '053kskrV4U_', x: -31.68, y: 18.72 }, // House 1 — Mansion (Northwest corner)
-    { asset: 'oJJIRwv6Bo', x: 31.68, y: 18.72 },   // House 2 — Townhouse (Northeast corner)
-    { asset: 'L7h0SjZX2K', x: -31.68, y: -18.72 }, // House 3 — Residence (Southwest corner)
-    { asset: 'vZ1CLbWmSx', x: 31.68, y: -18.72 },  // House 4 — Building (Southeast corner)
-    { asset: 'wxi3kAu5ey', x: -9.9, y: 6.3 },      // House 5 — Hut (offset cover near the centre)
+    {asset: '053kskrV4U_', x: -31.68, y: 18.72}, // House 1 — Mansion (Northwest corner)
+    {asset: 'oJJIRwv6Bo', x: 31.68, y: 18.72},   // House 2 — Townhouse (Northeast corner)
+    {asset: 'L7h0SjZX2K', x: -31.68, y: -18.72}, // House 3 — Residence (Southwest corner)
+    {asset: 'vZ1CLbWmSx', x: 31.68, y: -18.72},  // House 4 — Building (Southeast corner)
+    {asset: 'wxi3kAu5ey', x: -9.9, y: 6.3},      // House 5 — Hut (offset cover near the centre)
 ];
 
 // Target height of every house, in world units. Sized to read as a proper building against the
@@ -82,7 +82,7 @@ async function placeHouse(definition, mapGroup) {
     });
 
     // First normalization: scale to the target height with the model's own proportions.
-    normalizeModel(model, { targetHeight: HOUSE_HEIGHT, yaw });
+    normalizeModel(model, {targetHeight: HOUSE_HEIGHT, yaw});
 
     // Cap the footprint: if the house is wider than allowed after the height fit, re-normalize
     // to a proportionally smaller height so the footprint lands exactly on the cap. (Measuring
@@ -95,7 +95,7 @@ async function placeHouse(definition, mapGroup) {
     const longestFootprint = Math.max(firstSize.x, firstSize.y);
     if (longestFootprint > HOUSE_MAX_FOOTPRINT) {
         const shrinkFactor = HOUSE_MAX_FOOTPRINT / longestFootprint;
-        normalizeModel(model, { targetHeight: HOUSE_HEIGHT * shrinkFactor, yaw });
+        normalizeModel(model, {targetHeight: HOUSE_HEIGHT * shrinkFactor, yaw});
     }
 
     // Final bounds: recentre the footprint on the group origin (so group.position is the
@@ -123,13 +123,13 @@ async function placeHouse(definition, mapGroup) {
     registerBoxCollider(group, group.position, halfWidth, halfDepth);
 
     // Register the fade entry last: the group's final position is the fade's reference point.
-    houses.push({ object: group, materials, opacity: 1 });
+    houses.push({object: group, materials, opacity: 1});
 }
 
 // Ground positions of every house centre. The tree scatter (world/Trees.js) uses these to keep
 // its twisted trees clear of the buildings.
 export function getHouseCenters() {
-    return HOUSES.map((house) => ({ x: house.x, y: house.y }));
+    return HOUSES.map((house) => ({x: house.x, y: house.y}));
 }
 
 // Loads every house model and places the five houses. Called once from main.js with the arena

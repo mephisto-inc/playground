@@ -1,6 +1,9 @@
 /* Global UI stylesheet: page reset, canvas, the overlay root and the glassmorphism design
    language shared by every screen (a "central glass panel" per screen). Imported once from
-   main.js; the 3D canvas sits underneath everything. */
+   main.js; the 3D canvas sits underneath everything. Panels are laid out in fixed design pixels
+   for the 700x560 reference screen — the .ui-layer inside #ui-root scales the whole UI uniformly
+   to the actual game rect (--ui-scale, see core/Viewport.js), so window-relative units are not
+   used here. */
 
 :root {
     --glass-bg: rgba(14, 22, 32, 0.55);
@@ -35,21 +38,45 @@ body {
     -webkit-user-select: none;
 }
 
+/* The 3D canvas: core/Viewport.js positions and sizes it to the letterboxed game rect through
+   the --game-* variables (the fallbacks fill the whole window before the first apply). */
 canvas.game {
     position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
+    left: var(--game-left, 0);
+    top: var(--game-top, 0);
+    width: var(--game-width, 100%);
+    height: var(--game-height, 100%);
     display: block;
     touch-action: none;
 }
 
-/* The overlay root never eats pointer events; interactive controls opt back in individually. */
+/* The overlay root never eats pointer events; interactive controls opt back in individually.
+   It shares the canvas' game rect (--game-*), so every HUD element and panel stays inside the
+   letterboxed view instead of drifting into the bars. */
 #ui-root {
     position: fixed;
-    inset: 0;
+    left: var(--game-left, 0);
+    top: var(--game-top, 0);
+    width: var(--game-width, 100%);
+    height: var(--game-height, 100%);
+    /* Clips the inner .ui-layer, which is intentionally larger than the root before its scale
+       transform (see .ui-layer below). */
+    overflow: hidden;
     pointer-events: none;
     z-index: 10;
+}
+
+/* The uniform UI scaling layer (created in ui/dom.js): sized to the game rect divided by
+   --ui-scale and then scaled back down around its center, so the layout space is never smaller
+   than the 700x560 reference screen and every fixed-px panel fits. All screens, the HUD and the
+   toasts live inside it and scale together; the vignette and version tag stay on #ui-root. */
+.ui-layer {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(100% / var(--ui-scale, 1));
+    height: calc(100% / var(--ui-scale, 1));
+    transform: translate(-50%, -50%) scale(var(--ui-scale, 1));
 }
 
 /* Screen vignette: a pure-CSS radial gradient that darkens the screen edges, giving the
@@ -60,7 +87,7 @@ canvas.game {
    values are fallbacks). */
 #ui-root::before {
     content: "";
-    position: fixed;
+    position: absolute;
     inset: 0;
     pointer-events: none;
     background: radial-gradient(
@@ -71,10 +98,10 @@ canvas.game {
     );
 }
 
-/* Build version badge (bottom-left): identifies the deployed distribution. Deliberately faint
-   and click-through — it never interferes with the game. */
+/* Build version badge (bottom-left of the game rect): identifies the deployed distribution.
+   Deliberately faint and click-through — it never interferes with the game. */
 .version-tag {
-    position: fixed;
+    position: absolute;
     left: 10px;
     bottom: 8px;
     font-size: 0.75rem;
@@ -129,6 +156,20 @@ canvas.game {
     transform: none;
 }
 
+/* Side-by-side button rows, used by the main menu's 2x2 meta grid (Achievements + Compendium on
+   top, Guide + Credits below). The children split the row evenly — flex-basis 0 overrides any
+   width rule — and min-width: 0 lets long labels shrink instead of overflowing. */
+.btn-row {
+    width: 100%;
+    display: flex;
+    gap: 10px;
+}
+
+.btn-row .btn {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
 /* Full-screen dim behind modals and menus. */
 .overlay {
     position: absolute;
@@ -157,7 +198,13 @@ canvas.game {
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    padding: 14px;
+    /* Safe-area insets keep the hearts and badges clear of notches and rounded corners on
+       phones (index.html opts into viewport-fit=cover). */
+    padding:
+        calc(14px + env(safe-area-inset-top, 0px))
+        calc(14px + env(safe-area-inset-right, 0px))
+        calc(14px + env(safe-area-inset-bottom, 0px))
+        calc(14px + env(safe-area-inset-left, 0px));
     pointer-events: none;
 }
 
@@ -214,7 +261,7 @@ canvas.game {
 }
 
 .boss-bar {
-    width: min(420px, 70vw);
+    width: 420px;
     height: 16px;
     border-radius: 999px;
     border: 1px solid var(--glass-border);
@@ -269,7 +316,7 @@ canvas.game {
     flex-wrap: wrap;
     justify-content: center;
     gap: 6px;
-    max-width: 60vw;
+    max-width: 520px;
     min-height: 30px;
 }
 
@@ -303,6 +350,10 @@ canvas.game {
 .badge-tooltip {
     position: fixed;
     z-index: 60; /* above the UI root (z-index 10) so it floats over overlays and panels */
+    /* Matches the scaled UI: the bubble lives on <body>, outside the .ui-layer, so it applies
+       the same --ui-scale itself. The top-left origin keeps the JS-set left/top as its anchor. */
+    transform: scale(var(--ui-scale, 1));
+    transform-origin: top left;
     max-width: 260px;
     padding: 8px 10px;
     border-radius: 10px;
@@ -330,7 +381,7 @@ canvas.game {
 /* --- Menus --------------------------------------------------------------------------------- */
 
 .menu-panel {
-    width: min(430px, 92vw);
+    width: 480px;
     padding: 34px 30px;
     display: flex;
     flex-direction: column;
@@ -342,7 +393,10 @@ canvas.game {
 /* Character select needs room for its three cards side by side (3 x 190px + gaps = 598px);
    at the default panel width they would wrap into a column. */
 .menu-panel.wide {
-    width: min(700px, 94vw);
+    width: 700px;
+    /* Slightly tighter vertical padding: the three class cards make this the second-tallest
+       screen, and this keeps it inside the 560px UI reference height. */
+    padding: 30px;
 }
 
 .game-title {
@@ -373,17 +427,16 @@ canvas.game {
     gap: 14px;
     flex-wrap: wrap;
     justify-content: center;
-    max-width: 92vw;
 }
 
 .class-card {
     pointer-events: auto;
     width: 190px;
-    padding: 18px 14px;
+    padding: 16px 14px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     text-align: center;
     cursor: pointer;
     transition: transform 0.12s ease, box-shadow 0.12s ease;
@@ -497,7 +550,7 @@ canvas.game {
 /* --- Pause menu ------------------------------------------------------------------------------ */
 
 .pause-panel {
-    width: min(380px, 92vw);
+    width: 440px;
     padding: 28px;
     display: flex;
     flex-direction: column;
@@ -529,12 +582,15 @@ canvas.game {
 /* --- Game over --------------------------------------------------------------------------------- */
 
 .gameover-panel {
-    width: min(460px, 92vw);
-    padding: 30px;
+    width: 500px;
+    /* Tighter than the other panels: the recap below grows with the run (its list is capped in
+       ui/GameOverScreen.js), and the compact spacing keeps the worst case inside the 560px UI
+       reference height so nothing is ever cut off. */
+    padding: 22px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 6px;
     text-align: center;
     opacity: 0;
     transform: translateY(14px);
@@ -547,7 +603,7 @@ canvas.game {
 }
 
 .gameover-title {
-    font-size: 34px;
+    font-size: 30px;
     font-weight: 800;
     letter-spacing: 4px;
     color: var(--danger);
@@ -578,31 +634,46 @@ canvas.game {
     margin-top: 6px;
 }
 
-.recap-cards {
+/* The game-over panel is the tallest screen: its labels drop the extra top margin and its
+   buttons are slightly slimmer, keeping the recap inside the 560px UI reference height. */
+.gameover-panel .summary-label {
+    margin-top: 0;
+}
+
+.gameover-panel .btn {
+    padding: 0.55em 1.2em;
+}
+
+/* Both game-over recaps — collected power-ups and unlocked achievements — are rows of compact
+   icon badges that wrap when they get long; hovering or tapping one shows its details in the
+   shared tooltip. */
+.recap-cards,
+.recap-achievements {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 6px;
-}
-
-.recap-achievements {
-    display: flex;
-    flex-direction: column;
     gap: 4px;
-    font-size: 13.5px;
 }
 
-/* One unlocked-achievement row in the game-over recap; hovering shows its description. */
-.recap-achievement {
-    cursor: help;
+/* The recap badges are slightly smaller than the HUD's: a recap can hold the full 12-card run
+   or the whole achievement set, and compact rows keep the game-over panel short. */
+.recap-cards .build-badge,
+.recap-achievements .build-badge {
+    min-width: 28px;
+    height: 28px;
+    padding: 0 5px;
+    font-size: 14px;
 }
 
-/* --- Achievements and compendium panels -------------------------------------------------------- */
+/* --- Achievements, compendium and guide panels -------------------------------------------------- */
 
 .achievements-panel,
-.compendium-panel {
-    width: min(520px, 92vw);
-    max-height: 84vh;
+.compendium-panel,
+.guide-panel {
+    width: 520px;
+    /* Design-pixel cap instead of a window-relative one: the scaling layer guarantees at least
+       the reference height, so the panel (and its scrolling list) always fits the game rect. */
+    max-height: 560px;
     padding: 26px;
     display: flex;
     flex-direction: column;
@@ -611,9 +682,10 @@ canvas.game {
 }
 
 /* Only this middle section scrolls: the title and the footer buttons stay fixed, so a long
-   achievement/compendium list never pushes them out of reach. */
+   achievement/compendium/guide list never pushes them out of reach. */
 .achievements-list,
-.compendium-list {
+.compendium-list,
+.guide-list {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
@@ -624,7 +696,8 @@ canvas.game {
 }
 
 .achievements-title,
-.compendium-title {
+.compendium-title,
+.guide-title {
     font-size: 22px;
     font-weight: 800;
     letter-spacing: 2px;
@@ -633,10 +706,26 @@ canvas.game {
 }
 
 .achievements-footer,
-.compendium-footer {
+.compendium-footer,
+.guide-footer {
     display: flex;
     justify-content: center;
     gap: 10px;
+}
+
+/* The guide's bullet list (rendered through dom.js list()): plain left-aligned bullets inside
+   the scrolling area. */
+.guide-bullets {
+    margin: 0;
+    padding-left: 20px;
+    list-style: disc outside;
+    text-align: left;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.guide-bullets li + li {
+    margin-top: 8px;
 }
 
 /* The RESET button armed for its confirming click ("SURE?"). */
@@ -684,7 +773,7 @@ canvas.game {
    never covers the hearts, the wave banner or the score. The container ignores pointer events;
    the banner itself opts back in so hovering it can show the achievement's description. */
 .toast-container {
-    position: fixed;
+    position: absolute;
     left: 50%;
     top: 132px;
     transform: translateX(-50%);
@@ -737,12 +826,4 @@ canvas.game {
 .toast .toast-name {
     font-size: 13px;
     font-weight: 700;
-}
-
-/* --- Small screens ----------------------------------------------------------------------------- */
-
-@media (max-width: 560px) {
-    .game-title { font-size: 30px; }
-    .class-card, .draft-card { width: 150px; }
-    .build-panel { max-width: 80vw; }
 }

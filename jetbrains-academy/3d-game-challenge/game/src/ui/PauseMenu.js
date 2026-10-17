@@ -1,11 +1,14 @@
 import { el, mount } from './dom.js';
 import { STATE, getState, onStateChange, setState } from '../core/StateMachine.js';
 import { getMasterVolume, setMasterVolume } from '../systems/Audio.js';
+import { openAchievements } from './AchievementsPanel.js';
+import { openCompendium } from './CompendiumPanel.js';
 
 // Pause menu: freezes the world and muffles the music (the Audio system reacts to the state).
-// Deliberately minimal — ONLY Continue, the master-volume slider and Quit to Menu; every meta
-// entry (achievements, compendium, credits, reset) lives in the main menu alone.
-// Opened by the HUD pause button or Esc.
+// Continue resumes; the achievements and compendium buttons below it open those panels (the
+// same pair the main menu and the game-over screen offer); the master-volume slider mirrors
+// the main menu's. The guide, credits and the full-save RESET stay main-menu only. Opened by
+// the HUD pause button or Esc.
 
 let overlay = null;
 let volumeSlider = null;
@@ -19,6 +22,15 @@ export function initPauseMenu() {
     const continueButton = el('button', 'btn', '▶ CONTINUE');
     continueButton.addEventListener('click', () => setState(STATE.WAVE_PLAYING));
     panel.appendChild(continueButton);
+
+    // Meta entries: achievements + compendium, stacked one above the other like every other
+    // button in this column (the main menu shows the same pair in its 2x2 grid).
+    const achievementsButton = el('button', 'btn', '🏆 ACHIEVEMENTS');
+    achievementsButton.addEventListener('click', () => openAchievements());
+    panel.appendChild(achievementsButton);
+    const compendiumButton = el('button', 'btn', '📖 COMPENDIUM');
+    compendiumButton.addEventListener('click', () => openCompendium());
+    panel.appendChild(compendiumButton);
 
     const volumeRow = el('div', 'volume-row');
     volumeRow.appendChild(el('span', '', '🔊'));

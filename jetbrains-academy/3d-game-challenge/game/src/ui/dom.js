@@ -1,11 +1,22 @@
-// UI DOM helper: one overlay root for every screen and a tiny element factory, so all UI modules
-// build their DOM the same way. The root covers the viewport with pointer-events: none, so the
-// game canvas keeps receiving steering input everywhere except on the elements that explicitly
-// re-enable pointer events (buttons, cards, sliders — see index.css).
+// UI DOM helper: one overlay root (with an inner scaling layer) for every screen and a tiny
+// element factory, so all UI modules build their DOM the same way. The root covers the game rect
+// with pointer-events: none, so the game canvas keeps receiving steering input everywhere except
+// on the elements that explicitly re-enable pointer events (buttons, cards, sliders — see
+// index.css).
 
 const root = document.createElement('div');
 root.id = 'ui-root';
 document.body.appendChild(root);
+
+// Inner scaling layer: every screen mounts here (see mount() below) instead of directly on the
+// root. core/Viewport.js publishes --ui-scale — the fit factor of the game rect against the UI
+// reference screen. The layer is sized 100%/scale and scaled back down around its center, so its
+// layout space is never smaller than the reference and every fixed-px panel fits; on phones the
+// whole UI (HUD included) shrinks uniformly instead of overflowing. The vignette and the version
+// tag stay outside it on the root, so they always cover the full game rect unscaled.
+const layer = document.createElement('div');
+layer.className = 'ui-layer';
+root.appendChild(layer);
 
 // Creates an element with an optional class and inner HTML (emoji/text content is set through it).
 export function el(tag, className, html) {
@@ -15,9 +26,9 @@ export function el(tag, className, html) {
     return node;
 }
 
-// Appends elements to the UI root in order; returns the last one for chaining convenience.
+// Appends elements to the scaling layer in order; returns the last one for chaining convenience.
 export function mount(...nodes) {
-    for (const node of nodes) root.appendChild(node);
+    for (const node of nodes) layer.appendChild(node);
     return nodes[nodes.length - 1];
 }
 
@@ -33,7 +44,8 @@ export function list(className, items) {
 
 // One shared tooltip bubble for the whole UI. It is appended to <body> (not the UI root) and
 // pointer-events: none (see index.css), so it can never swallow a tap meant for the badge under
-// it. It works for both input styles:
+// it; because it lives outside the scaling layer it is scaled separately through the same
+// --ui-scale variable (see index.css .badge-tooltip). It works for both input styles:
 //   * mouse: shows on hover, hides on leave;
 //   * touch: first tap opens it, tapping the badge again or tapping anywhere else closes it.
 

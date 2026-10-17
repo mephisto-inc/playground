@@ -13,7 +13,8 @@
 //   speedAdd              — add to the player's speed multiplier
 //   damageAdd             — add damage per shot
 //   rangeMul              — multiply the auto-shooter's targeting range
-//   maxHeartsAdd          — change the max-heart cap (clamped to [1, global 7]; may be negative)
+//   maxHeartsAdd          — change the max-heart cap (clamped to [0, global 7]; may be negative,
+//                           and a cap that trims the last heart to 0 is fatal — Reckless)
 //   heal                  — restore this many hearts immediately (clamped to max)
 //   iFramesSet            — set the invulnerability duration to this many seconds
 //   magnetMul             — multiply the pickup attraction radius (hearts and power-up drops)

@@ -57,11 +57,14 @@ export function initInput() {
 
     const isCanvas = (event) => event.target === renderer.domElement;
 
-    // Live pointer position: mouse hover and touch dragging both come through here.
+    // Live pointer position: mouse hover and touch dragging both come through here. The canvas
+    // can be smaller than the window (letterbox bars), so the pointer maps through the canvas'
+    // own rect, never the window's.
     const track = (event) => {
+        const rect = renderer.domElement.getBoundingClientRect();
         pointerNDC.set(
-            (event.clientX / window.innerWidth) * 2 - 1,
-            -(event.clientY / window.innerHeight) * 2 + 1,
+            ((event.clientX - rect.left) / rect.width) * 2 - 1,
+            -((event.clientY - rect.top) / rect.height) * 2 + 1,
         );
         pointerActive = true;
     };

@@ -12,7 +12,6 @@ import { playSfx } from '../systems/Audio.js';
 import {
     recordCardCollected,
     recordClassPlayed,
-    recordCloseCall,
     recordDash,
     recordShieldBlock,
     unlockAchievement,
@@ -268,12 +267,19 @@ export function applyCard(card) {
     if (effect.damageAdd) stats.damage += effect.damageAdd;
     if (effect.rangeMul) stats.range *= effect.rangeMul;
     if (effect.maxHeartsAdd) {
-        // Clamped at both ends: Reckless may push the cap down, but never below 1 heart.
-        stats.maxHearts = Math.max(1, Math.min(
+        // Clamped only at the global top: Reckless can push the cap down to 0. The trim below
+        // then empties the heart bar — Reckless at the 1-heart floor is a suicide card, and
+        // Run.completeDraft ends the run right after the pick.
+        stats.maxHearts = Math.max(0, Math.min(
             PLAYER.maxHearts,
             stats.maxHearts + effect.maxHeartsAdd,
         ));
         stats.hearts = Math.min(stats.hearts, stats.maxHearts); // a lowered cap trims current HP
+        if (stats.hearts <= 0) {
+            stats.hearts = 0;
+            dead = true;
+            deathAnimTime = 0;
+        }
         // "Full Hearts" achievement: reaching the global 7-heart cap.
         if (stats.maxHearts >= PLAYER.maxHearts) unlockAchievement('fullHearts');
     }
@@ -343,8 +349,6 @@ export function damagePlayer(amount, kind = 'physical') {
         deathAnimTime = 0;
         return 'dead';
     }
-    // Surviving a hit on exactly one heart is the Close Call achievement.
-    if (stats.hearts === 1) recordCloseCall();
     return 'hit';
 }
 
