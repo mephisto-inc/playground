@@ -1,0 +1,12 @@
+type: code
+files:
+  - name: src/Main.java
+    visible: true
+    learner_created: false
+feedback_link: https://hyperskill.org/learn/step/16579#comment
+status: Solved
+feedback:
+  message: <html>Correct solution</html>
+  time: "Sun, 18 Oct 2026 08:59:55 UTC"
+record: -1
+submission_language: java25
