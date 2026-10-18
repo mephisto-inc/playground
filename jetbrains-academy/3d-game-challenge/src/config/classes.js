@@ -7,8 +7,8 @@ export const CLASSES = [
     icon: "🛡️",
     hearts: PLAYER.baseHearts,
     description: [
-      `Double click/tap: ${ABILITY.pushShield}s shield that blocks hits`,
-      `Sends shots back and stuns and pushes enemies away`,
+      `Double click/tap: activates a shield that blocks hits`,
+      `If sucessfully, sends shots back, stuns and pushes enemies away`,
       `${ABILITY.pushCooldown}s cooldown`,
     ],
     ability: {
@@ -28,8 +28,8 @@ export const CLASSES = [
     icon: "⚡",
     hearts: PLAYER.baseHearts,
     description: [
-      `Double click/tap: dash ${ABILITY.dashDistance} units, safe while dashing`,
-      `Clones and a trail: ${TRAIL.damageBase} + ${TRAIL.damagePerHeart} damage per heart`,
+      `Double click/tap: dash while safe`,
+      `Trail deals ${TRAIL.damageBase} damage per heart`,
       `${ABILITY.dashCooldown}s cooldown`,
     ],
     ability: {
@@ -51,7 +51,7 @@ export const CLASSES = [
     description: [
       `Passive: ${ABILITY.minionCount} minions circle around you`,
       `They copy your power-ups and see farther than you`,
-      `Each deals ${ABILITY.minionDamage} damage every ${ABILITY.minionInterval}s`,
+      `Each deals ${ABILITY.minionDamage} damage`,
     ],
     ability: {
       minionCount: ABILITY.minionCount,

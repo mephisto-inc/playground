@@ -294,7 +294,7 @@ export const PICKUP = {
 export const TRAIL = {
   color: 0x4dd2ff,
   damageBase: 3,
-  damagePerHeart: 2,
+  damagePerHeart: 1,
   tickInterval: 1,
   tint: 0x4dd2ff,
   tintIntensity: 0.35,
