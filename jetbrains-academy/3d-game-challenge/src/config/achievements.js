@@ -1,5 +1,5 @@
-import { DRAFT, PLAYER } from "./tuning.js";
-import { CLASSES } from "./classes.js";
+import {DRAFT, PLAYER} from "./tuning.js";
+import {CLASSES} from "./classes.js";
 
 export const ACHIEVEMENT_TARGETS = {
   marathonSeconds: 300,

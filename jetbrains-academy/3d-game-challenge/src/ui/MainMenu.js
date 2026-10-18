@@ -1,14 +1,14 @@
-import { el, mount } from "./dom.js";
-import { STATE, onStateChange, setState } from "../core/StateMachine.js";
-import { getBestScore, resetBestScore } from "../systems/Score.js";
-import { getMasterVolume, setMasterVolume } from "../systems/Audio.js";
-import { resetAchievements } from "../systems/Achievements.js";
-import { resetCollection } from "../systems/Collection.js";
-import { openAchievements } from "./AchievementsPanel.js";
-import { openCompendium } from "./CompendiumPanel.js";
-import { openGuide } from "./GuidePanel.js";
-import { createCreditsButton } from "./credits.js";
-import { MENU } from "../config/tuning.js";
+import {el, mount} from "./dom.js";
+import {onStateChange, setState, STATE} from "../core/StateMachine.js";
+import {getBestScore, resetBestScore} from "../systems/Score.js";
+import {getMasterVolume, setMasterVolume} from "../systems/Audio.js";
+import {resetAchievements} from "../systems/Achievements.js";
+import {resetCollection} from "../systems/Collection.js";
+import {openAchievements} from "./AchievementsPanel.js";
+import {openCompendium} from "./CompendiumPanel.js";
+import {openGuide} from "./GuidePanel.js";
+import {createCreditsButton} from "./credits.js";
+import {MENU} from "../config/tuning.js";
 
 let overlay = null;
 let bestNode = null;
@@ -22,7 +22,7 @@ export function initMainMenu() {
 
   panel.appendChild(el("div", "game-title", "🐸 TODE"));
   panel.appendChild(
-    el("div", "game-subtitle", "Survive the bugs. Beat your record."),
+    el("div", "game-subtitle", "Survive the night bugs. Beat your record."),
   );
   bestNode = el("div", "best-score");
   panel.appendChild(bestNode);

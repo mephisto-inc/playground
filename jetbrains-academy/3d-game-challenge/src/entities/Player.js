@@ -1,23 +1,14 @@
 import * as THREE from "three";
-import {
-  cloneMaterials,
-  enableShadows,
-  loadGLTF,
-  normalizeModel,
-} from "../core/Assets.js";
-import {
-  isMoveFree,
-  MAX_MOVE_SUB_STEP,
-  registerCollider,
-} from "../core/Collision.js";
-import { getMoveTarget } from "../core/Input.js";
-import { ABILITY, COLLISION, ENEMY, PICKUP, PLAYER } from "../config/tuning.js";
-import { getClass } from "../config/classes.js";
-import { clearMinions, createMinions, updateMinions } from "./Minion.js";
-import { spawnTrail } from "./Trail.js";
-import { sweepPickups } from "./Pickup.js";
-import { addPierceToPlayerShots } from "./Projectile.js";
-import { playSfx } from "../systems/Audio.js";
+import {cloneMaterials, enableShadows, loadGLTF, normalizeModel,} from "../core/Assets.js";
+import {isMoveFree, MAX_MOVE_SUB_STEP, registerCollider,} from "../core/Collision.js";
+import {getMoveTarget} from "../core/Input.js";
+import {ABILITY, COLLISION, ENEMY, PICKUP, PLAYER} from "../config/tuning.js";
+import {getClass} from "../config/classes.js";
+import {clearMinions, createMinions, updateMinions} from "./Minion.js";
+import {spawnTrail} from "./Trail.js";
+import {sweepPickups} from "./Pickup.js";
+import {addPierceToPlayerShots} from "./Projectile.js";
+import {playSfx} from "../systems/Audio.js";
 import {
   recordCardCollected,
   recordClassPlayed,
@@ -25,7 +16,7 @@ import {
   recordShieldBlock,
   unlockAchievement,
 } from "../systems/Achievements.js";
-import { markCollected } from "../systems/Collection.js";
+import {markCollected} from "../systems/Collection.js";
 
 const MODEL_YAW_OFFSET = Math.PI / 2;
 
@@ -49,7 +40,7 @@ async function load() {
   enableShadows(template);
 
   model = template;
-  normalizeModel(model, { targetHeight: PLAYER.targetHeight });
+  normalizeModel(model, {targetHeight: PLAYER.targetHeight});
   modelGroundZ = model.position.z;
 
   modelMaterials = cloneMaterials(model);
@@ -109,7 +100,7 @@ let dead = false;
 let iframes = 0;
 let deathAnimTime = 0;
 
-let dashPickupQueue = { hearts: 0, powerups: 0 };
+let dashPickupQueue = {hearts: 0, powerups: 0};
 
 let cooldownRemaining = 0;
 let shieldRemaining = 0;
@@ -177,7 +168,7 @@ export function configureClass(nextClassId) {
   shieldRemaining = 0;
   pushSucceeded = false;
   pushBurstPending = false;
-  dashPickupQueue = { hearts: 0, powerups: 0 };
+  dashPickupQueue = {hearts: 0, powerups: 0};
   clearDashClones();
   clearMinions();
 
@@ -254,8 +245,15 @@ export function applyCard(card) {
   recordCardCollected(collectedCards.length);
 }
 
+let invincible = false;
+
+export function setPlayerInvincible(value) {
+  invincible = value === true;
+}
+
 export function damagePlayer(amount, kind = "physical") {
   if (dead) return "dead";
+  if (invincible) return "immune";
   if (kind === "physical" && shieldRemaining > 0) {
     recordShieldBlock();
     if (!pushSucceeded) {
@@ -408,7 +406,7 @@ function sweepDashPickups(x1, y1, x2, y2) {
 
 export function consumeDashPickups() {
   const result = dashPickupQueue;
-  dashPickupQueue = { hearts: 0, powerups: 0 };
+  dashPickupQueue = {hearts: 0, powerups: 0};
   return result;
 }
 
@@ -418,7 +416,7 @@ function dashDirection() {
     const dx = target.x - player.position.x;
     const dy = target.y - player.position.y;
     const length = Math.hypot(dx, dy);
-    if (length > 1e-4) return { x: dx / length, y: dy / length };
+    if (length > 1e-4) return {x: dx / length, y: dy / length};
   }
   return {
     x: Math.cos(move.yaw - MODEL_YAW_OFFSET),
@@ -445,6 +443,7 @@ function spawnDashClones(x1, y1, x2, y2, ability) {
     sceneRef.add(clone);
     dashClones.push({
       clone,
+      materials,
       life: ability.cloneLife,
       total: ability.cloneLife,
     });
@@ -457,6 +456,7 @@ function updateDashClones(delta) {
     entry.life -= delta;
     if (entry.life <= 0) {
       dashClones.splice(i, 1);
+      for (const material of entry.materials) material.dispose();
       if (entry.clone.parent) entry.clone.parent.remove(entry.clone);
       continue;
     }
@@ -469,6 +469,7 @@ function updateDashClones(delta) {
 
 function clearDashClones() {
   for (const entry of dashClones) {
+    for (const material of entry.materials) material.dispose();
     if (entry.clone.parent) entry.clone.parent.remove(entry.clone);
   }
   dashClones.length = 0;
@@ -813,7 +814,7 @@ export function resetPlayer() {
   slowFactor = 1;
   slowTimer = 0;
 
-  player.userData.velocity = { x: 0, y: 0 };
+  player.userData.velocity = {x: 0, y: 0};
   hidePushFx();
   player.visible = true;
   if (model) {

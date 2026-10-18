@@ -1,4 +1,4 @@
-import { STORAGE_KEYS, loadJSON, saveJSON } from "../core/Storage.js";
+import {loadJSON, saveJSON, STORAGE_KEYS} from "../core/Storage.js";
 
 let collected = new Set(loadJSON(STORAGE_KEYS.collection, []));
 

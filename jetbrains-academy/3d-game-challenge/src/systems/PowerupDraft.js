@@ -1,7 +1,7 @@
-import { DRAFT } from "../config/tuning.js";
-import { POWERUPS } from "../config/powerups.js";
-import { getActiveClassId } from "../entities/Player.js";
-import { playSfx } from "./Audio.js";
+import {DRAFT} from "../config/tuning.js";
+import {POWERUPS} from "../config/powerups.js";
+import {getActiveClassId} from "../entities/Player.js";
+import {playSfx} from "./Audio.js";
 
 let offers = [];
 let reshufflesLeft = 0;

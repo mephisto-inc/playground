@@ -1,10 +1,21 @@
 import * as THREE from "three";
-import { registerBoxCollider } from "../core/Collision.js";
-import { assetUrl } from "../core/Assets.js";
+import {registerBoxCollider} from "../core/Collision.js";
+import {assetUrl} from "../core/Assets.js";
 import renderer from "../core/Renderer.js";
-import { ARENA, MENU } from "../config/tuning.js";
+import {isLambertTier} from "../core/Quality.js";
+import {ARENA, MENU} from "../config/tuning.js";
 
 export const map = new THREE.Group();
+
+function makeSurfaceMaterial(options) {
+  if (isLambertTier()) {
+    const lambertOptions = {...options};
+    delete lambertOptions.roughness;
+    delete lambertOptions.metalness;
+    return new THREE.MeshLambertMaterial(lambertOptions);
+  }
+  return new THREE.MeshStandardMaterial(options);
+}
 
 function makeFloor() {
   const texture = new THREE.TextureLoader().load(
@@ -21,7 +32,7 @@ function makeFloor() {
 
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(ARENA.width, ARENA.depth),
-    new THREE.MeshStandardMaterial({
+    makeSurfaceMaterial({
       map: texture,
       roughness: 1,
       metalness: 0,
@@ -34,7 +45,7 @@ function makeFloor() {
 function makeBackdrop() {
   const backdrop = new THREE.Mesh(
     new THREE.PlaneGeometry(ARENA.backdropSize, ARENA.backdropSize),
-    new THREE.MeshStandardMaterial({
+    makeSurfaceMaterial({
       color: ARENA.backdropColor,
       roughness: 1,
       metalness: 0,
@@ -64,7 +75,7 @@ function addBoundaryWalls() {
       new THREE.Vector3(x, y, 0),
       halfWidth,
       halfDepth,
-      { boundary: true },
+      {boundary: true},
     );
   }
 }

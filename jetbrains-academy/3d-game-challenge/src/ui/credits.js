@@ -1,4 +1,4 @@
-import { el } from "./dom.js";
+import {el} from "./dom.js";
 
 const CREDITS_URL =
   "https://github.com/mephisto-inc/jogos/tree/main/3d-game-challenge#creditos";

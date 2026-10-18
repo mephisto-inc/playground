@@ -1,19 +1,9 @@
-import { attachTooltip, el, formatClock, hideTooltip, mount } from "./dom.js";
-import {
-  STATE,
-  getState,
-  onStateChange,
-  setState,
-} from "../core/StateMachine.js";
-import {
-  getAbilityInfo,
-  getCollectedCards,
-  getHearts,
-  getStats,
-} from "../entities/Player.js";
-import { getScore } from "../systems/Score.js";
-import { getWaveInfo } from "../systems/Waves.js";
-import { getPowerup } from "../config/powerups.js";
+import {attachTooltip, el, formatClock, hideTooltip, mount} from "./dom.js";
+import {getState, onStateChange, setState, STATE,} from "../core/StateMachine.js";
+import {getAbilityInfo, getCollectedCards, getHearts, getStats,} from "../entities/Player.js";
+import {getScore} from "../systems/Score.js";
+import {getWaveInfo} from "../systems/Waves.js";
+import {getPowerup} from "../config/powerups.js";
 
 let heartsNode = null;
 let waveNode = null;

@@ -1,4 +1,4 @@
-import { clamp } from "./MathUtils.js";
+import {clamp} from "./MathUtils.js";
 
 const MIN_ASPECT = 4 / 3;
 const MAX_ASPECT = 16 / 9;
@@ -7,7 +7,7 @@ const UI_REF_WIDTH = 700;
 const UI_REF_HEIGHT = 560;
 
 let aspect = 1;
-let rect = { left: 0, top: 0, width: 0, height: 0 };
+let rect = {left: 0, top: 0, width: 0, height: 0};
 
 export function applyViewport() {
   const windowWidth = window.innerWidth;

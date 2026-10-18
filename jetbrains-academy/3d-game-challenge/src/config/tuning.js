@@ -10,14 +10,14 @@ export const ARENA = {
 };
 
 export const SPAWN_POINTS = [
-  { x: 49.74, y: 0 },
-  { x: -49.74, y: 0 },
-  { x: 0, y: 35.16 },
-  { x: 0, y: -35.16 },
-  { x: 49.74, y: 35.16 },
-  { x: -49.74, y: 35.16 },
-  { x: 49.74, y: -35.16 },
-  { x: -49.74, y: -35.16 },
+  {x: 49.74, y: 0},
+  {x: -49.74, y: 0},
+  {x: 0, y: 35.16},
+  {x: 0, y: -35.16},
+  {x: 49.74, y: 35.16},
+  {x: -49.74, y: 35.16},
+  {x: 49.74, y: -35.16},
+  {x: -49.74, y: -35.16},
 ];
 
 export const CAMERA = {
@@ -31,12 +31,56 @@ export const CAMERA = {
   far: 4000,
 };
 
+export const QUALITY = {
+  overrideParam: "quality",
+  overrides: ["high", "medium", "low"],
+  mobileTier: "low",
+  desktopTier: "high",
+  tiers: {
+    high: {
+      dprCap: 2,
+      antialias: true,
+      shadows: true,
+      shadowMapSize: 4096,
+      shadowType: "PCFSoft",
+      blobShadows: false,
+      lambert: false,
+    },
+    medium: {
+      dprCap: 1.5,
+      antialias: true,
+      shadows: true,
+      shadowMapSize: 1024,
+      shadowType: "PCF",
+      blobShadows: false,
+      lambert: false,
+    },
+    low: {
+      dprCap: 1.25,
+      antialias: false,
+      shadows: false,
+      shadowMapSize: 512,
+      shadowType: "PCF",
+      blobShadows: true,
+      lambert: true,
+    },
+  },
+  autoDowngrade: {
+    targetFps: 30,
+    windowMs: 5_000,
+    stepCooldownMs: 5_000,
+    minDprCap: 1,
+    dprStep: 0.25,
+    minShadowMapSize: 512,
+  },
+};
+
 export const LIGHTS = {
   ambientColor: 0x8fb3ff,
   ambientIntensity: 0.45,
   dirColor: 0xbfd4ff,
   dirIntensity: 0.955,
-  dirPosition: { x: 15, y: -20, z: 30 },
+  dirPosition: {x: 15, y: -20, z: 30},
 
   shadowHalfX: 76,
   shadowHalfY: 61,
@@ -90,11 +134,11 @@ export const TREES = {
 
 export const HOUSE = {
   houses: [
-    { asset: "053kskrV4U_", x: -31.68, y: 18.72 },
-    { asset: "oJJIRwv6Bo", x: 31.68, y: 18.72 },
-    { asset: "L7h0SjZX2K", x: -31.68, y: -18.72 },
-    { asset: "vZ1CLbWmSx", x: 31.68, y: -18.72 },
-    { asset: "wxi3kAu5ey", x: -9.9, y: 6.3 },
+    {asset: "053kskrV4U_", x: -31.68, y: 18.72},
+    {asset: "oJJIRwv6Bo", x: 31.68, y: 18.72},
+    {asset: "L7h0SjZX2K", x: -31.68, y: -18.72},
+    {asset: "vZ1CLbWmSx", x: 31.68, y: -18.72},
+    {asset: "wxi3kAu5ey", x: -9.9, y: 6.3},
   ],
   houseHeight: 4.95,
   houseFadeRadius: 12,
@@ -227,6 +271,7 @@ export const PROJECTILE = {
   enemySpeed: 4,
   enemyRadius: 0.3,
   enemyLifetime: 6,
+  enemyCullMargin: 10,
   bossOrbSpeed: 15,
   bossOrbRadius: 0.35,
   bossOrbLifetime: 5,

@@ -1,28 +1,12 @@
-import { ENEMY, SPAWN_POINTS } from "../config/tuning.js";
-import { getWaveDef, TOTAL_WAVES } from "../config/waves.js";
-import {
-  getAliveCount,
-  getEnemyRadius,
-  setDoomScaling,
-  setEndlessScaling,
-  spawnEnemy,
-} from "../entities/Enemy.js";
-import {
-  getBossInfo,
-  isBossAlive,
-  setBossEndlessScaling,
-  spawnBoss,
-} from "../entities/Boss.js";
-import { getStats } from "../entities/Player.js";
-import { isSpotFree } from "../core/Collision.js";
-import { addScore, getScore } from "./Score.js";
-import {
-  onBossDefeated,
-  onEndlessTime,
-  onWaveCleared,
-  onWaveStarted,
-} from "./Achievements.js";
-import { setWaveStage } from "./Audio.js";
+import {ENEMY, SPAWN_POINTS} from "../config/tuning.js";
+import {getWaveDef, TOTAL_WAVES} from "../config/waves.js";
+import {getAliveCount, getEnemyRadius, setDoomScaling, setEndlessScaling, spawnEnemy,} from "../entities/Enemy.js";
+import {getBossInfo, isBossAlive, setBossEndlessScaling, spawnBoss,} from "../entities/Boss.js";
+import {getStats} from "../entities/Player.js";
+import {isSpotFree} from "../core/Collision.js";
+import {addScore, getScore} from "./Score.js";
+import {onBossDefeated, onEndlessTime, onWaveCleared, onWaveStarted,} from "./Achievements.js";
+import {setWaveStage} from "./Audio.js";
 
 let clearHandler = null;
 
@@ -43,9 +27,9 @@ export function registerClearHandler(callback) {
   clearHandler = callback;
 }
 
-export function startRun() {
+export function startRun(waveNumber = 1) {
   running = true;
-  startWave(1);
+  startWave(waveNumber);
 }
 
 export function resetWaves() {
@@ -219,7 +203,7 @@ function spawnOneEnemy(pool) {
     const x = point.x + Math.cos(angle) * distance;
     const y = point.y + Math.sin(angle) * distance;
     if (isSpotFree(x, y, radius)) {
-      spawnEnemy(typeId, { x, y });
+      spawnEnemy(typeId, {x, y});
       return;
     }
   }

@@ -1,5 +1,5 @@
-import { el, mount } from "./dom.js";
-import { getAchievementStatus } from "../systems/Achievements.js";
+import {el, mount} from "./dom.js";
+import {getAchievementStatus} from "../systems/Achievements.js";
 
 let overlay = null;
 let listNode = null;

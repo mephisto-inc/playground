@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { CAMERA } from "../config/tuning.js";
-import { getAspect } from "../core/Viewport.js";
+import {CAMERA} from "../config/tuning.js";
+import {getAspect} from "../core/Viewport.js";
 
 const FRUSTUM_WIDTH = CAMERA.viewWidth;
 
@@ -77,6 +77,15 @@ export function snapCameraTo(playerPosition) {
     playerPosition.y + FOLLOW_OFFSET.y,
     FOLLOW_OFFSET.z,
   );
+}
+
+export function getGroundViewCull(target, margin) {
+  target.x = camera.position.x - FOLLOW_OFFSET.x;
+  target.y = camera.position.y - FOLLOW_OFFSET.y;
+  const halfWidth = FRUSTUM_WIDTH / 2;
+  const halfHeight = FRUSTUM_WIDTH / getAspect() / 2;
+  target.radius = Math.hypot(halfWidth, halfHeight) + margin;
+  return target;
 }
 
 export default camera;

@@ -1,14 +1,8 @@
-import {
-  cloneMaterials,
-  cloneModel,
-  enableShadows,
-  loadGLTF,
-  normalizeModel,
-} from "../core/Assets.js";
-import { distanceToSegment } from "../core/MathUtils.js";
-import { ARENA, SPAWN_POINTS, TREES } from "../config/tuning.js";
-import { getHouseCenters } from "./Houses.js";
-import { updateFade } from "./Fade.js";
+import {cloneMaterials, cloneModel, enableShadows, loadGLTF, normalizeModel,} from "../core/Assets.js";
+import {distanceToSegment} from "../core/MathUtils.js";
+import {ARENA, SPAWN_POINTS, TREES} from "../config/tuning.js";
+import {getHouseCenters} from "./Houses.js";
+import {updateFade} from "./Fade.js";
 
 const trees = [];
 
@@ -43,7 +37,7 @@ function plantTree(mapGroup, variantIds, heightMin, heightMax, x, y) {
   const height = (heightMin + Math.random() * (heightMax - heightMin)) * jitter;
   const yaw = Math.random() * Math.PI * 2;
 
-  const { groundOffset } = normalizeModel(model, { targetHeight: height, yaw });
+  const {groundOffset} = normalizeModel(model, {targetHeight: height, yaw});
   model.position.set(x, y, groundOffset);
 
   const materials = cloneMaterials(model);
@@ -53,7 +47,7 @@ function plantTree(mapGroup, variantIds, heightMin, heightMax, x, y) {
   });
   mapGroup.add(model);
 
-  trees.push({ object: model, materials, opacity: 1 });
+  trees.push({object: model, materials, opacity: 1});
   return model;
 }
 
@@ -68,7 +62,7 @@ function randomRingPoint() {
   const x = (Math.random() * 2 - 1) * outerX;
   const y = (Math.random() * 2 - 1) * outerY;
   if (Math.abs(x) <= innerX && Math.abs(y) <= innerY) return null;
-  return { x, y };
+  return {x, y};
 }
 
 function randomScatterPoint() {
@@ -87,7 +81,7 @@ function randomScatterPoint() {
       return null;
     }
   }
-  return { x, y };
+  return {x, y};
 }
 
 function isFarFromPlaced(point, placed, minSpacing) {

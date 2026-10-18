@@ -1,13 +1,8 @@
-import { el, mount } from "./dom.js";
-import {
-  getState,
-  onStateChange,
-  setState,
-  STATE,
-} from "../core/StateMachine.js";
-import { getMasterVolume, setMasterVolume } from "../systems/Audio.js";
-import { openAchievements } from "./AchievementsPanel.js";
-import { openCompendium } from "./CompendiumPanel.js";
+import {el, mount} from "./dom.js";
+import {getState, onStateChange, setState, STATE,} from "../core/StateMachine.js";
+import {getMasterVolume, setMasterVolume} from "../systems/Audio.js";
+import {openAchievements} from "./AchievementsPanel.js";
+import {openCompendium} from "./CompendiumPanel.js";
 
 let overlay = null;
 let volumeSlider = null;

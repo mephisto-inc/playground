@@ -1,13 +1,8 @@
 import * as THREE from "three";
-import {
-  cloneModel,
-  enableShadows,
-  loadGLTF,
-  normalizeModel,
-} from "../core/Assets.js";
-import { registerBoxCollider } from "../core/Collision.js";
-import { COLLISION, TREES, HOUSE } from "../config/tuning.js";
-import { updateFade } from "./Fade.js";
+import {cloneModel, enableShadows, loadGLTF, normalizeModel,} from "../core/Assets.js";
+import {registerBoxCollider} from "../core/Collision.js";
+import {COLLISION, HOUSE, TREES} from "../config/tuning.js";
+import {updateFade} from "./Fade.js";
 
 const houses = [];
 
@@ -31,7 +26,7 @@ async function placeHouse(definition, mapGroup) {
     }
   });
 
-  normalizeModel(model, { targetHeight: HOUSE.houseHeight, yaw });
+  normalizeModel(model, {targetHeight: HOUSE.houseHeight, yaw});
 
   const scratch = new THREE.Group();
   scratch.add(model);
@@ -63,11 +58,11 @@ async function placeHouse(definition, mapGroup) {
   const halfDepth = (size.y / 2) * COLLISION.houseRadiusMul;
   registerBoxCollider(group, group.position, halfWidth, halfDepth);
 
-  houses.push({ object: group, materials, opacity: 1 });
+  houses.push({object: group, materials, opacity: 1});
 }
 
 export function getHouseCenters() {
-  return HOUSE.houses.map((house) => ({ x: house.x, y: house.y }));
+  return HOUSE.houses.map((house) => ({x: house.x, y: house.y}));
 }
 
 export async function initHouses(mapGroup) {

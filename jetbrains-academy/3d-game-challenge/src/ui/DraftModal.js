@@ -1,12 +1,8 @@
-import { el, mount } from "./dom.js";
-import { STATE, onStateChange } from "../core/StateMachine.js";
-import {
-  getOffers,
-  getReshufflesLeft,
-  reshuffle,
-} from "../systems/PowerupDraft.js";
-import { completeDraft } from "../systems/Run.js";
-import { DRAFT } from "../config/tuning.js";
+import {el, mount} from "./dom.js";
+import {onStateChange, STATE} from "../core/StateMachine.js";
+import {getOffers, getReshufflesLeft, reshuffle,} from "../systems/PowerupDraft.js";
+import {completeDraft} from "../systems/Run.js";
+import {DRAFT} from "../config/tuning.js";
 
 let overlay = null;
 let cardsRow = null;
@@ -54,7 +50,7 @@ function renderOffers() {
     node.appendChild(el("div", "name", card.name));
     node.appendChild(el("div", "desc", card.description));
     node.addEventListener("click", () => {
-      if (performance.now() - openedAt < INPUT_LOCK_MS) return;
+      if (performance.now() - openedAt < DRAFT.inputLock) return;
       completeDraft(card);
     });
     cardsRow.appendChild(node);

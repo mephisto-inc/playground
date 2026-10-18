@@ -1,7 +1,7 @@
-import { loadJSON, saveJSON, STORAGE_KEYS } from "../core/Storage.js";
-import { ACHIEVEMENT_TARGETS, ACHIEVEMENTS } from "../config/achievements.js";
+import {loadJSON, saveJSON, STORAGE_KEYS} from "../core/Storage.js";
+import {ACHIEVEMENT_TARGETS, ACHIEVEMENTS} from "../config/achievements.js";
 
-const registry = ACHIEVEMENTS.map((entry) => ({ ...entry }));
+const registry = ACHIEVEMENTS.map((entry) => ({...entry}));
 let unlocked = new Set(loadJSON(STORAGE_KEYS.achievements, []));
 let runUnlocks = [];
 const unlockListeners = new Set();

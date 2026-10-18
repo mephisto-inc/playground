@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { PICKUP } from "../config/tuning.js";
-import { isInsideTrail } from "./Trail.js";
+import {PICKUP} from "../config/tuning.js";
+import {isInsideTrail} from "./Trail.js";
 
 function makeHeartShape() {
   const shape = new THREE.Shape();
@@ -50,12 +50,12 @@ function spawnPickup(kind, geometry, material, x, y) {
   mesh.rotation.z =
     Math.random() * Math.PI * 2 + (kind === "powerup" ? Math.PI / 4 : 0);
   sceneRef.add(mesh);
-  pickups.push({ mesh, kind, age: 0, t: Math.random() * Math.PI * 2 });
+  pickups.push({mesh, kind, age: 0, t: Math.random() * Math.PI * 2});
 }
 
 export function updatePickups(delta, playerX, playerY, magnetRadius) {
   elapsed += delta;
-  const collected = { hearts: 0, powerups: 0 };
+  const collected = {hearts: 0, powerups: 0};
 
   for (let i = pickups.length - 1; i >= 0; i--) {
     const pickup = pickups[i];
@@ -86,7 +86,7 @@ export function updatePickups(delta, playerX, playerY, magnetRadius) {
     const pulse =
       1 +
       PICKUP.pulseAmplitude *
-        Math.sin(elapsed * PICKUP.pulseHz * Math.PI * 2 + pickup.t);
+      Math.sin(elapsed * PICKUP.pulseHz * Math.PI * 2 + pickup.t);
     pickup.mesh.scale.setScalar(0.6 * pulse);
     pickup.mesh.rotation.z += delta * 0.8;
 
@@ -101,7 +101,7 @@ export function updatePickups(delta, playerX, playerY, magnetRadius) {
 }
 
 export function sweepPickups(x, y, radius) {
-  const collected = { hearts: 0, powerups: 0 };
+  const collected = {hearts: 0, powerups: 0};
   for (let i = pickups.length - 1; i >= 0; i--) {
     const pickup = pickups[i];
     const dx = pickup.mesh.position.x - x;

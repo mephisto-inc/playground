@@ -1,34 +1,34 @@
 import * as THREE from "three";
-import { isObstacleFree, MAX_MOVE_SUB_STEP } from "../core/Collision.js";
-import { COLLISION, PROJECTILE } from "../config/tuning.js";
+import {isObstacleFree, MAX_MOVE_SUB_STEP} from "../core/Collision.js";
+import {COLLISION, PROJECTILE} from "../config/tuning.js";
 
 const bulletGeometry = new THREE.SphereGeometry(1, 8, 6);
 
 const materials = {
-  player: new THREE.MeshBasicMaterial({ color: PROJECTILE.colors.player }),
-  minion: new THREE.MeshBasicMaterial({ color: PROJECTILE.colors.minion }),
-  enemy: new THREE.MeshBasicMaterial({ color: PROJECTILE.colors.enemy }),
-  boss: new THREE.MeshBasicMaterial({ color: PROJECTILE.colors.boss }),
+  player: new THREE.MeshBasicMaterial({color: PROJECTILE.colors.player}),
+  minion: new THREE.MeshBasicMaterial({color: PROJECTILE.colors.minion}),
+  enemy: new THREE.MeshBasicMaterial({color: PROJECTILE.colors.enemy}),
+  boss: new THREE.MeshBasicMaterial({color: PROJECTILE.colors.boss}),
 };
 
 const bullets = [];
 let sceneRef = null;
 
 function spawnBullet({
-  owner,
-  x,
-  y,
-  z,
-  dirX,
-  dirY,
-  speed,
-  damage,
-  radius,
-  life,
-  pierce = 0,
-  sender = null,
-  source = null,
-}) {
+                       owner,
+                       x,
+                       y,
+                       z,
+                       dirX,
+                       dirY,
+                       speed,
+                       damage,
+                       radius,
+                       life,
+                       pierce = 0,
+                       sender = null,
+                       source = null,
+                     }) {
   if (!sceneRef) return null;
 
   const mesh = new THREE.Mesh(bulletGeometry, materials[owner]);
@@ -48,6 +48,7 @@ function spawnBullet({
     hitSet: new Set(),
     sender,
     source,
+    enteredView: false,
   };
   bullets.push(bullet);
   return bullet;
@@ -58,7 +59,7 @@ export function spawnPlayerShot(
   y,
   dirX,
   dirY,
-  { damage, speed, radiusMul = 1 },
+  {damage, speed, radiusMul = 1},
 ) {
   return spawnBullet({
     owner: "player",
@@ -80,7 +81,7 @@ export function spawnMinionShot(
   y,
   dirX,
   dirY,
-  { damage, speed, radiusMul = 1 },
+  {damage, speed, radiusMul = 1},
 ) {
   return spawnBullet({
     owner: "minion",
@@ -174,8 +175,8 @@ export function addPierceToPlayerShots(extraPierce) {
   }
 }
 
-export function updateProjectiles(delta, enemies, playerInfo) {
-  const events = { enemyHits: [], playerHits: [] };
+export function updateProjectiles(delta, enemies, playerInfo, viewCull = null) {
+  const events = {enemyHits: [], playerHits: []};
 
   for (let i = bullets.length - 1; i >= 0; i--) {
     const bullet = bullets[i];
@@ -213,7 +214,7 @@ export function updateProjectiles(delta, enemies, playerInfo) {
           if (dx * dx + dy * dy > reach * reach) continue;
 
           bullet.hitSet.add(enemy);
-          events.enemyHits.push({ bullet, enemy });
+          events.enemyHits.push({bullet, enemy});
 
           if (enemy.userData.blocksShots) {
             dead = true;
@@ -232,6 +233,20 @@ export function updateProjectiles(delta, enemies, playerInfo) {
           events.playerHits.push(bullet);
           dead = true;
         }
+      }
+    }
+
+    if (
+      viewCull &&
+      (bullet.owner === "enemy" || bullet.owner === "boss")
+    ) {
+      const offX = bullet.mesh.position.x - viewCull.x;
+      const offY = bullet.mesh.position.y - viewCull.y;
+      const reach = viewCull.radius + bullet.hitRadius;
+      if (offX * offX + offY * offY <= reach * reach) {
+        bullet.enteredView = true;
+      } else if (bullet.enteredView) {
+        dead = true;
       }
     }
 

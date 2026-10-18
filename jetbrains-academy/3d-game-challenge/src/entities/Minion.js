@@ -1,10 +1,10 @@
 import * as THREE from "three";
-import { getEnemies } from "./Enemy.js";
-import { spawnMinionShot } from "./Projectile.js";
-import { assetUrl } from "../core/Assets.js";
-import { isLineSightClear } from "../core/Collision.js";
-import { playSfx } from "../systems/Audio.js";
-import { COLLISION, PLAYER, PROJECTILE } from "../config/tuning.js";
+import {getEnemies} from "./Enemy.js";
+import {spawnMinionShot} from "./Projectile.js";
+import {assetUrl} from "../core/Assets.js";
+import {isLineSightClear} from "../core/Collision.js";
+import {playSfx} from "../systems/Audio.js";
+import {COLLISION, PLAYER, PROJECTILE} from "../config/tuning.js";
 
 let texture = null;
 let texturePromise = null;
@@ -137,7 +137,7 @@ function fireVolley(origin, target, stats, ability) {
   const dy = target.position.y - origin.y;
   const distance = Math.max(Math.hypot(dx, dy), 1e-4);
   const flightTime = distance / MINION_SHOT_SPEED;
-  const velocity = target.userData.velocity || { x: 0, y: 0 };
+  const velocity = target.userData.velocity || {x: 0, y: 0};
   const aimX =
     target.position.x + velocity.x * flightTime * PROJECTILE.aimLeadFactor;
   const aimY =
@@ -157,7 +157,7 @@ function fireVolley(origin, target, stats, ability) {
       origin.y,
       Math.cos(angle),
       Math.sin(angle),
-      { damage, speed: MINION_SHOT_SPEED, radiusMul: stats.bulletRadiusMul },
+      {damage, speed: MINION_SHOT_SPEED, radiusMul: stats.bulletRadiusMul},
     );
 
     if (bullet) bullet.pierce = stats.pierce;
@@ -166,6 +166,9 @@ function fireVolley(origin, target, stats, ability) {
 
 export function clearMinions() {
   for (const minion of minions) {
+    minion.group.traverse((child) => {
+      if (child.material) child.material.dispose();
+    });
     minion.group.remove(...minion.group.children);
     if (minion.group.parent) minion.group.parent.remove(minion.group);
   }

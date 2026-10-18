@@ -1,14 +1,14 @@
-import { version } from "../../package.json";
-import { initHUD, updateHUD } from "./HUD.js";
-import { initMainMenu } from "./MainMenu.js";
-import { initCharacterSelect } from "./CharacterSelect.js";
-import { initDraftModal } from "./DraftModal.js";
-import { initPauseMenu } from "./PauseMenu.js";
-import { initGameOverScreen } from "./GameOverScreen.js";
-import { initGuidePanel } from "./GuidePanel.js";
-import { initCompendiumPanel } from "./CompendiumPanel.js";
-import { initAchievementsPanel } from "./AchievementsPanel.js";
-import { initToast } from "./Toast.js";
+import {version} from "../../package.json";
+import {initHUD, updateHUD} from "./HUD.js";
+import {initMainMenu} from "./MainMenu.js";
+import {initCharacterSelect} from "./CharacterSelect.js";
+import {initDraftModal} from "./DraftModal.js";
+import {initPauseMenu} from "./PauseMenu.js";
+import {initGameOverScreen} from "./GameOverScreen.js";
+import {initGuidePanel} from "./GuidePanel.js";
+import {initCompendiumPanel} from "./CompendiumPanel.js";
+import {initAchievementsPanel} from "./AchievementsPanel.js";
+import {initToast} from "./Toast.js";
 
 export function initUI() {
   initHUD();
@@ -31,4 +31,4 @@ function initVersionTag() {
   document.getElementById("ui-root").appendChild(tag);
 }
 
-export { updateHUD };
+export {updateHUD};

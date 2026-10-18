@@ -1,3 +1,5 @@
 .idea/
 node_modules/
 dist/
+tests/perf/debug/
+tests/perf/results/

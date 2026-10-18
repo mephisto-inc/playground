@@ -1,6 +1,8 @@
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { clone as skeletonClone } from "three/addons/utils/SkeletonUtils.js";
-import { measureCollisionShape } from "./Collision.js";
+import * as THREE from "three";
+import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
+import {clone as skeletonClone} from "three/addons/utils/SkeletonUtils.js";
+import {measureCollisionShape} from "./Collision.js";
+import {isLambertTier} from "./Quality.js";
 
 const loader = new GLTFLoader();
 
@@ -8,9 +10,51 @@ export function assetUrl(path) {
   return import.meta.env.BASE_URL + path.replace(/^\/+/, "");
 }
 
+function toLambert(material) {
+  if (!material.isMeshStandardMaterial) return material;
+  const lambert = new THREE.MeshLambertMaterial({
+    name: material.name,
+    color: material.color?.clone(),
+    map: material.map ?? null,
+    lightMap: material.lightMap ?? null,
+    emissive: material.emissive?.clone(),
+    emissiveMap: material.emissiveMap ?? null,
+    emissiveIntensity: material.emissiveIntensity,
+    alphaMap: material.alphaMap ?? null,
+    transparent: material.transparent,
+    opacity: material.opacity,
+    alphaTest: material.alphaTest,
+    side: material.side,
+    vertexColors: material.vertexColors,
+    fog: material.fog,
+    depthWrite: material.depthWrite,
+  });
+  material.dispose();
+  return lambert;
+}
+
+function downgradeToLambert(root) {
+  root.traverse((child) => {
+    if (!child.isMesh) return;
+    if (Array.isArray(child.material)) {
+      child.material = child.material.map(toLambert);
+    } else if (child.material) {
+      child.material = toLambert(child.material);
+    }
+  });
+}
+
 export function loadGLTF(url) {
   return new Promise((resolve, reject) => {
-    loader.load(assetUrl(url), resolve, undefined, reject);
+    loader.load(
+      assetUrl(url),
+      (gltf) => {
+        if (isLambertTier()) downgradeToLambert(gltf.scene);
+        resolve(gltf);
+      },
+      undefined,
+      reject,
+    );
   });
 }
 
@@ -27,7 +71,7 @@ export function cloneModel(template) {
     : template.clone();
 }
 
-export function normalizeModel(model, { targetHeight, yaw = 0 } = {}) {
+export function normalizeModel(model, {targetHeight, yaw = 0} = {}) {
   model.rotation.x = Math.PI / 2;
   model.rotation.y = yaw;
   model.scale.setScalar(1);
@@ -75,5 +119,14 @@ export function fadeMaterials(materials, opacity) {
       material.needsUpdate = true;
     }
     material.opacity = opacity;
+  }
+}
+
+export function disposeModel(model, materials) {
+  model.traverse((child) => {
+    if (child.isSkinnedMesh && child.skeleton) child.skeleton.dispose();
+  });
+  if (materials) {
+    for (const material of materials) material.dispose();
   }
 }

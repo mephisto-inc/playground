@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { COLLISION } from "../config/tuning.js";
+import {COLLISION} from "../config/tuning.js";
 
 export const MAX_MOVE_SUB_STEP = 0.1;
 
@@ -8,24 +8,14 @@ const EPSILON = 1e-6;
 const colliders = new Map();
 
 export function registerCollider(owner, position, radius) {
-  const collider = { position, shape: "circle", radius };
+  const collider = {position, shape: "circle", radius};
   colliders.set(owner, collider);
   return collider;
 }
 
-export function registerBoxCollider(
-  owner,
-  position,
-  halfWidth,
-  halfDepth,
-  options = {},
-) {
+export function registerBoxCollider(owner, position, halfWidth, halfDepth, options = {},) {
   const collider = {
-    position,
-    shape: "box",
-    halfWidth,
-    halfDepth,
-    boundary: !!options.boundary,
+    position, shape: "box", halfWidth, halfDepth, boundary: !!options.boundary,
   };
   colliders.set(owner, collider);
   return collider;
@@ -45,13 +35,7 @@ function penetrationOf(x, y, radius, other) {
     const dy = Math.max(Math.abs(y - other.position.y) - other.halfDepth, 0);
     return Math.max(0, radius + COLLISION.padding - Math.hypot(dx, dy));
   }
-  return Math.max(
-    0,
-    radius +
-      other.radius +
-      COLLISION.padding -
-      Math.hypot(x - other.position.x, y - other.position.y),
-  );
+  return Math.max(0, radius + other.radius + COLLISION.padding - Math.hypot(x - other.position.x, y - other.position.y),);
 }
 
 export function circlesTouch(x1, y1, r1, x2, y2, r2) {
@@ -65,12 +49,7 @@ export function isMoveFree(mover, x, y, ignoreBoundary = false) {
     if (ignoreBoundary && other.boundary) continue;
     const after = penetrationOf(x, y, mover.radius, other);
     if (after <= EPSILON) continue;
-    const before = penetrationOf(
-      mover.position.x,
-      mover.position.y,
-      mover.radius,
-      other,
-    );
+    const before = penetrationOf(mover.position.x, mover.position.y, mover.radius, other,);
     if (before <= EPSILON) return false;
     if (after > before + EPSILON) return false;
   }
@@ -86,14 +65,7 @@ export function isObstacleFree(x, y, radius, ignoreBoundary = false) {
   return true;
 }
 
-export function isLineSightClear(
-  x1,
-  y1,
-  x2,
-  y2,
-  margin,
-  ignoreBoundary = false,
-) {
+export function isLineSightClear(x1, y1, x2, y2, margin, ignoreBoundary = false,) {
   const dx = x2 - x1;
   const dy = y2 - y1;
   for (const other of colliders.values()) {
@@ -170,8 +142,6 @@ export function measureCollisionShape(object) {
   }
 
   return {
-    radius,
-    groundOffset: -minZ,
-    size: { x: max.x - min.x, y: max.y - min.y, z: max.z - min.z },
+    radius, groundOffset: -minZ, size: {x: max.x - min.x, y: max.y - min.y, z: max.z - min.z},
   };
 }

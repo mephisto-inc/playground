@@ -1,6 +1,6 @@
-import { attachTooltip, el, hideTooltip, mount } from "./dom.js";
-import { onUnlock } from "../systems/Achievements.js";
-import { MENU } from "../config/tuning.js";
+import {attachTooltip, el, hideTooltip, mount} from "./dom.js";
+import {onUnlock} from "../systems/Achievements.js";
+import {MENU} from "../config/tuning.js";
 
 let container = null;
 

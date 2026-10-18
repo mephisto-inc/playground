@@ -1,10 +1,4 @@
-import {
-  BOSS,
-  COLLISION,
-  ENEMY,
-  PICKUP,
-  PROJECTILE,
-} from "../config/tuning.js";
+import {BOSS, COLLISION, ENEMY, PICKUP, PROJECTILE,} from "../config/tuning.js";
 import player, {
   consumeDashPickups,
   consumePushBurst,
@@ -29,23 +23,22 @@ import {
   stunEnemy,
   updateEnemies,
 } from "../entities/Enemy.js";
-import { damageBoss, updateBoss } from "../entities/Boss.js";
-import {
-  reflectProjectilesNear,
-  spawnPlayerShot,
-  updateProjectiles,
-} from "../entities/Projectile.js";
-import { updatePickups } from "../entities/Pickup.js";
-import { updateTrails } from "../entities/Trail.js";
-import { playSfx } from "./Audio.js";
-import { markPlayerDamaged, recordPush } from "./Achievements.js";
-import { getCollider, isLineSightClear } from "../core/Collision.js";
-import { STATE, getState } from "../core/StateMachine.js";
+import {damageBoss, updateBoss} from "../entities/Boss.js";
+import {reflectProjectilesNear, spawnPlayerShot, updateProjectiles,} from "../entities/Projectile.js";
+import {updatePickups} from "../entities/Pickup.js";
+import {updateTrails} from "../entities/Trail.js";
+import {playSfx} from "./Audio.js";
+import {markPlayerDamaged, recordPush} from "./Achievements.js";
+import {getCollider, isLineSightClear} from "../core/Collision.js";
+import {getGroundViewCull} from "../world/Camera.js";
+import {getState, STATE} from "../core/StateMachine.js";
 
 let fireTimer = 0;
 let deathCallback = null;
 let powerupCallback = null;
 let pendingPowerups = 0;
+
+const viewCull = {x: 0, y: 0, radius: 0};
 
 export function onPlayerDeath(callback) {
   deathCallback = callback;
@@ -69,7 +62,12 @@ export function updateCombat(delta) {
 
   reflectWithShield();
 
-  const events = updateProjectiles(delta, getEnemies(), playerHitShape());
+  const events = updateProjectiles(
+    delta,
+    getEnemies(),
+    playerHitShape(),
+    getGroundViewCull(viewCull, PROJECTILE.enemyCullMargin),
+  );
   resolveEnemyHits(events.enemyHits);
   resolvePlayerHits(events.playerHits);
 
@@ -161,7 +159,7 @@ function fireVolley(target) {
   const dy = target.position.y - originY;
   const distance = Math.max(Math.hypot(dx, dy), 1e-4);
   const flightTime = distance / shotSpeed;
-  const velocity = target.userData.velocity || { x: 0, y: 0 };
+  const velocity = target.userData.velocity || {x: 0, y: 0};
   const aimX =
     target.position.x + velocity.x * flightTime * PROJECTILE.aimLeadFactor;
   const aimY =
@@ -251,7 +249,7 @@ function applyPushBurst() {
         );
         recordPush();
       }
-      damageEnemy(enemy, damage, { source: "shockwave" });
+      damageEnemy(enemy, damage, {source: "shockwave"});
       stunEnemy(enemy, ability.stun);
     }
   }
@@ -259,8 +257,8 @@ function applyPushBurst() {
 
 function resolveEnemyHits(enemyHits) {
   const stats = getStats();
-  for (const { bullet, enemy } of enemyHits) {
-    const options = { source: bullet.source || "shot" };
+  for (const {bullet, enemy} of enemyHits) {
+    const options = {source: bullet.source || "shot"};
     if (enemy.userData.isBoss) {
       damageBoss(bullet.damage, options);
       continue;
@@ -297,7 +295,7 @@ function resolveContactDamage() {
     if (result === "hit" || result === "dead") {
       markPlayerDamaged();
       if (stats.thornsDamage > 0) {
-        damageEnemy(enemy, stats.thornsDamage, { source: "thorns" });
+        damageEnemy(enemy, stats.thornsDamage, {source: "thorns"});
       }
     }
 

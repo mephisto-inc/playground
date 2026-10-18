@@ -1,7 +1,7 @@
-import { el, list, mount } from "./dom.js";
-import { STATE, onStateChange, setState } from "../core/StateMachine.js";
-import { CLASSES } from "../config/classes.js";
-import { beginRun } from "../systems/Run.js";
+import {el, list, mount} from "./dom.js";
+import {onStateChange, setState, STATE} from "../core/StateMachine.js";
+import {CLASSES} from "../config/classes.js";
+import {beginRun} from "../systems/Run.js";
 
 let overlay = null;
 

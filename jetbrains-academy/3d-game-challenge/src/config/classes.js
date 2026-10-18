@@ -1,4 +1,4 @@
-import { ABILITY, PLAYER, TRAIL } from "./tuning.js";
+import {ABILITY, PLAYER, TRAIL} from "./tuning.js";
 
 export const CLASSES = [
   {
@@ -6,12 +6,10 @@ export const CLASSES = [
     name: "Pusher",
     icon: "🛡️",
     hearts: PLAYER.baseHearts,
-
     description: [
-      `Double click/tap: ${ABILITY.pushShield}s shield that blocks physical damage`,
-      `Reflects projectiles within ${ABILITY.pushReflectRadius} units for ${ABILITY.pushReflectDamage} damage`,
-      `On a block: shockwave (${ABILITY.pushShockwaveRadius} units) for ${ABILITY.pushShockwaveBaseDamage} + HP, stuns ${ABILITY.pushStun} s, shoves enemies ${ABILITY.pushKnockback} units (not Tanks)`,
-      `${ABILITY.pushCooldown} s cooldown`,
+      `Double click/tap: ${ABILITY.pushShield}s shield that blocks hits`,
+      `Sends shots back and stuns and pushes enemies away`,
+      `${ABILITY.pushCooldown}s cooldown`,
     ],
     ability: {
       cooldown: ABILITY.pushCooldown,
@@ -30,9 +28,8 @@ export const CLASSES = [
     icon: "⚡",
     hearts: PLAYER.baseHearts,
     description: [
-      `Double click/tap: dash ${ABILITY.dashDistance} units, +${ABILITY.dashExtraIFrames}s extra i-frames, ${ABILITY.dashCloneCount} shadow clones`,
-      `Leaves a damaging trail: ${ABILITY.trailBaseDuration} s + ${ABILITY.trailPerHeart}s per heart`,
-      `Trail tick: ${TRAIL.damageBase} + ${TRAIL.damagePerHeart}/heart damage`,
+      `Double click/tap: dash ${ABILITY.dashDistance} units, safe while dashing`,
+      `Clones and a trail: ${TRAIL.damageBase} + ${TRAIL.damagePerHeart} damage per heart`,
       `${ABILITY.dashCooldown}s cooldown`,
     ],
     ability: {
@@ -52,8 +49,9 @@ export const CLASSES = [
     icon: "🤖",
     hearts: PLAYER.baseHearts - 2,
     description: [
-      `Passive: ${ABILITY.minionCount} orbiting minions with extra vision that copy your power-ups`,
-      `${ABILITY.minionDamage} damage every ${ABILITY.minionInterval}s`,
+      `Passive: ${ABILITY.minionCount} minions circle around you`,
+      `They copy your power-ups and see farther than you`,
+      `Each deals ${ABILITY.minionDamage} damage every ${ABILITY.minionInterval}s`,
     ],
     ability: {
       minionCount: ABILITY.minionCount,

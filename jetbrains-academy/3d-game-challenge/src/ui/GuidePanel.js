@@ -1,4 +1,4 @@
-import { el, list, mount } from "./dom.js";
+import {el, list, mount} from "./dom.js";
 
 const GUIDE_LINES = [
   "🖱️ Use the mouse to move — touch the screen on mobile. Tode hops toward your pointer.",

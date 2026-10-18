@@ -20,7 +20,8 @@ export function loadNumber(key, fallback) {
 export function saveNumber(key, value) {
   try {
     window.localStorage.setItem(key, String(value));
-  } catch {}
+  } catch {
+  }
 }
 
 export function loadJSON(key, fallback) {
@@ -36,5 +37,6 @@ export function loadJSON(key, fallback) {
 export function saveJSON(key, value) {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch {
+  }
 }

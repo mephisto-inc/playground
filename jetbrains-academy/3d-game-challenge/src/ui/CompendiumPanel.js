@@ -1,8 +1,8 @@
-import { el, list, mount } from "./dom.js";
-import { CLASSES } from "../config/classes.js";
-import { POWERUPS } from "../config/powerups.js";
-import { getPlayedClasses } from "../systems/Achievements.js";
-import { isCollected } from "../systems/Collection.js";
+import {el, list, mount} from "./dom.js";
+import {CLASSES} from "../config/classes.js";
+import {POWERUPS} from "../config/powerups.js";
+import {getPlayedClasses} from "../systems/Achievements.js";
+import {isCollected} from "../systems/Collection.js";
 
 let overlay = null;
 let listNode = null;

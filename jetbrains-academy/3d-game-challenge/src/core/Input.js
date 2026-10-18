@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import camera from "../world/Camera.js";
 import renderer from "./Renderer.js";
-import { MOVE } from "../config/tuning.js";
+import {MOVE} from "../config/tuning.js";
 
 const pointerNDC = new THREE.Vector2();
 let pointerActive = false;

@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { distanceToSegment } from "../core/MathUtils.js";
-import { TRAIL } from "../config/tuning.js";
+import {distanceToSegment} from "../core/MathUtils.js";
+import {TRAIL} from "../config/tuning.js";
 
 const quadGeometry = new THREE.PlaneGeometry(1, 1);
 
@@ -30,7 +30,7 @@ export function spawnTrail(x1, y1, x2, y2, duration, width) {
   mesh.rotation.z = Math.atan2(dy, dx);
   sceneRef.add(mesh);
 
-  trails.push({ mesh, x1, y1, x2, y2, ttl: duration, duration, width });
+  trails.push({mesh, x1, y1, x2, y2, ttl: duration, duration, width});
 }
 
 export function updateTrails(delta) {
@@ -39,6 +39,7 @@ export function updateTrails(delta) {
     trail.ttl -= delta;
     if (trail.ttl <= 0) {
       trails.splice(i, 1);
+      trail.mesh.material.dispose();
       if (trail.mesh.parent) trail.mesh.parent.remove(trail.mesh);
       continue;
     }
@@ -63,6 +64,7 @@ export function clearTrails() {
   for (let i = trails.length - 1; i >= 0; i--) {
     const trail = trails[i];
     trails.splice(i, 1);
+    trail.mesh.material.dispose();
     if (trail.mesh.parent) trail.mesh.parent.remove(trail.mesh);
   }
 }

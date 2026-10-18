@@ -1,4 +1,4 @@
-import { CAMERA } from "../config/tuning.js";
+import {CAMERA} from "../config/tuning.js";
 
 const azimuth = (CAMERA.azimuthDeg * Math.PI) / 180;
 
@@ -11,7 +11,7 @@ export function updateFade(
   entries,
   delta,
   playerPosition,
-  { radius, lateral, targetOpacity, duration },
+  {radius, lateral, targetOpacity, duration},
 ) {
   if (entries.length === 0) return;
 

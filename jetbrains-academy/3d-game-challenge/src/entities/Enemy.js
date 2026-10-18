@@ -2,6 +2,7 @@ import * as THREE from "three";
 import {
   cloneMaterials,
   cloneModel,
+  disposeModel,
   enableShadows,
   fadeMaterials,
   loadGLTF,
@@ -17,22 +18,16 @@ import {
   registerCollider,
   unregisterCollider,
 } from "../core/Collision.js";
-import { clamp } from "../core/MathUtils.js";
-import {
-  ARENA,
-  COLLISION,
-  ENEMY,
-  PROJECTILE,
-  TRAIL,
-} from "../config/tuning.js";
-import { ENEMY_TYPES } from "../config/enemies.js";
-import player, { getHitCenter, getStats } from "./Player.js";
-import { isInsideTrail } from "./Trail.js";
-import { spawnHeart } from "./Pickup.js";
-import { spawnEnemyShot } from "./Projectile.js";
-import { playSfxAt } from "../systems/Audio.js";
-import { addScore } from "../systems/Score.js";
-import { recordKill } from "../systems/Achievements.js";
+import {clamp} from "../core/MathUtils.js";
+import {ARENA, COLLISION, ENEMY, PROJECTILE, TRAIL,} from "../config/tuning.js";
+import {ENEMY_TYPES} from "../config/enemies.js";
+import player, {getHitCenter, getStats} from "./Player.js";
+import {isInsideTrail} from "./Trail.js";
+import {spawnHeart} from "./Pickup.js";
+import {spawnEnemyShot} from "./Projectile.js";
+import {playSfxAt} from "../systems/Audio.js";
+import {addScore} from "../systems/Score.js";
+import {recordKill} from "../systems/Achievements.js";
 
 const STUCK_ESCAPE_SECONDS = 0.5;
 const ESCAPE_WAYPOINT_DISTANCE = 5;
@@ -91,7 +86,7 @@ export async function initEnemies(scene) {
     enableShadows(template);
 
     const probe = cloneModel(template);
-    const shape = normalizeModel(probe, { targetHeight: type.targetHeight });
+    const shape = normalizeModel(probe, {targetHeight: type.targetHeight});
 
     const clips = {
       move: findClip(gltf.animations, type.moveClip),
@@ -214,6 +209,7 @@ export function spawnEnemy(typeId, position) {
   data.dying = false;
   data.dyingTimer = 0;
   data.fading = false;
+  data.model = model;
   data.materials = materials;
   data.stunTimer = 0;
   data.flashTimer = 0;
@@ -223,7 +219,7 @@ export function spawnEnemy(typeId, position) {
   data.currentAction = actions.move;
   data.oneShotRemaining = 0;
   data.contactAnimTimer = 0;
-  data.velocity = { x: 0, y: 0 };
+  data.velocity = {x: 0, y: 0};
   data.travelClock = 0;
 
   data.blocksShots = type.behavior === "tank";
@@ -491,7 +487,7 @@ export function updateEnemies(delta) {
           stats.trailDamageMul;
         if (stats.critChance > 0 && Math.random() < stats.critChance)
           damage *= 2;
-        damageEnemy(enemy, damage, { silent: true, source: "trail" });
+        damageEnemy(enemy, damage, {silent: true, source: "trail"});
         if (data.dying) continue;
       }
     }
@@ -669,7 +665,7 @@ export function updateEnemies(delta) {
           );
         if (inRange && clearShot) {
           const flightTime = playerDistance / PROJECTILE.enemySpeed;
-          const playerVelocity = player.userData.velocity || { x: 0, y: 0 };
+          const playerVelocity = player.userData.velocity || {x: 0, y: 0};
           let aimX =
             player.position.x +
             playerVelocity.x * flightTime * ENEMY.rangedAimLead;
@@ -748,7 +744,7 @@ function pickEscapeWaypoint(collider, enemy, avoid) {
   if (avoid) {
     const onLeft =
       (avoid.x - enemy.position.x) * sideX +
-        (avoid.y - enemy.position.y) * sideY >
+      (avoid.y - enemy.position.y) * sideY >
       0;
     return onLeft ? right : left;
   }
@@ -799,6 +795,14 @@ function removeEnemy(enemy) {
 
   enemies.splice(index, 1);
   unregisterCollider(enemy);
+
+  const data = enemy.userData;
+  if (data.mixer) {
+    data.mixer.stopAllAction();
+    if (data.model) data.mixer.uncacheRoot(data.model);
+    data.mixer = null;
+  }
+  disposeModel(enemy, data.materials);
 
   if (enemy.parent) enemy.parent.remove(enemy);
   return true;

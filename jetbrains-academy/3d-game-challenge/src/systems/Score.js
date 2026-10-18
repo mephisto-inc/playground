@@ -1,5 +1,5 @@
-import { loadNumber, saveNumber, STORAGE_KEYS } from "../core/Storage.js";
-import { markScore } from "./Achievements.js";
+import {loadNumber, saveNumber, STORAGE_KEYS} from "../core/Storage.js";
+import {markScore} from "./Achievements.js";
 
 let score = 0;
 let bestScore = loadNumber(STORAGE_KEYS.bestScore, 0);
@@ -33,5 +33,5 @@ export function commitScore() {
     bestScore = score;
     saveNumber(STORAGE_KEYS.bestScore, bestScore);
   }
-  return { isRecord, previousBest, finalScore: score };
+  return {isRecord, previousBest, finalScore: score};
 }

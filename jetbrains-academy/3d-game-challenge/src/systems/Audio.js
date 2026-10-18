@@ -1,8 +1,8 @@
-import { AUDIO } from "../config/tuning.js";
-import { assetUrl } from "../core/Assets.js";
-import { clamp } from "../core/MathUtils.js";
-import { loadNumber, saveNumber, STORAGE_KEYS } from "../core/Storage.js";
-import { getState, onStateChange, STATE } from "../core/StateMachine.js";
+import {AUDIO} from "../config/tuning.js";
+import {assetUrl} from "../core/Assets.js";
+import {clamp} from "../core/MathUtils.js";
+import {loadNumber, saveNumber, STORAGE_KEYS} from "../core/Storage.js";
+import {getState, onStateChange, STATE} from "../core/StateMachine.js";
 
 const TRACK_FILES = {
   main_step1: "bgm_main_step1.wav",
@@ -42,7 +42,7 @@ let volume = loadNumber(STORAGE_KEYS.volume, AUDIO.masterVolumeDefault);
 const buffers = new Map();
 let current = null;
 let swapToken = 0;
-let waveStage = { wave: 0, bossAlive: false };
+let waveStage = {wave: 0, bossAlive: false};
 const UNLOCK_EVENTS = ["pointerdown", "keydown", "pointerup", "touchend"];
 
 export function initAudio() {
@@ -67,7 +67,8 @@ export function initAudio() {
       .then(() => {
         if (ctx.state === "running") start();
       })
-      .catch(() => {});
+      .catch(() => {
+      });
   };
 
   if (ctx.state === "running") {
@@ -78,7 +79,8 @@ export function initAudio() {
       .then(() => {
         if (ctx.state === "running") start();
       })
-      .catch(() => {});
+      .catch(() => {
+      });
   }
 
   if (!started) {
@@ -109,13 +111,16 @@ function createContext() {
   musicBus = ctx.createGain();
   musicBus.connect(musicFilter);
 
-  for (const name of SFX_NAMES) getBuffer(`sfx_${name}.wav`).catch(() => {});
-  getBuffer(TRACK_FILES.main_step1).catch(() => {});
+  for (const name of SFX_NAMES) getBuffer(`sfx_${name}.wav`).catch(() => {
+  });
+  getBuffer(TRACK_FILES.main_step1).catch(() => {
+  });
 }
 
 function preloadMusic() {
   for (const file of Object.values(TRACK_FILES))
-    getBuffer(file).catch(() => {});
+    getBuffer(file).catch(() => {
+    });
 }
 
 function getBuffer(fileName) {
@@ -149,7 +154,8 @@ export function playSfx(name, options = {}) {
       }
       source.start();
     })
-    .catch(() => {});
+    .catch(() => {
+    });
 }
 
 export function playSfxAt(name, x, y, listenerX, listenerY) {
@@ -161,7 +167,7 @@ export function playSfxAt(name, x, y, listenerX, listenerY) {
     return;
   }
   const pan = (((dx + dy) * Math.SQRT1_2) / distance) * AUDIO.sfxPanMax;
-  playSfx(name, { pan });
+  playSfx(name, {pan});
 }
 
 function clampPan(value) {
@@ -207,12 +213,14 @@ function setMusic(id) {
         old.gain.gain.linearRampToValueAtTime(0, now + fade);
         try {
           old.source.stop(now + fade + 0.05);
-        } catch {}
+        } catch {
+        }
       }
 
-      current = { id, source, gain, startedAt: now, offset: position };
+      current = {id, source, gain, startedAt: now, offset: position};
     })
-    .catch(() => {});
+    .catch(() => {
+    });
 }
 
 function setLowPass(engaged) {
@@ -233,7 +241,7 @@ export function getMasterVolume() {
 }
 
 export function setWaveStage(wave, bossAlive) {
-  waveStage = { wave, bossAlive };
+  waveStage = {wave, bossAlive};
   if (getState() === STATE.WAVE_PLAYING) applyWaveMusic();
 }
 

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import {
   cloneMaterials,
   cloneModel,
+  disposeModel,
   enableShadows,
   fadeMaterials,
   loadGLTF,
@@ -16,15 +17,9 @@ import {
   registerCollider,
   unregisterCollider,
 } from "../core/Collision.js";
-import { clamp } from "../core/MathUtils.js";
-import {
-  BOSS,
-  COLLISION,
-  ENEMY,
-  SPAWN_POINTS,
-  TRAIL,
-} from "../config/tuning.js";
-import { BOSS_TYPE } from "../config/enemies.js";
+import {clamp} from "../core/MathUtils.js";
+import {BOSS, COLLISION, ENEMY, SPAWN_POINTS, TRAIL,} from "../config/tuning.js";
+import {BOSS_TYPE} from "../config/enemies.js";
 import player, {
   applyPlayerSlow,
   damagePlayer,
@@ -42,12 +37,12 @@ import {
   removeFromEnemyList,
   spawnEnemy,
 } from "./Enemy.js";
-import { isInsideTrail } from "./Trail.js";
-import { spawnHeart, spawnPowerupDrop } from "./Pickup.js";
-import { spawnBossOrb } from "./Projectile.js";
-import { playSfxAt } from "../systems/Audio.js";
-import { addScore } from "../systems/Score.js";
-import { recordKill } from "../systems/Achievements.js";
+import {isInsideTrail} from "./Trail.js";
+import {spawnHeart, spawnPowerupDrop} from "./Pickup.js";
+import {spawnBossOrb} from "./Projectile.js";
+import {playSfxAt} from "../systems/Audio.js";
+import {addScore} from "../systems/Score.js";
+import {recordKill} from "../systems/Achievements.js";
 
 const ANIM_FADE = 0.15;
 
@@ -90,7 +85,7 @@ export async function initBoss(scene) {
   enableShadows(template);
 
   const probe = cloneModel(template);
-  const shape = normalizeModel(probe, { targetHeight: BOSS_TYPE.targetHeight });
+  const shape = normalizeModel(probe, {targetHeight: BOSS_TYPE.targetHeight});
 
   const findClip = (name) => {
     if (!name) return null;
@@ -206,6 +201,7 @@ export function spawnBoss(
   data.dying = false;
   data.dyingTimer = 0;
   data.fading = false;
+  data.model = model;
   data.materials = materials;
   data.flashTimer = 0;
   data.flashOriginals = flashOriginals;
@@ -214,7 +210,7 @@ export function spawnBoss(
   data.currentAction = actions.move || actions.idle;
   data.oneShotRemaining = 0;
   data.touchingPlayer = false;
-  data.velocity = { x: 0, y: 0 };
+  data.velocity = {x: 0, y: 0};
 
   data.state = "chaseA";
   data.stateTimer = BOSS.phaseAChase;
@@ -224,7 +220,7 @@ export function spawnBoss(
   data.nextChase = "chaseB";
   data.spiralAngle = 0;
   data.spiralTimer = 0;
-  data.dashDirection = { x: 0, y: 0 };
+  data.dashDirection = {x: 0, y: 0};
   data.dashHit = false;
 
   data.silhouette = 0;
@@ -407,7 +403,7 @@ export function updateBoss(delta) {
         (TRAIL.damageBase + stats.hearts * TRAIL.damagePerHeart) *
         stats.trailDamageMul;
       if (stats.critChance > 0 && Math.random() < stats.critChance) damage *= 2;
-      damageBoss(damage, { silent: true, source: "trail" });
+      damageBoss(damage, {silent: true, source: "trail"});
       if (data.dying) return;
     }
   }
@@ -646,7 +642,7 @@ function pickEscapeWaypoint(collider, avoid) {
   if (avoid) {
     const onLeft =
       (avoid.x - boss.position.x) * sideX +
-        (avoid.y - boss.position.y) * sideY >
+      (avoid.y - boss.position.y) * sideY >
       0;
     return onLeft ? right : left;
   }
@@ -982,7 +978,7 @@ export function isBossAlive() {
 
 export function getBossInfo() {
   if (!boss || boss.userData.dying) return null;
-  return { hp: boss.userData.hp, maxHp: boss.userData.maxHp };
+  return {hp: boss.userData.hp, maxHp: boss.userData.maxHp};
 }
 
 export function setBossEndlessScaling(speedMul, attackMul) {
@@ -992,6 +988,13 @@ export function setBossEndlessScaling(speedMul, attackMul) {
 
 function removeBoss() {
   if (!boss) return;
+  const data = boss.userData;
+  if (data.mixer) {
+    data.mixer.stopAllAction();
+    if (data.model) data.mixer.uncacheRoot(data.model);
+    data.mixer = null;
+  }
+  disposeModel(boss, data.materials);
   removeFromEnemyList(boss);
   unregisterCollider(boss);
   if (boss.parent) boss.parent.remove(boss);

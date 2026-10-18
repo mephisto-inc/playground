@@ -1,19 +1,14 @@
-import { getState, setState, STATE } from "../core/StateMachine.js";
-import { snapCameraTo } from "../world/Camera.js";
-import { DRAFT } from "../config/tuning.js";
-import player, {
-  applyCard,
-  configureClass,
-  getCollectedCards,
-  isDead,
-} from "../entities/Player.js";
-import { clearProjectiles } from "../entities/Projectile.js";
-import { clearPickups } from "../entities/Pickup.js";
-import { clearTrails } from "../entities/Trail.js";
-import { clearMinions } from "../entities/Minion.js";
-import { resetEnemies } from "../entities/Enemy.js";
-import { resetBoss } from "../entities/Boss.js";
-import { onPlayerDeath, onPowerupCollected, resetCombat } from "./Combat.js";
+import {getState, setState, STATE} from "../core/StateMachine.js";
+import {snapCameraTo} from "../world/Camera.js";
+import {DRAFT} from "../config/tuning.js";
+import player, {applyCard, configureClass, getCollectedCards, isDead,} from "../entities/Player.js";
+import {clearProjectiles} from "../entities/Projectile.js";
+import {clearPickups} from "../entities/Pickup.js";
+import {clearTrails} from "../entities/Trail.js";
+import {clearMinions} from "../entities/Minion.js";
+import {resetEnemies} from "../entities/Enemy.js";
+import {resetBoss} from "../entities/Boss.js";
+import {onPlayerDeath, onPowerupCollected, resetCombat} from "./Combat.js";
 import {
   advanceAfterDraft,
   getSurvivalTimes,
@@ -21,13 +16,9 @@ import {
   resetWaves,
   startRun as startWaves,
 } from "./Waves.js";
-import { openDraft, resetDraft } from "./PowerupDraft.js";
-import { commitScore, getBestScore, resetScore } from "./Score.js";
-import {
-  checkNewRecord,
-  getRunUnlocks,
-  resetRunTracking,
-} from "./Achievements.js";
+import {openDraft, resetDraft} from "./PowerupDraft.js";
+import {commitScore, getBestScore, resetScore} from "./Score.js";
+import {checkNewRecord, getRunUnlocks, resetRunTracking,} from "./Achievements.js";
 
 let initialized = false;
 let lastCommit = null;
@@ -56,7 +47,7 @@ function openBonusDraft() {
   setState(STATE.POWERUP_DRAFT);
 }
 
-export function beginRun(classId) {
+export function beginRun(classId, startWave = 1) {
   resetWorld();
   configureClass(classId);
   resetScore();
@@ -64,7 +55,7 @@ export function beginRun(classId) {
   resetDraft();
   bonusDraft = false;
   snapCameraTo(player.position);
-  startWaves();
+  startWaves(startWave);
   setState(STATE.WAVE_PLAYING);
 }
 
