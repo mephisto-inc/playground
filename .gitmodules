@@ -10,3 +10,6 @@
 [submodule "pages/jogos"]
 	path = pages/jogos
 	url = https://github.com/mephisto-inc/jogos.git
+[submodule "jetbrains-academy/a-3d-game-challenge"]
+	path = jetbrains-academy/a-3d-game-challenge
+	url = https://github.com/mephisto-inc/a-3d-game-challenge.git
