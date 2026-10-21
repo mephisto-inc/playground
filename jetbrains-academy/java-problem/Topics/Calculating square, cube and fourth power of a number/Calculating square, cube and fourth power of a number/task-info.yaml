@@ -1,0 +1,12 @@
+type: code
+files:
+  - name: src/Main.java
+    visible: true
+    learner_created: false
+feedback_link: https://hyperskill.org/learn/step/41187#comment
+status: Unchecked
+feedback:
+  message: Failed to submit "code" task to Hyperskill
+  time: "Wed, 21 Oct 2026 06:54:56 UTC"
+record: -1
+submission_language: java25

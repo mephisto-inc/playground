@@ -1,0 +1,44 @@
+<div class="step-text">
+<p>In real life, we often perform <a class="theory-lookup not-relevant" href="/learn/step/3519" target="_blank" title="In Java, arithmetic operations are mathematical calculations that can be performed using arithmetic operators. | These operators include addition (+), subtraction (-), multiplication (\*), division (/), and modulus or remainder (%) operators. Arithmetic operations take two values or operands, with the exception of unary operators such as unary plus (+) and unary minus (-), which take a single value. The order of operation follows the standard arithmetic rules, with multiplication and division having a higher priority level than addition and subtraction. Parentheses can be used to specify the order of execution and for clarity. The unary plus operator indicates a positive value, while the unary minus operator negates a value or an expression.">arithmetic operations</a>. They help us to determine the change from a purchase, calculate the area of a room, count the number of people in a queue, and so on. The same operations are used in programs.</p>
+<h5 id="binary-arithmetic-operators">Binary arithmetic operators</h5>
+<p>The Java programming language provides operators to perform arithmetic operations:</p>
+<ul><li><p>addition <code class="language-java">+</code></p></li><li><p><a class="theory-lookup not-relevant" href="/learn/step/3519" target="_blank" title="In Java, subtraction is a binary arithmetic operation that requires two operands. | It is used to determine the difference between two numbers. The subtraction operation can be performed using the '-' operator. For example, in the expression `a - b`, `a` is the minuend and `b` is the subtrahend. It's important to note that the unary minus operator, which is used to indicate a negative value for any type of numeric literal, is different from the subtraction operation.">subtraction</a> <code class="language-java">-</code></p></li><li><p>multiplication <code class="language-java">*</code></p></li><li><p>division <code class="language-java">/</code></p></li><li><p>remainder <code class="language-java">%</code></p></li></ul>
+<p>The operators are called binary because they take two values as operands.</p>
+<p>The following example prints the results of <strong>addition</strong>, <strong>subtraction</strong>, and <strong>multiplication</strong>.</p>
+<pre><code class="language-java">System.out.println(13 + 25); // prints 38
+System.out.println(20 + 70); // prints 90
+
+System.out.println(70 - 30); // prints 40
+System.out.println(30 - 70); // prints -40
+
+System.out.println(21 * 3);  // prints 63
+System.out.println(20 * 10); // prints 200</code></pre>
+<p>The <code class="language-java">/</code> operator returns the integer part of the division of two integer numbers, and any fractional part is discarded.</p>
+<pre><code class="language-java">System.out.println(8 / 3); // prints 2
+System.out.println(41 / 5); // prints 8</code></pre>
+<p>The <code class="language-java">%</code> in Java is the modulus or remainder operator. It returns the remainder of the division of two numbers. Note, that when the dividend is less than the divisor, the quotient is zero and the remainder equals the dividend. If you still feel uneasy about the modulo operation, check out <a href="https://hyperskill.org/learn/step/10586" rel="noopener noreferrer nofollow" target="_blank">this topic</a>.</p>
+<pre><code class="language-kotlin">System.out.println(10 % 3); // prints 1, because 10 divided by 3 leaves a remainder of 1
+System.out.println(12 % 4); // prints 0, because 12 divided by 4 leaves no remainder
+System.out.println(5 % 9); // prints 5, because 5 divided by 9 leaves a remainder of 5</code></pre>
+<h5 id="writing-complex-expressions">Writing complex expressions</h5>
+<p>The operations can be combined to write more complex <a class="theory-lookup not-relevant" href="/learn/step/3519" target="_blank" title="In Java, an expression is a construct that can be evaluated to a value. | This value can then be used in further computations or assigned to a variable. A lambda expression, specifically, is an anonymous function that can be assigned to a variable. Its general form consists of a list of parameters followed by the body of the function. The body can return a value. Lambda expressions are particularly useful when you want to pass a small function as a parameter to a method, or when you want to create a function on the fly, without having to define a separate method for it. Unlike a switch statement, which can update the value of a predefined variable, a switch expression evaluates to a specific value and is assigned to a variable.">expressions</a>:</p>
+<pre><code class="language-java">System.out.println(1 + 3 * 4 - 2); // prints 11</code></pre>
+<p>The order of operations follows the standard arithmetic rules. Multiplication has a higher priority level than addition and subtraction, so the operation <code class="language-java">3 * 4</code> is calculated first.</p>
+<p>To specify the order of execution we can use <strong>parentheses</strong>:</p>
+<pre><code class="language-java">System.out.println((1 + 3) * (4 - 2)); // prints 8
+</code></pre>
+<p>As in arithmetic, <strong>parentheses</strong> can be nested. You can also use them for clarity.</p>
+<h5 id="unary-operators">Unary operators</h5>
+<p>A <a class="theory-lookup not-relevant" href="/learn/step/3519" target="_blank" title="In Java, a unary operator is an operator that performs an operation on a single operand, unlike binary operators that require two operands. | There are two types of unary operators in Java: unary plus and unary minus. The unary plus operator indicates a positive value, but it is rarely used in practice because it doesn't change the value of the operand. It is used to represent a positive numeric value explicitly. On the other hand, the unary minus operator negates a value or an expression. Both unary operators have a higher level of precedence than multiplication and division operators.">unary operator</a> takes a single value as the operand.</p>
+<ul><li><p>The<strong> unary plus</strong> operator indicates a positive value. It's an optional operator.</p></li></ul>
+<pre><code class="language-java">System.out.println(+5); // prints 5
+</code></pre>
+<p> </p>
+<ul><li><p>The <strong>unary minus</strong> operator negates a value or an expression.</p></li></ul>
+<pre><code class="language-java">System.out.println(-8);  // prints -8
+System.out.println(-(100 + 4)); // prints -104</code></pre>
+<p>They both have a higher level of <a class="theory-lookup not-relevant" href="/learn/step/3519" target="_blank" title="In Java, precedence refers to the order of performing and grouping operations in an expression. | Operations with higher precedence are performed before those with lower precedence. For example, multiplication and division have a higher precedence than addition and subtraction. Parentheses can be used to specify the order of execution and can be nested. Additionally, there is a precedence order of all arithmetic operators, including parentheses, with unary plus/minus having the highest level of precedence, followed by multiplication and division, and then addition and subtraction.">precedence</a> than the <strong>multiplication</strong> and <strong>division</strong> operators.</p>
+<h5 id="the-precedence-order">The precedence order</h5>
+<p>There is a <a href="https://introcs.cs.princeton.edu/java/11precedence/" rel="noopener noreferrer nofollow" target="_blank"></a>precedence order of all <a class="theory-lookup not-relevant" href="/learn/step/3519" target="_blank" title="In Java, an arithmetic operator is a symbol that performs mathematical calculations on one or two operands, which are values or variables. | There are five arithmetic operators in Java: addition (+), subtraction (-), multiplication (\*), division (/), and modulus or remainder (%). The addition, subtraction, and multiplication operators take two operands, while division and modulus take two operands as well. However, the modulus operator returns the remainder of the division of the two operands. Arithmetic operators are called binary because they take two values or variables as operands. Java also provides relational operators that can be used in mixed expressions together with arithmetic operators. In such expressions, relational operators have lower priority than arithmetic operators.">arithmetic operators</a>, including parentheses. The list below is sorted from the highest to the lowest precedence level.</p>
+<ul><li><p>parentheses;</p></li><li><p>unary plus/minus;</p></li><li><p>multiplication, division, the remainder;</p></li><li><p>addition, subtraction.</p></li></ul>
+</div>
