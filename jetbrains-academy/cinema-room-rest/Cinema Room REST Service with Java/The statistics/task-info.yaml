@@ -1,0 +1,16 @@
+type: edu
+files:
+  - name: src/cinema/Main.java
+    visible: true
+    learner_created: false
+  - name: src/resources/application.properties
+    visible: true
+    learner_created: false
+  - name: build.gradle
+    visible: true
+    learner_created: false
+  - name: test/CinemaTests.java
+    learner_created: false
+feedback_link: https://hyperskill.org/projects/189/stages/948/implement#comment
+status: Unchecked
+record: -1
